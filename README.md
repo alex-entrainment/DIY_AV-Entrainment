@@ -28,7 +28,16 @@ Brainwave entrainment (BWE) involves the use of pulsing lights or audio tones at
 - **Visual**: 6 strobing LEDs with adjustable waveforms, duty cycles, frequency ramps, and more.
 - **Audio**: Up to 3 carriers that can be individually enabled, each with optional frequency ramps, random frequency modulation (RFM), binaural or isochronic modes, and pink noise.
 
-The result is a flexible platform for exploring entrainment principles. The system is intended for DIY research and is **not** a medical device. Use at your own discretion.
+The result is a flexible platform for exploring entrainment principles. The system is intended for DIY research and is **not** a medical device. Build and use at your own discretion.
+
+![device front](https://github.com/user-attachments/assets/9552d6c8-8354-40ea-99f3-c1e1ff4e83d6)
+![device back](https://github.com/user-attachments/assets/c19d92c4-99ef-4471-9ec9-e069b728cf6b)
+
+
+
+https://github.com/user-attachments/assets/bfa61be5-ae2e-406d-882f-85ca153d7a00
+
+
 
 ---
 
