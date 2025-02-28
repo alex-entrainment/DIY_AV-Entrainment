@@ -51,13 +51,14 @@ Below is the minimal parts list used for the LED driver side:
 2. **PCA9685** 16-channel PWM driver
 3. **3× High-power (~0.3 A × 3.3 V) cool white LEDs**
 4. **3× High-power warm white LEDs**
-5. **6× Switching MOSFETs** (e.g., IRFZ44N logic-level; or similar)  
+5. **6× Switching MOSFETs** (e.g., TIP120, IRFZ44N w/ 5v logic-level shift; or similar)  
    *(If they are not fully logic-level at 3.3 V, a 5 V level shifter or gate driver may be required)*
-6. **1× External 5 V power supply** (capable of driving the 6 LEDs + the Raspberry Pi if desired)
-7. **6× 2 W, 5 Ω resistors** (one per LED for current limiting)
-8. **6x 10KΩ resistors** (pull-downs for MOSFET gates)
-9. **6× 220 Ω resistors** (protects PWM pins)
-10. **Wiring** (jumper wires, hookup wire, etc.)
+   - [TIP 120 transistors](https://www.adafruit.com/product/976)
+7. **1× External 5 V power supply** (capable of driving the 6 LEDs + the Raspberry Pi if desired)
+8. **6× 2 W, 5 Ω resistors** (one per LED for current limiting)
+9. **6x 10KΩ resistors** (pull-downs for MOSFET gates)
+10. **6× 220 Ω resistors** (protects PWM pins)
+11. **Wiring** (jumper wires, hookup wire, etc.)
 
 ### Typical Connections
 - The PCA9685 connects via I²C (SDA, SCL) to the SBC (Raspberry Pi pins).
