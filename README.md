@@ -48,17 +48,20 @@ The result is a flexible platform for exploring entrainment principles. The syst
 Below is the minimal parts list used for the LED driver side:
 
 1. **SBC computer** (Raspberry Pi or comparable)
+- [Raspberry Pi 3B](https://www.digikey.com/en/products/detail/raspberry-pi/SC0073/8571724?gclsrc=aw.ds&&utm_adgroup=&utm_source=google&utm_medium=cpc&utm_campaign=PMax%20Shopping_Product_Medium%20ROAS%20Categories&utm_term=&utm_content=&utm_id=go_cmp-20223376311_adg-_ad-__dev-c_ext-_prd-8571724_sig-Cj0KCQiA2oW-BhC2ARIsADSIAWpJQ6Hkttar9WaTSVHl90eo3DTDA_QYNAuV6JZE0Mu0xg5CFHhTvtcaAv_WEALw_wcB&gad_source=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWpJQ6Hkttar9WaTSVHl90eo3DTDA_QYNAuV6JZE0Mu0xg5CFHhTvtcaAv_WEALw_wcB&gclsrc=aw.ds)
 2. **PCA9685** 16-channel PWM driver
+  -[PCA9685](https://www.googleadservices.com/pagead/aclk?sa=L&ai=DChcSEwj8nsrUs-eLAxXGWEcBHZsXJv0YABASGgJxdQ&co=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWqau1z6inqUk-G94FxrL8oTb7Xaf7VOVPfy7Y1CcpPGAOvCtB1W3F8aAlbkEALw_wcB&ohost=www.google.com&cid=CAESVuD2YdQKXnas6BOsyXCBJwyZxfZIIJkp21_CLLfYlzfvBrurVr-enGlMwICQPxCyaJH64vcYN6Xl2ZUs1XS7ggdYaPj_Qac4AeXundOGM28ghOi9fyXC&sig=AOD64_2lIttoYyqeN1kmbOn14SrPFssUmQ&ctype=5&q=&ved=2ahUKEwiX3cPUs-eLAxWrD1kFHTLPFVIQ9aACKAB6BAgLEBA&adurl=)
 3. **3× High-power (~0.3 A × 3.3 V) cool white LEDs**
+  - [uxcell Cool White LEDs](https://www.amazon.com/dp/B07DHB61BH?ref=ppx_yo2ov_dt_b_fed_asin_title)
 4. **3× High-power warm white LEDs**
 5. **6× Switching MOSFETs** (e.g., TIP120, IRFZ44N w/ 5v logic-level shift; or similar)  
    *(If they are not fully logic-level at 3.3 V, a 5 V level shifter or gate driver may be required)*
    - [TIP 120 transistors](https://www.adafruit.com/product/976)
-7. **1× External 5 V power supply** (capable of driving the 6 LEDs + the Raspberry Pi if desired)
-8. **6× 2 W, 5 Ω resistors** (one per LED for current limiting)
-9. **6x 10KΩ resistors** (pull-downs for MOSFET gates)
-10. **6× 220 Ω resistors** (protects PWM pins)
-11. **Wiring** (jumper wires, hookup wire, etc.)
+6. **1× External 5 V power supply** (capable of driving the 6 LEDs + the Raspberry Pi if desired)
+7. **6× 2 W, 5 Ω resistors** (one per LED for current limiting)
+8. **6x 10KΩ resistors** (pull-downs for MOSFET gates)
+9. **6× 220 Ω resistors** (protects PWM pins)
+10. **Wiring** (jumper wires, hookup wire, etc.)
 
 ### Typical Connections
 - The PCA9685 connects via I²C (SDA, SCL) to the SBC (Raspberry Pi pins).
