@@ -48,19 +48,24 @@ The result is a flexible platform for exploring entrainment principles. The syst
 Below is the minimal parts list used for the LED driver side:
 
 1. **SBC computer** (Raspberry Pi or comparable)
-- [Raspberry Pi 3B](https://www.digikey.com/en/products/detail/raspberry-pi/SC0073/8571724?gclsrc=aw.ds&&utm_adgroup=&utm_source=google&utm_medium=cpc&utm_campaign=PMax%20Shopping_Product_Medium%20ROAS%20Categories&utm_term=&utm_content=&utm_id=go_cmp-20223376311_adg-_ad-__dev-c_ext-_prd-8571724_sig-Cj0KCQiA2oW-BhC2ARIsADSIAWpJQ6Hkttar9WaTSVHl90eo3DTDA_QYNAuV6JZE0Mu0xg5CFHhTvtcaAv_WEALw_wcB&gad_source=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWpJQ6Hkttar9WaTSVHl90eo3DTDA_QYNAuV6JZE0Mu0xg5CFHhTvtcaAv_WEALw_wcB&gclsrc=aw.ds)
+ - [Raspberry Pi 3B](https://www.digikey.com/en/products/detail/raspberry-pi/SC0073/8571724?gclsrc=aw.ds&&utm_adgroup=&utm_source=google&utm_medium=cpc&utm_campaign=PMax%20Shopping_Product_Medium%20ROAS%20Categories&utm_term=&utm_content=&utm_id=go_cmp-20223376311_adg-_ad-__dev-c_ext-_prd-8571724_sig-Cj0KCQiA2oW-BhC2ARIsADSIAWpJQ6Hkttar9WaTSVHl90eo3DTDA_QYNAuV6JZE0Mu0xg5CFHhTvtcaAv_WEALw_wcB&gad_source=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWpJQ6Hkttar9WaTSVHl90eo3DTDA_QYNAuV6JZE0Mu0xg5CFHhTvtcaAv_WEALw_wcB&gclsrc=aw.ds)
 2. **PCA9685** 16-channel PWM driver
-  -[PCA9685](https://www.googleadservices.com/pagead/aclk?sa=L&ai=DChcSEwj8nsrUs-eLAxXGWEcBHZsXJv0YABASGgJxdQ&co=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWqau1z6inqUk-G94FxrL8oTb7Xaf7VOVPfy7Y1CcpPGAOvCtB1W3F8aAlbkEALw_wcB&ohost=www.google.com&cid=CAESVuD2YdQKXnas6BOsyXCBJwyZxfZIIJkp21_CLLfYlzfvBrurVr-enGlMwICQPxCyaJH64vcYN6Xl2ZUs1XS7ggdYaPj_Qac4AeXundOGM28ghOi9fyXC&sig=AOD64_2lIttoYyqeN1kmbOn14SrPFssUmQ&ctype=5&q=&ved=2ahUKEwiX3cPUs-eLAxWrD1kFHTLPFVIQ9aACKAB6BAgLEBA&adurl=)
+  - [PCA9685](https://www.googleadservices.com/pagead/aclk?sa=L&ai=DChcSEwj8nsrUs-eLAxXGWEcBHZsXJv0YABASGgJxdQ&co=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWqau1z6inqUk-G94FxrL8oTb7Xaf7VOVPfy7Y1CcpPGAOvCtB1W3F8aAlbkEALw_wcB&ohost=www.google.com&cid=CAESVuD2YdQKXnas6BOsyXCBJwyZxfZIIJkp21_CLLfYlzfvBrurVr-enGlMwICQPxCyaJH64vcYN6Xl2ZUs1XS7ggdYaPj_Qac4AeXundOGM28ghOi9fyXC&sig=AOD64_2lIttoYyqeN1kmbOn14SrPFssUmQ&ctype=5&q=&ved=2ahUKEwiX3cPUs-eLAxWrD1kFHTLPFVIQ9aACKAB6BAgLEBA&adurl=)
 3. **3× High-power (~0.3 A × 3.3 V) cool white LEDs**
-  - [uxcell Cool White LEDs](https://www.amazon.com/dp/B07DHB61BH?ref=ppx_yo2ov_dt_b_fed_asin_title)
+   - [Uxcell Cool White LEDs](https://www.amazon.com/dp/B07DHB61BH?ref=ppx_yo2ov_dt_b_fed_asin_title)
 4. **3× High-power warm white LEDs**
+   - [Uxcell Warm White LEDs] (https://www.amazon.com/dp/B07DHB13J4?ref_=ppx_hzod_title_dt_b_fed_asin_title_0_3)
 5. **6× Switching MOSFETs** (e.g., TIP120, IRFZ44N w/ 5v logic-level shift; or similar)  
    *(If they are not fully logic-level at 3.3 V, a 5 V level shifter or gate driver may be required)*
    - [TIP 120 transistors](https://www.adafruit.com/product/976)
 6. **1× External 5 V power supply** (capable of driving the 6 LEDs + the Raspberry Pi if desired)
-7. **6× 2 W, 5 Ω resistors** (one per LED for current limiting)
+   - [5V 10A external power supply (barrel connector)](https://www.adafruit.com/product/658)
+7. **6× 1-2 W, 5 Ω resistors** (one per LED for current limiting)
+   - [Uxcell 100pcs 1W 5Ohm](https://www.amazon.com/dp/B07PPVFQV8?ref=ppx_yo2ov_dt_b_fed_asin_title)
 8. **6x 10KΩ resistors** (pull-downs for MOSFET gates)
+   - [10kohm resistors](https://www.digikey.com/en/products/detail/koa-speer-electronics-inc/CFP1-4CT52R103J/13538361?gclsrc=aw.ds&&utm_adgroup=General&utm_source=google&utm_medium=cpc&utm_campaign=PMax%20Shopping_Product_Zombie%20SKUs&utm_term=&utm_content=General&utm_id=go_cmp-17815035045_adg-_ad-__dev-c_ext-_prd-13538361_sig-Cj0KCQiA2oW-BhC2ARIsADSIAWrdYJ9RNXP3d_Qc8jxdgaeR2kErVAGhhzi6obiyrM_jp4Z8ABrjA9caAg3UEALw_wcB&gad_source=1&gclid=Cj0KCQiA2oW-BhC2ARIsADSIAWrdYJ9RNXP3d_Qc8jxdgaeR2kErVAGhhzi6obiyrM_jp4Z8ABrjA9caAg3UEALw_wcB&gclsrc=aw.ds)  
 9. **6× 220 Ω resistors** (protects PWM pins)
+     -[220Ohm Resistors](https://www.digikey.com/en/products/detail/stackpole-electronics-inc/CF14JT220K/1741348)
 10. **Wiring** (jumper wires, hookup wire, etc.)
 
 ### Typical Connections
