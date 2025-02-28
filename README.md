@@ -1,7 +1,9 @@
 # DIY Audio-Visual Brainwave Entrainment
 
 This project aims to create an open-source audio-visual brainwave entrainment system using a small single-board computer (SBC) such as a Raspberry Pi.  
+
 It drives 6 high-power LEDs via a PCA9685 PWM board and MOSFETs, and optionally generates and plays synchronized audio entrainment tracks (e.g. binaural, isochronic).  
+
 Users can design custom multi-step “sequences” (lighting + audio parameters) with a PyQt-based GUI editor, then run them on hardware.
 
 ---
