@@ -1,0 +1,5 @@
+simpleaudio
+pyqt5
+numpy
+adafruit-blinka
+adafruit-circuitpython-pca9685
