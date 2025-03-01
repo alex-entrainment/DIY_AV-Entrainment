@@ -68,7 +68,7 @@ Below is the minimal parts list used for the LED system:
    - [Uxcell Cool White LEDs](https://www.amazon.com/dp/B07DHB61BH?ref=ppx_yo2ov_dt_b_fed_asin_title)
 
 4. **3× High-power warm white LEDs**
-   - [Uxcell Warm White LEDs] (https://www.amazon.com/dp/B07DHB13J4?ref_=ppx_hzod_title_dt_b_fed_asin_title_0_3)
+   - [Uxcell Warm White LEDs](https://www.amazon.com/dp/B07DHB13J4?ref_=ppx_hzod_title_dt_b_fed_asin_title_0_3)
      
 5. **6× Switching MOSFETs** (e.g., TIP120, IRFZ44N w/ 5v logic-level shift; or similar)  
    *(If they are not fully logic-level at 3.3 V, a 5 V level shifter or gate driver may be required)*
