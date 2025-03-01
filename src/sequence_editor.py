@@ -5,6 +5,7 @@ import json
 import copy
 
 from PyQt5.QtWidgets import (
+    QFrame,
     QApplication,
     QMainWindow,
     QWidget,
@@ -1106,71 +1107,71 @@ class MainWindow(QMainWindow):
     # Audio settings helpers
     # ---------------------------------------------------------------
     def _update_audio_ui_from_settings(self):
-    panel = self.global_audio_panel
-    panel.enabled.setChecked(self.audio_settings.enabled)
-    panel.beat_freq.setValue(self.audio_settings.beat_freq)
-    panel.binaural.setChecked(self.audio_settings.is_binaural)
-    panel.isochronic.setChecked(self.audio_settings.is_isochronic)
-    panel.global_rfm_enable.setChecked(self.audio_settings.enable_rfm)
-    panel.global_rfm_range.setValue(self.audio_settings.rfm_range)
-    panel.global_rfm_speed.setValue(self.audio_settings.rfm_speed)
-    panel.pink_noise_enable.setChecked(self.audio_settings.enable_pink_noise)
-    panel.pink_noise_volume.setValue(int(self.audio_settings.pink_noise_volume * 100))
-    panel.pink_noise_label.setText(f"{int(self.audio_settings.pink_noise_volume*100)}%")
-    panel.sample_rate.setValue(44100) # or store a user-chosen value
+        panel = self.global_audio_panel
+        panel.enabled.setChecked(self.audio_settings.enabled)
+        panel.beat_freq.setValue(self.audio_settings.beat_freq)
+        panel.binaural.setChecked(self.audio_settings.is_binaural)
+        panel.isochronic.setChecked(self.audio_settings.is_isochronic)
+        panel.global_rfm_enable.setChecked(self.audio_settings.enable_rfm)
+        panel.global_rfm_range.setValue(self.audio_settings.rfm_range)
+        panel.global_rfm_speed.setValue(self.audio_settings.rfm_speed)
+        panel.pink_noise_enable.setChecked(self.audio_settings.enable_pink_noise)
+        panel.pink_noise_volume.setValue(int(self.audio_settings.pink_noise_volume * 100))
+        panel.pink_noise_label.setText(f"{int(self.audio_settings.pink_noise_volume*100)}%")
+        panel.sample_rate.setValue(44100) # or store a user-chosen value
 
-    # carriers
-    for i, carrier in enumerate(self.audio_settings.carriers):
-        if i < len(self.carrier_panels):
-            cpanel = self.carrier_panels[i]
-            cpanel.enabled.setChecked(carrier.enabled)
-            
-            # Update base frequencies
-            cpanel.start_freq.setValue(carrier.start_freq)
-            cpanel.end_freq.setValue(carrier.end_freq)
-            
-            # Update channel-specific frequencies if they exist in the carrier
-            if hasattr(carrier, 'start_freq_left') and carrier.start_freq_left is not None:
-                cpanel.start_freq_left.setValue(carrier.start_freq_left)
-            else:
-                # Default to base frequency + half of beat frequency
-                cpanel.start_freq_left.setValue(carrier.start_freq + self.audio_settings.beat_freq/2)
+        # carriers
+        for i, carrier in enumerate(self.audio_settings.carriers):
+            if i < len(self.carrier_panels):
+                cpanel = self.carrier_panels[i]
+                cpanel.enabled.setChecked(carrier.enabled)
                 
-            if hasattr(carrier, 'end_freq_left') and carrier.end_freq_left is not None:
-                cpanel.end_freq_left.setValue(carrier.end_freq_left)
-            else:
-                cpanel.end_freq_left.setValue(carrier.end_freq + self.audio_settings.beat_freq/2)
+                # Update base frequencies
+                cpanel.start_freq.setValue(carrier.start_freq)
+                cpanel.end_freq.setValue(carrier.end_freq)
                 
-            if hasattr(carrier, 'start_freq_right') and carrier.start_freq_right is not None:
-                cpanel.start_freq_right.setValue(carrier.start_freq_right)
-            else:
-                cpanel.start_freq_right.setValue(carrier.start_freq - self.audio_settings.beat_freq/2)
+                # Update channel-specific frequencies if they exist in the carrier
+                if hasattr(carrier, 'start_freq_left') and carrier.start_freq_left is not None:
+                    cpanel.start_freq_left.setValue(carrier.start_freq_left)
+                else:
+                    # Default to base frequency + half of beat frequency
+                    cpanel.start_freq_left.setValue(carrier.start_freq + self.audio_settings.beat_freq/2)
+                    
+                if hasattr(carrier, 'end_freq_left') and carrier.end_freq_left is not None:
+                    cpanel.end_freq_left.setValue(carrier.end_freq_left)
+                else:
+                    cpanel.end_freq_left.setValue(carrier.end_freq + self.audio_settings.beat_freq/2)
+                    
+                if hasattr(carrier, 'start_freq_right') and carrier.start_freq_right is not None:
+                    cpanel.start_freq_right.setValue(carrier.start_freq_right)
+                else:
+                    cpanel.start_freq_right.setValue(carrier.start_freq - self.audio_settings.beat_freq/2)
+                    
+                if hasattr(carrier, 'end_freq_right') and carrier.end_freq_right is not None:
+                    cpanel.end_freq_right.setValue(carrier.end_freq_right)
+                else:
+                    cpanel.end_freq_right.setValue(carrier.end_freq - self.audio_settings.beat_freq/2)
                 
-            if hasattr(carrier, 'end_freq_right') and carrier.end_freq_right is not None:
-                cpanel.end_freq_right.setValue(carrier.end_freq_right)
-            else:
-                cpanel.end_freq_right.setValue(carrier.end_freq - self.audio_settings.beat_freq/2)
-            
-            # Update the beat frequency label
-            left_start = cpanel.start_freq_left.value()
-            right_start = cpanel.start_freq_right.value()
-            left_end = cpanel.end_freq_left.value()
-            right_end = cpanel.end_freq_right.value()
-            
-            start_diff = abs(left_start - right_start)
-            end_diff = abs(left_end - right_end)
-            
-            if start_diff == end_diff:
-                cpanel.beat_label.setText(f"Binaural: {start_diff:.1f} Hz")
-            else:
-                cpanel.beat_label.setText(f"Binaural: {start_diff:.1f} → {end_diff:.1f} Hz")
-            
-            # Update remaining carrier settings
-            cpanel.volume.setValue(int(carrier.volume*100))
-            cpanel.volume_label.setText(f"{int(carrier.volume*100)}%")
-            cpanel.rfm_enable.setChecked(carrier.enable_rfm)
-            cpanel.rfm_range.setValue(carrier.rfm_range)
-            cpanel.rfm_speed.setValue(carrier.rfm_speed)
+                # Update the beat frequency label
+                left_start = cpanel.start_freq_left.value()
+                right_start = cpanel.start_freq_right.value()
+                left_end = cpanel.end_freq_left.value()
+                right_end = cpanel.end_freq_right.value()
+                
+                start_diff = abs(left_start - right_start)
+                end_diff = abs(left_end - right_end)
+                
+                if start_diff == end_diff:
+                    cpanel.beat_label.setText(f"Binaural: {start_diff:.1f} Hz")
+                else:
+                    cpanel.beat_label.setText(f"Binaural: {start_diff:.1f} → {end_diff:.1f} Hz")
+                
+                # Update remaining carrier settings
+                cpanel.volume.setValue(int(carrier.volume*100))
+                cpanel.volume_label.setText(f"{int(carrier.volume*100)}%")
+                cpanel.rfm_enable.setChecked(carrier.enable_rfm)
+                cpanel.rfm_range.setValue(carrier.rfm_range)
+                cpanel.rfm_speed.setValue(carrier.rfm_speed)
 
     def _gather_audio_settings_from_ui(self):
         panel = self.global_audio_panel
