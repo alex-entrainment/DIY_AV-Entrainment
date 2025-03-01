@@ -141,7 +141,8 @@ Below is the minimal parts list used for the LED system:
    You may also need PyQt5-sip and other standard libraries for your Python environment.
    Enable I²C on your Raspberry Pi (if using Pi OS), then wire the PCA9685 accordingly.
 
-GUI Overview
+## GUI Overview
+
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
 ![image](https://github.com/user-attachments/assets/db44b9f4-8f38-4098-b52d-18616c8a6409)
 
