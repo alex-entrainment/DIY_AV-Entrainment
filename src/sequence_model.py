@@ -1,8 +1,10 @@
+#
 # sequence_model.py
 #
 # Contains the core data classes for a 6-LED strobe sequence with optional audio entrainment.
 # Now ENHANCED to handle advanced "visual patterns" in each Oscillator for complex
-# brightness/phase modulation.  
+# brightness/phase modulation.
+#
 
 from enum import Enum
 
@@ -16,17 +18,14 @@ class Waveform(Enum):
     # Additional waveforms can be added if needed (e.g., SAW, TRIANGLE).
 
 #
-# [ADDED] 1A) PatternMode
+# 1A) PatternMode
 #
 class PatternMode(Enum):
     NONE = 0
     SACRED_GEOMETRY = 1
     FRACTAL_ARC = 2
     PHI_SPIRAL = 3
-    # Feel free to add more enumerations here:
-    # E.g. FRACTAL_ARC = 2
-    #     PHI_SPIRAL = 3
-    #     etc.
+    # Feel free to add more enumerations here.
 
 #
 # 2) Oscillator
@@ -47,12 +46,10 @@ class Oscillator:
         rfm_range (float):   Maximum ± range in Hz for the random walk.
         rfm_speed (float):   How fast the random offset changes (Hz/sec).
 
-        # [ADDED] For advanced patterns:
         phase_pattern (PatternMode): The kind of complex offset pattern to apply.
         brightness_pattern (PatternMode): The kind of brightness modulation pattern.
         pattern_strength (float): For each pattern mode, how strongly to apply it.
         pattern_freq (float): A frequency or speed factor for the pattern.
-
     """
     def __init__(
         self,
@@ -64,14 +61,12 @@ class Oscillator:
         enable_rfm: bool  = False,
         rfm_range: float  = 0.5,
         rfm_speed: float  = 0.2,
-
-        # [ADDED] new fields for complex patterns
         phase_pattern = PatternMode.NONE,
         brightness_pattern = PatternMode.NONE,
         pattern_strength: float = 1.0,
         pattern_freq: float = 1.0
     ):
-        # Original frequency / duty clamping
+        # Clamp frequency and duty cycle values
         self.start_freq = max(0.1, min(200.0, start_freq))
         self.end_freq   = max(0.1, min(200.0, end_freq))
         self.waveform   = waveform
@@ -83,7 +78,7 @@ class Oscillator:
         self.rfm_range  = max(0.0, rfm_range)
         self.rfm_speed  = max(0.0, rfm_speed)
 
-        # [ADDED] store new pattern fields
+        # Advanced pattern fields
         self.phase_pattern = phase_pattern
         self.brightness_pattern = brightness_pattern
         self.pattern_strength = max(0.0, pattern_strength)
@@ -102,8 +97,6 @@ class Oscillator:
             "enable_rfm": self.enable_rfm,
             "rfm_range":  self.rfm_range,
             "rfm_speed":  self.rfm_speed,
-
-            # [ADDED] new pattern fields
             "phase_pattern": self.phase_pattern.value,
             "brightness_pattern": self.brightness_pattern.value,
             "pattern_strength": self.pattern_strength,
@@ -112,11 +105,13 @@ class Oscillator:
 
     @classmethod
     def from_dict(cls, data: dict):
+        """
+        Create an Oscillator instance from a dictionary.
+        """
         wf_value = data.get("waveform", 0)  # default to OFF if missing
 
-        # [ADDED] handle new pattern fields, defaulting to PatternMode.NONE if missing
-        from_dict_phase_mode = PatternMode( data.get("phase_pattern", 0) )
-        from_dict_bright_mode = PatternMode( data.get("brightness_pattern", 0) )
+        from_dict_phase_mode  = PatternMode(data.get("phase_pattern", 0))
+        from_dict_bright_mode = PatternMode(data.get("brightness_pattern", 0))
 
         return cls(
             start_freq = data.get("start_freq", 12.0),
@@ -127,11 +122,10 @@ class Oscillator:
             enable_rfm = data.get("enable_rfm", False),
             rfm_range  = data.get("rfm_range",  0.5),
             rfm_speed  = data.get("rfm_speed",  0.2),
-
-            phase_pattern = from_dict_phase_mode,
+            phase_pattern      = from_dict_phase_mode,
             brightness_pattern = from_dict_bright_mode,
-            pattern_strength = data.get("pattern_strength", 1.0),
-            pattern_freq = data.get("pattern_freq", 1.0)
+            pattern_strength   = data.get("pattern_strength", 1.0),
+            pattern_freq       = data.get("pattern_freq", 1.0)
         )
 
 #
@@ -156,9 +150,9 @@ class StrobeSet:
 
         total = sum(oscillator_weights)
         if total > 0:
-            self.oscillator_weights = [w/total for w in oscillator_weights]
+            self.oscillator_weights = [w / total for w in oscillator_weights]
         else:
-            self.oscillator_weights = [0]*len(oscillator_weights)
+            self.oscillator_weights = [0] * len(oscillator_weights)
 
     def to_dict(self) -> dict:
         return {
@@ -206,13 +200,15 @@ class Step:
 
     @classmethod
     def from_dict(cls, data: dict):
-        duration = data.get("duration", 30)
+        duration    = data.get("duration", 30)
         description = data.get("description", "Untitled Step")
-        osc_list = data.get("oscillators", [])
-        oscillators = [Oscillator.from_dict(o) for o in osc_list]
+        osc_list    = data.get("oscillators", [])
         strobe_list = data.get("strobe_sets", [])
+
+        oscillators = [Oscillator.from_dict(o) for o in osc_list]
         strobe_sets = [StrobeSet.from_dict(s) for s in strobe_list]
         return cls(duration, description, oscillators, strobe_sets)
+
 #
 # 5) AudioCarrier
 #
@@ -262,15 +258,14 @@ class AudioCarrier:
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
-            enabled = data.get("enabled", True),
+            enabled    = data.get("enabled", True),
             start_freq = data.get("start_freq", 200.0),
-            end_freq = data.get("end_freq", 200.0),
-            volume = data.get("volume", 1.0),
+            end_freq   = data.get("end_freq", 200.0),
+            volume     = data.get("volume", 1.0),
             enable_rfm = data.get("enable_rfm", False),
-            rfm_range = data.get("rfm_range", 0.5),
-            rfm_speed = data.get("rfm_speed", 0.2)
+            rfm_range  = data.get("rfm_range", 0.5),
+            rfm_speed  = data.get("rfm_speed", 0.2)
         )
-
 
 #
 # 6) AudioSettings
@@ -281,15 +276,13 @@ class AudioSettings:
 
     Attributes:
         enabled (bool): if False, no audio is generated or played.
-        beat_freq (float): difference frequency or modulation frequency, e.g. 10.0 Hz.
+        beat_freq (float): difference or modulation frequency, e.g. 10.0 Hz.
         is_binaural (bool): if True, produce left/right freq offset (binaural).
         is_isochronic (bool): if True, produce pulses at the beat frequency (isochronic).
         enable_rfm (bool): random freq modulation for the audio track.
         rfm_range (float): ± range for random drift of the carrier freq, e.g. 0.5 Hz.
         rfm_speed (float): how quickly the random drift changes, e.g. 0.2 Hz/sec.
-        
-        carriers (list[AudioCarrier]): up to 3 audio carriers for complex tones
-        
+        carriers (list[AudioCarrier]): up to 3 audio carriers for complex tones.
         enable_pink_noise (bool): if True, add pink noise to the background
         pink_noise_volume (float): volume of the pink noise (0.0 to 1.0)
     """
@@ -316,16 +309,13 @@ class AudioSettings:
         
         # Initialize with up to 3 carriers
         if carriers is None or len(carriers) == 0:
-            # Default to one carrier if none provided
             self.carriers = [AudioCarrier()]
         else:
-            # Take up to 3 carriers
             self.carriers = carriers[:3]
         
-        # Make sure we have exactly 3 carriers (filling with disabled ones if needed)
+        # Fill out to exactly 3 carriers
         while len(self.carriers) < 3:
-            new_carrier = AudioCarrier(enabled=False)
-            self.carriers.append(new_carrier)
+            self.carriers.append(AudioCarrier(enabled=False))
         
         # Pink noise settings
         self.enable_pink_noise = enable_pink_noise
@@ -340,18 +330,17 @@ class AudioSettings:
             "enable_rfm": self.enable_rfm,
             "rfm_range": self.rfm_range,
             "rfm_speed": self.rfm_speed,
-            "carriers": [carrier.to_dict() for carrier in self.carriers],
+            "carriers": [c.to_dict() for c in self.carriers],
             "enable_pink_noise": self.enable_pink_noise,
             "pink_noise_volume": self.pink_noise_volume
         }
 
     @classmethod
     def from_dict(cls, data: dict):
-        # Extract carriers data and create AudioCarrier objects
         carriers_data = data.get("carriers", [])
         carriers = []
-        
-        # If legacy format with carrier_freq, convert to new format
+
+        # If legacy format with "carrier_freq", convert to new format
         if "carrier_freq" in data and len(carriers_data) == 0:
             legacy_carrier = AudioCarrier(
                 enabled=True,
@@ -360,10 +349,9 @@ class AudioSettings:
             )
             carriers.append(legacy_carrier)
         else:
-            # Process carriers from data
             for carrier_data in carriers_data:
                 carriers.append(AudioCarrier.from_dict(carrier_data))
-        
+
         return cls(
             enabled = data.get("enabled", False),
             beat_freq = data.get("beat_freq", 10.0),
@@ -377,9 +365,8 @@ class AudioSettings:
             pink_noise_volume = data.get("pink_noise_volume", 0.1)
         )
 
-
 #
-# Optional: If you want a top-level "Sequence" class that wraps steps + audio
+# 7) Sequence (Optional)
 #
 class Sequence:
     """
@@ -400,195 +387,8 @@ class Sequence:
     def from_dict(cls, data: dict):
         steps_data = data.get("steps", [])
         steps = [Step.from_dict(s) for s in steps_data]
+
         as_data = data.get("audio_settings", {})
         audio_settings = AudioSettings.from_dict(as_data)
-        return cls(steps, audio_settings)#
-# 5) AudioCarrier
-#
-class AudioCarrier:
-    """
-    Represents a single carrier frequency in the audio generation.
-    Multiple carriers can be combined to create complex entrainment patterns.
 
-    Attributes:
-        enabled (bool): if False, this carrier is not used in audio generation
-        start_freq (float): initial carrier frequency at the beginning of the step
-        end_freq (float): final carrier frequency at the end of the step
-        volume (float): volume of this carrier (0.0 to 1.0)
-        enable_rfm (bool): apply random frequency modulation to this carrier
-        rfm_range (float): maximum range of frequency modulation
-        rfm_speed (float): speed of frequency modulation
-    """
-    def __init__(
-        self,
-        enabled: bool = True,
-        start_freq: float = 200.0,
-        end_freq: float = 200.0,
-        volume: float = 1.0,
-        enable_rfm: bool = False,
-        rfm_range: float = 0.5,
-        rfm_speed: float = 0.2
-    ):
-        self.enabled = enabled
-        self.start_freq = max(20.0, min(1000.0, start_freq))
-        self.end_freq = max(20.0, min(1000.0, end_freq))
-        self.volume = max(0.0, min(1.0, volume))
-        self.enable_rfm = enable_rfm
-        self.rfm_range = max(0.0, rfm_range)
-        self.rfm_speed = max(0.0, rfm_speed)
-    
-    def to_dict(self) -> dict:
-        return {
-            "enabled": self.enabled,
-            "start_freq": self.start_freq,
-            "end_freq": self.end_freq,
-            "volume": self.volume,
-            "enable_rfm": self.enable_rfm,
-            "rfm_range": self.rfm_range,
-            "rfm_speed": self.rfm_speed
-        }
-    
-    @classmethod
-    def from_dict(cls, data: dict):
-        return cls(
-            enabled = data.get("enabled", True),
-            start_freq = data.get("start_freq", 200.0),
-            end_freq = data.get("end_freq", 200.0),
-            volume = data.get("volume", 1.0),
-            enable_rfm = data.get("enable_rfm", False),
-            rfm_range = data.get("rfm_range", 0.5),
-            rfm_speed = data.get("rfm_speed", 0.2)
-        )
-
-
-#
-# 6) AudioSettings
-#
-class AudioSettings:
-    """
-    A container for global audio parameters for the entire sequence (not per step).
-
-    Attributes:
-        enabled (bool): if False, no audio is generated or played.
-        beat_freq (float): difference frequency or modulation frequency, e.g. 10.0 Hz.
-        is_binaural (bool): if True, produce left/right freq offset (binaural).
-        is_isochronic (bool): if True, produce pulses at the beat frequency (isochronic).
-        enable_rfm (bool): random freq modulation for the audio track.
-        rfm_range (float): ± range for random drift of the carrier freq, e.g. 0.5 Hz.
-        rfm_speed (float): how quickly the random drift changes, e.g. 0.2 Hz/sec.
-        
-        carriers (list[AudioCarrier]): up to 3 audio carriers for complex tones
-        
-        enable_pink_noise (bool): if True, add pink noise to the background
-        pink_noise_volume (float): volume of the pink noise (0.0 to 1.0)
-    """
-    def __init__(
-        self,
-        enabled: bool = False,
-        beat_freq: float = 10.0,
-        is_binaural: bool = True,
-        is_isochronic: bool = False,
-        enable_rfm: bool = False,
-        rfm_range: float = 0.5,
-        rfm_speed: float = 0.2,
-        carriers: list = None,
-        enable_pink_noise: bool = False,
-        pink_noise_volume: float = 0.1
-    ):
-        self.enabled = enabled
-        self.beat_freq = max(0.1, min(100.0, beat_freq))
-        self.is_binaural = is_binaural
-        self.is_isochronic = is_isochronic
-        self.enable_rfm = enable_rfm
-        self.rfm_range = max(0.0, rfm_range)
-        self.rfm_speed = max(0.0, rfm_speed)
-        
-        # Initialize with up to 3 carriers
-        if carriers is None or len(carriers) == 0:
-            # Default to one carrier if none provided
-            self.carriers = [AudioCarrier()]
-        else:
-            # Take up to 3 carriers
-            self.carriers = carriers[:3]
-        
-        # Make sure we have exactly 3 carriers (filling with disabled ones if needed)
-        while len(self.carriers) < 3:
-            new_carrier = AudioCarrier(enabled=False)
-            self.carriers.append(new_carrier)
-        
-        # Pink noise settings
-        self.enable_pink_noise = enable_pink_noise
-        self.pink_noise_volume = max(0.0, min(1.0, pink_noise_volume))
-
-    def to_dict(self) -> dict:
-        return {
-            "enabled": self.enabled,
-            "beat_freq": self.beat_freq,
-            "is_binaural": self.is_binaural,
-            "is_isochronic": self.is_isochronic,
-            "enable_rfm": self.enable_rfm,
-            "rfm_range": self.rfm_range,
-            "rfm_speed": self.rfm_speed,
-            "carriers": [carrier.to_dict() for carrier in self.carriers],
-            "enable_pink_noise": self.enable_pink_noise,
-            "pink_noise_volume": self.pink_noise_volume
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        # Extract carriers data and create AudioCarrier objects
-        carriers_data = data.get("carriers", [])
-        carriers = []
-        
-        # If legacy format with carrier_freq, convert to new format
-        if "carrier_freq" in data and len(carriers_data) == 0:
-            legacy_carrier = AudioCarrier(
-                enabled=True,
-                start_freq=data.get("carrier_freq", 200.0),
-                end_freq=data.get("carrier_freq", 200.0)
-            )
-            carriers.append(legacy_carrier)
-        else:
-            # Process carriers from data
-            for carrier_data in carriers_data:
-                carriers.append(AudioCarrier.from_dict(carrier_data))
-        
-        return cls(
-            enabled = data.get("enabled", False),
-            beat_freq = data.get("beat_freq", 10.0),
-            is_binaural = data.get("is_binaural", True),
-            is_isochronic = data.get("is_isochronic", False),
-            enable_rfm = data.get("enable_rfm", False),
-            rfm_range = data.get("rfm_range", 0.5),
-            rfm_speed = data.get("rfm_speed", 0.2),
-            carriers = carriers,
-            enable_pink_noise = data.get("enable_pink_noise", False),
-            pink_noise_volume = data.get("pink_noise_volume", 0.1)
-        )
-
-
-#
-# Optional: If you want a top-level "Sequence" class that wraps steps + audio
-#
-class Sequence:
-    """
-    Optional container for the entire sequence: steps + audio settings.
-    This can simplify load/save if you prefer a single object to handle.
-    """
-    def __init__(self, steps=None, audio_settings=None):
-        self.steps = steps if steps else []
-        self.audio_settings = audio_settings if audio_settings else AudioSettings()
-
-    def to_dict(self) -> dict:
-        return {
-            "steps": [s.to_dict() for s in self.steps],
-            "audio_settings": self.audio_settings.to_dict()
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        steps_data = data.get("steps", [])
-        steps = [Step.from_dict(s) for s in steps_data]
-        as_data = data.get("audio_settings", {})
-        audio_settings = AudioSettings.from_dict(as_data)
         return cls(steps, audio_settings)
