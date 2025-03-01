@@ -216,11 +216,20 @@ class AudioCarrier:
     """
     Represents a single carrier frequency in the audio generation.
     Multiple carriers can be combined to create complex entrainment patterns.
+    Now supports independent left and right channel frequencies for precise
+    binaural beat control.
 
     Attributes:
         enabled (bool): if False, this carrier is not used in audio generation
-        start_freq (float): initial carrier frequency at the beginning of the step
-        end_freq (float): final carrier frequency at the end of the step
+        
+        start_freq (float): base carrier frequency at the beginning (for backward compatibility)
+        end_freq (float): base carrier frequency at the end (for backward compatibility)
+        
+        start_freq_left (float): left channel frequency at the beginning of the step
+        end_freq_left (float): left channel frequency at the end of the step
+        start_freq_right (float): right channel frequency at the beginning of the step
+        end_freq_right (float): right channel frequency at the end of the step
+        
         volume (float): volume of this carrier (0.0 to 1.0)
         enable_rfm (bool): apply random frequency modulation to this carrier
         rfm_range (float): maximum range of frequency modulation
@@ -231,6 +240,10 @@ class AudioCarrier:
         enabled: bool = True,
         start_freq: float = 200.0,
         end_freq: float = 200.0,
+        start_freq_left: float = None,
+        end_freq_left: float = None,
+        start_freq_right: float = None,
+        end_freq_right: float = None,
         volume: float = 1.0,
         enable_rfm: bool = False,
         rfm_range: float = 0.5,
@@ -239,6 +252,13 @@ class AudioCarrier:
         self.enabled = enabled
         self.start_freq = max(20.0, min(1000.0, start_freq))
         self.end_freq = max(20.0, min(1000.0, end_freq))
+        
+        # Initialize channel-specific frequencies, using the base frequency if not specified
+        self.start_freq_left = max(20.0, min(1000.0, start_freq_left if start_freq_left is not None else start_freq))
+        self.end_freq_left = max(20.0, min(1000.0, end_freq_left if end_freq_left is not None else end_freq))
+        self.start_freq_right = max(20.0, min(1000.0, start_freq_right if start_freq_right is not None else start_freq))
+        self.end_freq_right = max(20.0, min(1000.0, end_freq_right if end_freq_right is not None else end_freq))
+        
         self.volume = max(0.0, min(1.0, volume))
         self.enable_rfm = enable_rfm
         self.rfm_range = max(0.0, rfm_range)
@@ -249,6 +269,10 @@ class AudioCarrier:
             "enabled": self.enabled,
             "start_freq": self.start_freq,
             "end_freq": self.end_freq,
+            "start_freq_left": self.start_freq_left,
+            "end_freq_left": self.end_freq_left,
+            "start_freq_right": self.start_freq_right,
+            "end_freq_right": self.end_freq_right,
             "volume": self.volume,
             "enable_rfm": self.enable_rfm,
             "rfm_range": self.rfm_range,
@@ -258,13 +282,17 @@ class AudioCarrier:
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
-            enabled    = data.get("enabled", True),
+            enabled = data.get("enabled", True),
             start_freq = data.get("start_freq", 200.0),
-            end_freq   = data.get("end_freq", 200.0),
-            volume     = data.get("volume", 1.0),
+            end_freq = data.get("end_freq", 200.0),
+            start_freq_left = data.get("start_freq_left", None),
+            end_freq_left = data.get("end_freq_left", None),
+            start_freq_right = data.get("start_freq_right", None),
+            end_freq_right = data.get("end_freq_right", None),
+            volume = data.get("volume", 1.0),
             enable_rfm = data.get("enable_rfm", False),
-            rfm_range  = data.get("rfm_range", 0.5),
-            rfm_speed  = data.get("rfm_speed", 0.2)
+            rfm_range = data.get("rfm_range", 0.5),
+            rfm_speed = data.get("rfm_speed", 0.2)
         )
 
 #
