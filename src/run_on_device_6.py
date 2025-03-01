@@ -1,10 +1,11 @@
-
 import argparse
 import json
 import math
 import time
 import random
 import os
+import numpy as np
+from collections import deque
 
 import board
 import busio
@@ -22,6 +23,73 @@ from sequence_model import (
     PatternMode,
     AudioSettings
 )
+
+
+# ------------------------------------------------------------------
+# 0) Smooth RFM Implementation
+# ------------------------------------------------------------------
+
+class SmoothRFM:
+    """
+    Implements a smoother random frequency modulation with:
+    - Constrained Gaussian random walk
+    - Frequency-proportional modulation
+    - Temporal smoothing
+    - Protection against extreme frequency dips
+    """
+    def __init__(self, rfm_range=0.5, rfm_speed=0.2, history_length=5):
+        self.target_offset = 0.0
+        self.current_offset = 0.0
+        self.rfm_range = rfm_range
+        self.rfm_speed = rfm_speed
+        self.smoothing_factor = 0.1  # How quickly current approaches target
+        self.history = deque(maxlen=history_length)
+        self.prev_base_freq = None
+        
+    def update(self, dt, base_freq):
+        """
+        Update the RFM offset based on time step and current base frequency.
+        Returns the new offset to apply.
+        """
+        # Adjust range proportionally to frequency to prevent extreme dips
+        # during low-frequency transitions
+        effective_range = min(self.rfm_range, 0.25 * base_freq)
+        
+        # Only allow tiny offsets at very low frequencies
+        if base_freq < 1.0:
+            effective_range = effective_range * base_freq
+            
+        # Generate a new target with Gaussian random step
+        step = np.random.normal(0, self.rfm_speed * dt)
+        self.target_offset += step
+        
+        # Apply range constraint with soft boundary
+        if abs(self.target_offset) > effective_range:
+            # Push back toward range, more strongly the further outside
+            overshoot = abs(self.target_offset) - effective_range
+            pushback = 0.2 * overshoot * dt  # Strength of boundary
+            self.target_offset -= np.sign(self.target_offset) * pushback
+        
+        # Apply frequency transition protection
+        # If base frequency is changing, limit RFM impact
+        if self.prev_base_freq is not None:
+            freq_change_rate = abs(base_freq - self.prev_base_freq) / dt
+            if freq_change_rate > 0.05:  # If frequency is changing significantly
+                # Reduce RFM impact during fast frequency changes
+                reduction_factor = 1.0 / (1.0 + 5.0 * freq_change_rate)
+                self.target_offset *= reduction_factor
+        
+        # Smoothly approach the target offset
+        self.current_offset += (self.target_offset - self.current_offset) * self.smoothing_factor
+        
+        # Update history and calculate average for additional smoothing
+        self.history.append(self.current_offset)
+        smoothed_offset = sum(self.history) / len(self.history)
+        
+        # Update previous frequency for next iteration
+        self.prev_base_freq = base_freq
+        
+        return smoothed_offset
 
 
 # ------------------------------------------------------------------
@@ -139,23 +207,33 @@ def compute_duty_cycle(osc: Oscillator, t: float, step_duration: float) -> float
     return osc.start_duty + (osc.end_duty - osc.start_duty) * (t / step_duration)
 
 
-def compute_oscillator_value(osc: Oscillator, freq: float, duty: float, t: float, phase_offset: float=0.0) -> float:
+def compute_oscillator_value_with_phase_accumulation(osc: Oscillator, freq: float, duty: float, 
+                                                      current_phase: float, dt: float, 
+                                                      phase_offset: float=0.0) -> (float, float):
     """
-    Evaluate the oscillator's output at time t for the given freq, duty, and waveform.
-    Returns a value in [0..1] for SINE or SQUARE. OFF => 0.0
+    Evaluate the oscillator's output using proper phase accumulation.
+    Returns a tuple of (output_value, new_phase) where:
+    - output_value is in [0..1] for SINE or SQUARE. OFF => 0.0
+    - new_phase is the updated phase in radians for the next iteration
     """
     if osc.waveform == Waveform.OFF:
-        return 0.0
-
-    base_phase = 2 * math.pi * freq * t
-    phase = (base_phase + phase_offset) % (2 * math.pi)
-
+        return 0.0, current_phase
+    
+    # Accumulate phase based on the current frequency and time step
+    # This is the key improvement - we accumulate phase instead of calculating from scratch
+    new_phase = current_phase + (2 * math.pi * freq * dt)
+    
+    # Apply phase offset and keep phase in [0, 2π]
+    effective_phase = (new_phase + phase_offset) % (2 * math.pi)
+    
     if osc.waveform == Waveform.SINE:
-        return (math.sin(phase) + 1.0) / 2.0
+        output_value = (math.sin(effective_phase) + 1.0) / 2.0
     else:
         # SQUARE
         duty_phase = 2 * math.pi * (duty / 100.0)
-        return 1.0 if (phase < duty_phase) else 0.0
+        output_value = 1.0 if (effective_phase < duty_phase) else 0.0
+    
+    return output_value, new_phase
 
 
 def compute_strobe_intensity(sset: StrobeSet, t: float, step_duration: float, osc_values: list[float]) -> float:
@@ -202,44 +280,51 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
             print(f"\n=== Starting step #{step_index+1}: '{step.description}' ===")
             print(f" Duration = {step.duration}s, {len(step.oscillators)} oscillator(s).")
 
-            # Prepare random frequency modulation (RFM) offsets
-            rfm_offsets = [0.0] * len(step.oscillators)
-            rfm_dirs = [1.0] * len(step.oscillators)
+            # Create SmoothRFM instances for each oscillator
+            rfm_modules = []
+            for osc in step.oscillators:
+                if osc.enable_rfm and osc.rfm_range > 0.0 and osc.rfm_speed > 0.0:
+                    rfm_modules.append(SmoothRFM(osc.rfm_range, osc.rfm_speed))
+                else:
+                    rfm_modules.append(None)
+            
+            # Initialize phase accumulators for each oscillator
+            phase_accumulators = [0.0] * len(step.oscillators)
 
             start_time = time.monotonic()
+            prev_time = start_time
             while True:
-                elapsed = time.monotonic() - start_time
+                current_time = time.monotonic()
+                elapsed = current_time - start_time
+                dt = current_time - prev_time  # Actual time step
+                prev_time = current_time
+                
                 if elapsed >= step.duration:
                     break
 
-                dt = 0.01
-                time.sleep(dt)
+                # Sleep a bit, but not as long as before since we need more precise timing
+                time.sleep(0.005)  # Shorter sleep for better timing precision
 
                 # 1) Update RFM offsets
+                rfm_offsets = [0.0] * len(step.oscillators)
                 for i, osc in enumerate(step.oscillators):
-                    if osc.enable_rfm and osc.rfm_range > 0.0 and osc.rfm_speed > 0.0:
-                        step_size = osc.rfm_speed * dt
-                        # random chance to flip direction
-                        if random.random() < 0.001:
-                            rfm_dirs[i] *= -1.0
-                        rfm_offsets[i] += rfm_dirs[i] * step_size
-                        # clamp offsets
-                        if rfm_offsets[i] > osc.rfm_range:
-                            rfm_offsets[i] = osc.rfm_range
-                            rfm_dirs[i] = -rfm_dirs[i]
-                        elif rfm_offsets[i] < -osc.rfm_range:
-                            rfm_offsets[i] = -osc.rfm_range
-                            rfm_dirs[i] = -rfm_dirs[i]
-                    else:
-                        rfm_offsets[i] = 0.0
+                    if rfm_modules[i] is not None:
+                        # Calculate base frequency (without RFM)
+                        base_freq = osc.start_freq + (osc.end_freq - osc.start_freq) * (elapsed / step.duration)
+                        # Get RFM offset from the smooth module
+                        rfm_offsets[i] = rfm_modules[i].update(dt, base_freq)
 
-                # 2) Compute each oscillator's value
+                # 2) Compute each oscillator's value with proper phase accumulation
                 osc_values = []
                 for i, osc in enumerate(step.oscillators):
                     freq = compute_frequency(osc, elapsed, step.duration, rfm_offsets[i])
                     duty = compute_duty_cycle(osc, elapsed, step.duration)
                     phase_off = compute_phase_offset(osc, i, elapsed)
-                    val = compute_oscillator_value(osc, freq, duty, elapsed, phase_off)
+                    
+                    # Use the new function that properly accumulates phase
+                    val, phase_accumulators[i] = compute_oscillator_value_with_phase_accumulation(
+                        osc, freq, duty, phase_accumulators[i], dt, phase_off)
+                    
                     osc_values.append(val)
 
                 # 3) For each strobe set, combine oscillator outputs & apply brightness patterns
@@ -317,4 +402,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
