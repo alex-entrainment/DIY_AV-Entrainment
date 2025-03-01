@@ -16,10 +16,6 @@ Users can design custom multi-step “sequences” (lighting + audio parameters)
 5. [System Architecture](#system-architecture)
 6. [Installation](#installation)
 8. [GUI Overview](#gui-overview)
-9. [Code Structure](#code-structure)
-10. [Disclaimer](#disclaimer)
-11. [License](#license)
-
 ---
 
 ## Overview
