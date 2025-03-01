@@ -381,6 +381,25 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------
     # Oscillator mode & UI
     # ---------------------------------------------------------------
+
+    def show_rfm_help(self):
+        msg = QMessageBox()
+        msg.setWindowTitle("RFM Parameter Guidelines")
+        msg.setText("""<h3>Random Frequency Modulation Tips</h3>
+        <p>RFM adds natural variation to frequencies to prevent habituation.</p>
+        
+        <p><b>Guidelines for stable operation:</b></p>
+        <ul>
+            <li><b>RFM Range</b>: Keep under 25% of your lowest frequency</li>
+            <li><b>RFM Speed</b>: Lower values (0.1-0.3) work best for most purposes</li>
+            <li><b>During Transitions</b>: Consider using smaller RFM ranges for steps 
+            that include frequency transitions</li>
+        </ul>
+        
+        <p>The system automatically adjusts RFM impact during rapid frequency 
+        changes to prevent irregular patterns.</p>""")
+        msg.exec_()
+
     def on_mode_changed(self):
         """Rebuild the oscillator and strobe controls when the user changes the mode."""
         mode = self.mode_combo.currentText()
@@ -445,12 +464,21 @@ class MainWindow(QMainWindow):
             rfm_speed.setRange(0.0, 2.0)
             rfm_speed.setValue(0.2)
 
+            rfm_help_btn = QPushButton("?")
+            rfm_help_btn.setMaximumWidth(30)
+            rfm_help_btn.clicked.connect(self.show_rfm_help)
+
+            rfm_layout = QHBoxLayout()
+            rfm_layout.addWidget(rfm_enable)
+            rfm_layout.addStretch()
+            rfm_layout.addWidget(rfm_help_btn)
+
             form.addRow("Waveform:", wave_combo)
             form.addRow("Freq Start (Hz):", freq_start)
             form.addRow("Freq End (Hz):", freq_end)
             form.addRow("Duty Start (%):", duty_start)
             form.addRow("Duty End (%):", duty_end)
-            form.addRow(rfm_enable)
+            form.addRow(rfm_layout)
             form.addRow("RFM Range (±Hz):", rfm_range)
             form.addRow("RFM Speed (Hz/s):", rfm_speed)
 
