@@ -15,14 +15,7 @@ Users can design custom multi-step “sequences” (lighting + audio parameters)
 4. [Tools Required](#tools-required)
 5. [System Architecture](#system-architecture)
 6. [Installation](#installation)
-7. [Usage](#usage)
-   1. [Running the GUI Editor](#running-the-gui-editor)
-   2. [Generating & Running Sequences](#generating--running-sequences)
 8. [GUI Overview](#gui-overview)
-9. [Code Structure](#code-structure)
-10. [Disclaimer](#disclaimer)
-11. [License](#license)
-
 ---
 
 ## Overview
@@ -46,7 +39,9 @@ https://github.com/user-attachments/assets/bfa61be5-ae2e-406d-882f-85ca153d7a00
 ## Features
 - **PyQt5-based GUI** (in `sequence_editor.py`) for creating multi-step LED + audio sequences.
 - **Advanced Oscillator Patterns (work in progress)**: Sine, square, and configurable “phase/brightness/timing” secondary patterns (e.g., “Sacred Geometry,” “Fractal Arc,” etc.).
-- **Random Frequency Generation**: Configurable, slightly changes to the binaural or visual pulse frequency to reduce habituation to a steady-state stimulus. 
+- **Multiple Oscillator Control Modes**: Combined (single oscillator), Split (cool/warm oscillators), and Independent (6 independent oscillators) modes available for maximum sequence customizability.
+- **Multi-Step Sequencing**: Generates multi-stage LED pulse sequences 
+- **Random Frequency Generation**: Configurable, slight changes to the binaural or visual pulse frequency to reduce habituation to a steady-state stimulus. 
 - **Binaural Generation**: Can generate a matching, stepped binaural .wav file, synced to the LED "track" with up to 3 simultaneous binaurals. Supports isochronic tones + pink noise. Plays audio automatically when run on-device, if present. 
 - **Linear Ramps**: Frequencies or duty cycles can transition over the duration of each step.
 - **Strobe Intensity**: Per-step strobe intensity or crossfade.
@@ -68,9 +63,9 @@ Below is the minimal parts list used for the LED system:
    - [Uxcell Cool White LEDs](https://www.amazon.com/dp/B07DHB61BH?ref=ppx_yo2ov_dt_b_fed_asin_title)
 
 4. **3× High-power warm white LEDs**
-   - [Uxcell Warm White LEDs] (https://www.amazon.com/dp/B07DHB13J4?ref_=ppx_hzod_title_dt_b_fed_asin_title_0_3)
+   - [Uxcell Warm White LEDs](https://www.amazon.com/dp/B07DHB13J4?ref_=ppx_hzod_title_dt_b_fed_asin_title_0_3)
      
-5. **6× Switching MOSFETs** (e.g., TIP120, IRFZ44N w/ 5v logic-level shift; or similar)  
+5. **6× Switching MOSFETs** (e.g., TIP120, IRLZ44N w/ 5v logic-level shift; or similar)  
    *(If they are not fully logic-level at 3.3 V, a 5 V level shifter or gate driver may be required)*
    - [TIP 120 transistors](https://www.adafruit.com/product/976)
      
@@ -141,17 +136,23 @@ Below is the minimal parts list used for the LED system:
    You may also need PyQt5-sip and other standard libraries for your Python environment.
    Enable I²C on your Raspberry Pi (if using Pi OS), then wire the PCA9685 accordingly.
 
-GUI Overview
+## GUI Overview
+
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
 ![image](https://github.com/user-attachments/assets/db44b9f4-8f38-4098-b52d-18616c8a6409)
 
 
 Left Panel: List of steps in the sequence. You can Add, Duplicate, Remove, or Reorder steps.
+
 Step Info: Set the duration of the step and a short description.
+
 Oscillator Mode:
-Combined: 1 oscillator controlling all 6 LEDs.
-Split: 2 oscillators (e.g., one for even-indexed LEDs, one for odd-indexed).
-Independent: Each LED has its own oscillator.
+- Combined: 1 oscillator controlling all 6 LEDs.
+- Split: 2 oscillators (e.g., one for even-indexed LEDs, one for odd-indexed).
+- Independent: Each LED has its own oscillator.
+
 Oscillator Settings: Choose waveform (Sine, Square, Off), frequency start/end, duty cycle start/end, random frequency modulation (RFM) parameters, and advanced pattern modulation.
+
 Strobe Intensities: Overall intensity ramp for each group of LEDs.
+
 Audio Tabs (right side): Up to 3 carriers, each with optional frequency ramps, RFM, volume control. The Global Settings tab includes enabling audio, binaural or isochronic mode, pink noise, etc.
