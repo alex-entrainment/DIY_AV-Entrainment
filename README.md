@@ -143,11 +143,16 @@ Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
 
 
 Left Panel: List of steps in the sequence. You can Add, Duplicate, Remove, or Reorder steps.
+
 Step Info: Set the duration of the step and a short description.
+
 Oscillator Mode:
-Combined: 1 oscillator controlling all 6 LEDs.
-Split: 2 oscillators (e.g., one for even-indexed LEDs, one for odd-indexed).
-Independent: Each LED has its own oscillator.
+- Combined: 1 oscillator controlling all 6 LEDs.
+- Split: 2 oscillators (e.g., one for even-indexed LEDs, one for odd-indexed).
+- Independent: Each LED has its own oscillator.
+
 Oscillator Settings: Choose waveform (Sine, Square, Off), frequency start/end, duty cycle start/end, random frequency modulation (RFM) parameters, and advanced pattern modulation.
+
 Strobe Intensities: Overall intensity ramp for each group of LEDs.
+
 Audio Tabs (right side): Up to 3 carriers, each with optional frequency ramps, RFM, volume control. The Global Settings tab includes enabling audio, binaural or isochronic mode, pink noise, etc.
