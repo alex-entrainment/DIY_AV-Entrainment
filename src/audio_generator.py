@@ -114,46 +114,67 @@ def generate_waveform(duration, sr, settings):
             continue
             
         # Get carrier settings
-        start_freq = carrier.get('start_freq', 200.0)
-        end_freq = carrier.get('end_freq', 200.0)
         volume = carrier.get('volume', 1.0)
+        
+        # Get channel-specific frequency settings if available, otherwise use defaults
+        start_freq_left = carrier.get('start_freq_left', carrier.get('start_freq', 200.0))
+        end_freq_left = carrier.get('end_freq_left', carrier.get('end_freq', 200.0))
+        start_freq_right = carrier.get('start_freq_right', carrier.get('start_freq', 200.0))
+        end_freq_right = carrier.get('end_freq_right', carrier.get('end_freq', 200.0))
         
         # Apply carrier-specific RFM if enabled, otherwise use global RFM
         if carrier.get('enable_rfm', False):
             rfm_range = carrier.get('rfm_range', 0.5)
             rfm_speed = carrier.get('rfm_speed', 0.2)
-            rfm_offset = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
+            rfm_offset_left = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
+            rfm_offset_right = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
         elif global_rfm_enabled:
-            rfm_offset = generate_rfm_offset(total_frames, sr, global_rfm_range, global_rfm_speed)
+            rfm_offset_left = generate_rfm_offset(total_frames, sr, global_rfm_range, global_rfm_speed)
+            rfm_offset_right = generate_rfm_offset(total_frames, sr, global_rfm_range, global_rfm_speed)
         else:
-            rfm_offset = np.zeros(total_frames)
+            rfm_offset_left = np.zeros(total_frames)
+            rfm_offset_right = np.zeros(total_frames)
         
-        # Create frequency ramp from start_freq to end_freq
-        carrier_freq = np.linspace(start_freq, end_freq, total_frames)
+        # Create frequency ramps for left and right channels
+        freq_left = np.linspace(start_freq_left, end_freq_left, total_frames)
+        freq_right = np.linspace(start_freq_right, end_freq_right, total_frames)
         
-        # Apply RFM offset to carrier frequency
-        effective_carrier = carrier_freq + rfm_offset
+        # Apply RFM offsets to carrier frequencies
+        effective_freq_left = freq_left + rfm_offset_left
+        effective_freq_right = freq_right + rfm_offset_right
         
         # Generate waveforms based on mode
         if is_binaural:
-            freq_left = effective_carrier + 0.5 * beat_freq
-            freq_right = effective_carrier - 0.5 * beat_freq
-            
-            phase_left = 2 * np.pi * np.cumsum(freq_left) / sr
-            phase_right = 2 * np.pi * np.cumsum(freq_right) / sr
+            # In binaural mode, use directly specified left/right frequencies
+            phase_left = 2 * np.pi * np.cumsum(effective_freq_left) / sr
+            phase_right = 2 * np.pi * np.cumsum(effective_freq_right) / sr
             
             carrier_left = np.sin(phase_left) * volume
             carrier_right = np.sin(phase_right) * volume
             
         elif is_isochronic:
-            phase = 2 * np.pi * np.cumsum(effective_carrier) / sr
+            # In isochronic mode, use the average of left and right frequencies
+            avg_freq = (effective_freq_left + effective_freq_right) / 2
+            phase = 2 * np.pi * np.cumsum(avg_freq) / sr
             carrier_signal = np.sin(phase) * volume
-            mod_signal = np.where(np.sin(2 * np.pi * beat_freq * t) >= 0, 1.0, 0.0)
+            
+            # Calculate the isochronic modulation frequency from the difference
+            # between left and right channels (or use the beat_freq if difference is 0)
+            mod_freq = np.abs(effective_freq_left - effective_freq_right)
+            if np.mean(mod_freq) < 0.1:  # If channels are nearly identical
+                mod_freq = np.ones(total_frames) * beat_freq
+                
+            # Generate modulation phase by integrating the mod_freq over time
+            mod_phase = 2 * np.pi * np.cumsum(mod_freq) / sr
+            mod_signal = np.where(np.sin(mod_phase) >= 0, 1.0, 0.0)
+            
             carrier_left = carrier_signal * mod_signal
             carrier_right = carrier_left
             
         else:  # Monaural or default
-            phase = 2 * np.pi * np.cumsum(effective_carrier) / sr
+            # In monaural mode, use the average of left and right frequencies
+            avg_freq = (effective_freq_left + effective_freq_right) / 2
+            phase = 2 * np.pi * np.cumsum(avg_freq) / sr
             carrier_signal = np.sin(phase) * volume
             carrier_left = carrier_signal
             carrier_right = carrier_signal
@@ -208,19 +229,20 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
     """
     Generate a single .wav file for a sequence of steps with enhanced features:
     - Multiple carrier frequencies (up to 3)
-    - Carrier frequency transitions (start/end for each carrier)
+    - Independent left/right channel frequencies for each carrier
+    - Carrier frequency transitions for left and right channels
     - Optional background pink noise
     
     For each step the primary oscillator (steps[0]) is used to determine the LED pulse rate.
-    The binaural (or isochronic) beat frequency is set to follow the LED oscillator's linear ramp
-    (plus any offline RFM offset), while each carrier has its own frequency transition.
+    Each carrier now has separate frequency settings for left and right channels.
     
-    In binaural mode, left/right frequencies for each carrier are:
-       left = carrier + 0.5 * effective_led_freq
-       right = carrier - 0.5 * effective_led_freq
+    In binaural mode:
+      - Left/right frequencies are directly used from carrier settings
+      - Binaural beat is the difference between left and right frequencies
     
-    In isochronic mode, each carrier is amplitude modulated by a square wave whose instantaneous
-    frequency is the LED pulse frequency.
+    In isochronic mode:
+      - Carrier is the average of left and right frequencies
+      - Modulation frequency is derived from the difference between channels
     
     RFM functionality is preserved for both global and carrier-specific settings.
     """
@@ -268,6 +290,7 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
         t = np.linspace(0, duration, total_frames, endpoint=False)
         
         # Compute the LED pulse frequency as a linear ramp from osc.start_freq to osc.end_freq.
+        # This is kept for backward compatibility and for carriers that don't specify left/right frequencies
         led_freq = osc.start_freq + (osc.end_freq - osc.start_freq) * (t / duration)
         
         # Apply offline RFM to the LED frequency if enabled.
@@ -279,7 +302,7 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
         else:
             rfm_offset = np.zeros(total_frames)
         
-        # The effective LED frequency (i.e., the beat frequency for entrainment)
+        # The effective LED frequency (for backward compatibility)
         effective_led_freq = led_freq + rfm_offset
         
         # Initialize stereo arrays for this step
@@ -292,9 +315,19 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
                 continue
                 
             # Get carrier settings
+            volume = carrier.get('volume', 1.0)
+            
+            # Check for channel-specific frequencies
             start_freq = carrier.get('start_freq', 200.0)
             end_freq = carrier.get('end_freq', 200.0)
-            volume = carrier.get('volume', 1.0)
+            
+            # Get or derive left channel frequencies
+            start_freq_left = carrier.get('start_freq_left', start_freq + 0.5 * osc.start_freq)
+            end_freq_left = carrier.get('end_freq_left', end_freq + 0.5 * osc.end_freq)
+            
+            # Get or derive right channel frequencies
+            start_freq_right = carrier.get('start_freq_right', start_freq - 0.5 * osc.start_freq)
+            end_freq_right = carrier.get('end_freq_right', end_freq - 0.5 * osc.end_freq)
             
             # Create a unique key for this carrier in the phase accumulator
             carrier_key = f'carrier_{carrier_idx}'
@@ -305,46 +338,54 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
             if carrier.get('enable_rfm', False):
                 rfm_range = carrier.get('rfm_range', 0.5)
                 rfm_speed = carrier.get('rfm_speed', 0.2)
-                carrier_rfm = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
+                rfm_left = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
+                rfm_right = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
             else:
-                carrier_rfm = np.zeros(total_frames)
+                rfm_left = np.zeros(total_frames)
+                rfm_right = np.zeros(total_frames)
             
-            # Create frequency ramp from start_freq to end_freq for this carrier
-            carrier_freq_base = np.linspace(start_freq, end_freq, total_frames)
-            carrier_freq = carrier_freq_base + carrier_rfm
+            # Create frequency ramps for left and right channels
+            freq_left = np.linspace(start_freq_left, end_freq_left, total_frames)
+            freq_right = np.linspace(start_freq_right, end_freq_right, total_frames)
+            
+            # Apply RFM offsets
+            freq_left += rfm_left
+            freq_right += rfm_right
             
             # Generate audio based on the mode
             dt = 1.0 / sr
             if binaural:
-                # In binaural mode, left/right frequencies are offset by the beat frequency
+                # In binaural mode, use the exact left/right frequencies
                 carrier_left = np.zeros(total_frames)
                 carrier_right = np.zeros(total_frames)
                 
                 for i in range(total_frames):
-                    # Left channel is higher by half the beat frequency
-                    f_left = carrier_freq[i] + 0.5 * effective_led_freq[i]
-                    # Right channel is lower by half the beat frequency
-                    f_right = carrier_freq[i] - 0.5 * effective_led_freq[i]
-                    
-                    # Update phase accumulators
-                    phase_accumulator['carrier'][carrier_key]['left'] += 2 * math.pi * f_left * dt
-                    phase_accumulator['carrier'][carrier_key]['right'] += 2 * math.pi * f_right * dt
+                    # Update phase accumulators using the channel-specific frequencies
+                    phase_accumulator['carrier'][carrier_key]['left'] += 2 * math.pi * freq_left[i] * dt
+                    phase_accumulator['carrier'][carrier_key]['right'] += 2 * math.pi * freq_right[i] * dt
                     
                     # Generate sine waves with the accumulated phases
                     carrier_left[i] = math.sin(phase_accumulator['carrier'][carrier_key]['left']) * volume
                     carrier_right[i] = math.sin(phase_accumulator['carrier'][carrier_key]['right']) * volume
                 
             elif isochronic:
-                # In isochronic mode, a carrier is amplitude modulated by a square wave
+                # In isochronic mode, carrier is avg frequency, modulation is the difference
                 carrier_signal = np.zeros(total_frames)
                 mod_signal = np.zeros(total_frames)
                 
                 for i in range(total_frames):
-                    # Update carrier phase
-                    phase_accumulator['carrier'][carrier_key]['left'] += 2 * math.pi * carrier_freq[i] * dt
+                    # Use average frequency for carrier
+                    avg_freq = (freq_left[i] + freq_right[i]) / 2
+                    # Modulation freq is the difference (or fallback to LED freq)
+                    mod_freq = abs(freq_left[i] - freq_right[i])
+                    if mod_freq < 0.1:  # If frequencies are nearly identical
+                        mod_freq = effective_led_freq[i]
                     
-                    # Update modulation phase based on the effective LED frequency
-                    phase_accumulator['mod'] += 2 * math.pi * effective_led_freq[i] * dt
+                    # Update carrier phase using average frequency
+                    phase_accumulator['carrier'][carrier_key]['left'] += 2 * math.pi * avg_freq * dt
+                    
+                    # Update modulation phase based on the frequency difference
+                    phase_accumulator['mod'] += 2 * math.pi * mod_freq * dt
                     
                     # Generate the carrier and modulation signals
                     carrier_signal[i] = math.sin(phase_accumulator['carrier'][carrier_key]['left'])
@@ -355,12 +396,15 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
                 carrier_right = carrier_left.copy()
                 
             else:  # Monaural mode
-                # In monaural mode, generate a simple sine wave for the carrier
+                # In monaural mode, use average of left/right frequencies
                 carrier_signal = np.zeros(total_frames)
                 
                 for i in range(total_frames):
-                    # Update carrier phase
-                    phase_accumulator['carrier'][carrier_key]['left'] += 2 * math.pi * carrier_freq[i] * dt
+                    # Use average frequency
+                    avg_freq = (freq_left[i] + freq_right[i]) / 2
+                    
+                    # Update carrier phase using average frequency
+                    phase_accumulator['carrier'][carrier_key]['left'] += 2 * math.pi * avg_freq * dt
                     
                     # Generate the carrier signal
                     carrier_signal[i] = math.sin(phase_accumulator['carrier'][carrier_key]['left']) * volume
@@ -401,14 +445,19 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, audio_setti
 
 # Example usage:
 if __name__ == '__main__':
-    # This example generates a 30-second binaural tone with multiple carriers and pink noise
+    # This example generates a 30-second binaural tone with multiple carriers
+    # using independent left/right channel frequencies
     settings = {
         'enabled': True,
         'carriers': [
             {
                 'enabled': True,
-                'start_freq': 200.0,
-                'end_freq': 200.0,
+                'start_freq': 200.0,  # Base frequency (for backward compatibility)
+                'end_freq': 200.0,    # Base frequency (for backward compatibility)
+                'start_freq_left': 205.0,  # Left channel specific start frequency
+                'end_freq_left': 205.0,    # Left channel specific end frequency
+                'start_freq_right': 195.0, # Right channel specific start frequency
+                'end_freq_right': 195.0,   # Right channel specific end frequency
                 'volume': 0.7,
                 'enable_rfm': True,
                 'rfm_range': 5.0,
@@ -416,13 +465,15 @@ if __name__ == '__main__':
             },
             {
                 'enabled': True,
-                'start_freq': 300.0,
-                'end_freq': 250.0,
+                'start_freq_left': 305.0,  # Left channel specific start frequency
+                'end_freq_left': 295.0,    # Left channel specific end frequency
+                'start_freq_right': 295.0, # Right channel specific start frequency
+                'end_freq_right': 285.0,   # Right channel specific end frequency
                 'volume': 0.3,
                 'enable_rfm': False
             }
         ],
-        'beat_freq': 10.0,
+        'beat_freq': 10.0,  # Fallback if left/right frequencies are not specified
         'is_binaural': True,
         'is_isochronic': False,
         'enable_rfm': True,
