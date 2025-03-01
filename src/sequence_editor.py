@@ -246,150 +246,150 @@ class MainWindow(QMainWindow):
     # Create the carriers & global audio panel
     # ---------------------------------------------------------------
     def create_carrier_panel(self, carrier_num):
-    carrier_group = QGroupBox(f"Carrier {carrier_num} Settings")
-    carrier_form = QFormLayout()
-
-    enabled_cb = QCheckBox("Enable Carrier")
-    enabled_cb.setChecked(carrier_num == 1)  # first carrier enabled by default
-    carrier_form.addRow(enabled_cb)
-
-    # Base frequency settings (for backward compatibility)
-    freq_label = QLabel("Base Frequency (Hz):")
-    freq_label.setToolTip("Legacy setting - used if channel frequencies aren't specified")
-    carrier_form.addRow(freq_label)
+        carrier_group = QGroupBox(f"Carrier {carrier_num} Settings")
+        carrier_form = QFormLayout()
     
-    start_freq_spin = QDoubleSpinBox()
-    start_freq_spin.setRange(20.0, 1000.0)
-    start_freq_spin.setValue(200.0)
-    carrier_form.addRow("Base Start Freq:", start_freq_spin)
-
-    end_freq_spin = QDoubleSpinBox()
-    end_freq_spin.setRange(20.0, 1000.0)
-    end_freq_spin.setValue(200.0)
-    carrier_form.addRow("Base End Freq:", end_freq_spin)
-
-    # Add a separator
-    separator = QFrame()
-    separator.setFrameShape(QFrame.HLine)
-    separator.setFrameShadow(QFrame.Sunken)
-    carrier_form.addRow(separator)
-
-    # Channel-specific frequency settings
-    channel_label = QLabel("Channel Frequencies (Hz):")
-    channel_label.setToolTip("Independent left/right channel frequencies for precise binaural control")
-    carrier_form.addRow(channel_label)
+        enabled_cb = QCheckBox("Enable Carrier")
+        enabled_cb.setChecked(carrier_num == 1)  # first carrier enabled by default
+        carrier_form.addRow(enabled_cb)
     
-    # Left channel
-    start_freq_left_spin = QDoubleSpinBox()
-    start_freq_left_spin.setRange(20.0, 1000.0)
-    start_freq_left_spin.setValue(205.0 if carrier_num == 1 else 200.0)  # Default slightly higher for left
-    carrier_form.addRow("Left Start Freq:", start_freq_left_spin)
-
-    end_freq_left_spin = QDoubleSpinBox()
-    end_freq_left_spin.setRange(20.0, 1000.0)
-    end_freq_left_spin.setValue(205.0 if carrier_num == 1 else 200.0)
-    carrier_form.addRow("Left End Freq:", end_freq_left_spin)
-
-    # Right channel
-    start_freq_right_spin = QDoubleSpinBox()
-    start_freq_right_spin.setRange(20.0, 1000.0)
-    start_freq_right_spin.setValue(195.0 if carrier_num == 1 else 200.0)  # Default slightly lower for right
-    carrier_form.addRow("Right Start Freq:", start_freq_right_spin)
-
-    end_freq_right_spin = QDoubleSpinBox()
-    end_freq_right_spin.setRange(20.0, 1000.0)
-    end_freq_right_spin.setValue(195.0 if carrier_num == 1 else 200.0)
-    carrier_form.addRow("Right End Freq:", end_freq_right_spin)
-
-    # Calculate and display the binaural beat frequency
-    beat_label = QLabel("Binaural: 10.0 Hz")
-    
-    def update_beat_label():
-        left_start = start_freq_left_spin.value()
-        right_start = start_freq_right_spin.value()
-        left_end = end_freq_left_spin.value()
-        right_end = end_freq_right_spin.value()
+        # Base frequency settings (for backward compatibility)
+        freq_label = QLabel("Base Frequency (Hz):")
+        freq_label.setToolTip("Legacy setting - used if channel frequencies aren't specified")
+        carrier_form.addRow(freq_label)
         
-        start_diff = abs(left_start - right_start)
-        end_diff = abs(left_end - right_end)
+        start_freq_spin = QDoubleSpinBox()
+        start_freq_spin.setRange(20.0, 1000.0)
+        start_freq_spin.setValue(200.0)
+        carrier_form.addRow("Base Start Freq:", start_freq_spin)
+    
+        end_freq_spin = QDoubleSpinBox()
+        end_freq_spin.setRange(20.0, 1000.0)
+        end_freq_spin.setValue(200.0)
+        carrier_form.addRow("Base End Freq:", end_freq_spin)
+    
+        # Add a separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        carrier_form.addRow(separator)
+    
+        # Channel-specific frequency settings
+        channel_label = QLabel("Channel Frequencies (Hz):")
+        channel_label.setToolTip("Independent left/right channel frequencies for precise binaural control")
+        carrier_form.addRow(channel_label)
         
-        if start_diff == end_diff:
-            beat_label.setText(f"Binaural: {start_diff:.1f} Hz")
-        else:
-            beat_label.setText(f"Binaural: {start_diff:.1f} → {end_diff:.1f} Hz")
+        # Left channel
+        start_freq_left_spin = QDoubleSpinBox()
+        start_freq_left_spin.setRange(20.0, 1000.0)
+        start_freq_left_spin.setValue(205.0 if carrier_num == 1 else 200.0)  # Default slightly higher for left
+        carrier_form.addRow("Left Start Freq:", start_freq_left_spin)
     
-    start_freq_left_spin.valueChanged.connect(update_beat_label)
-    end_freq_left_spin.valueChanged.connect(update_beat_label)
-    start_freq_right_spin.valueChanged.connect(update_beat_label)
-    end_freq_right_spin.valueChanged.connect(update_beat_label)
+        end_freq_left_spin = QDoubleSpinBox()
+        end_freq_left_spin.setRange(20.0, 1000.0)
+        end_freq_left_spin.setValue(205.0 if carrier_num == 1 else 200.0)
+        carrier_form.addRow("Left End Freq:", end_freq_left_spin)
     
-    carrier_form.addRow("Beat Frequency:", beat_label)
-
-    # Add another separator
-    separator2 = QFrame()
-    separator2.setFrameShape(QFrame.HLine)
-    separator2.setFrameShadow(QFrame.Sunken)
-    carrier_form.addRow(separator2)
-
-    # Volume control
-    volume_slider = QSlider(Qt.Horizontal)
-    volume_slider.setRange(0, 100)
-    volume_slider.setValue(100 if carrier_num == 1 else 50)
-    volume_label = QLabel("100%" if carrier_num == 1 else "50%")
-    volume_slider.valueChanged.connect(lambda val: volume_label.setText(f"{val}%"))
-
-    volume_layout = QHBoxLayout()
-    volume_layout.addWidget(volume_slider)
-    volume_layout.addWidget(volume_label)
-    carrier_form.addRow("Volume:", volume_layout)
-
-    # RFM settings
-    rfm_cb = QCheckBox("Enable RFM")
-    rfm_cb.setChecked(False)
+        # Right channel
+        start_freq_right_spin = QDoubleSpinBox()
+        start_freq_right_spin.setRange(20.0, 1000.0)
+        start_freq_right_spin.setValue(195.0 if carrier_num == 1 else 200.0)  # Default slightly lower for right
+        carrier_form.addRow("Right Start Freq:", start_freq_right_spin)
     
-    rfm_help_btn = QPushButton("?")
-    rfm_help_btn.setMaximumWidth(30)
-    rfm_help_btn.clicked.connect(self.show_rfm_help)
-
-    rfm_layout = QHBoxLayout()
-    rfm_layout.addWidget(rfm_cb)
-    rfm_layout.addStretch()
-    rfm_layout.addWidget(rfm_help_btn)
+        end_freq_right_spin = QDoubleSpinBox()
+        end_freq_right_spin.setRange(20.0, 1000.0)
+        end_freq_right_spin.setValue(195.0 if carrier_num == 1 else 200.0)
+        carrier_form.addRow("Right End Freq:", end_freq_right_spin)
     
-    carrier_form.addRow(rfm_layout)
-
-    rfm_range_spin = QDoubleSpinBox()
-    rfm_range_spin.setRange(0.0, 20.0)
-    rfm_range_spin.setValue(0.5)
-    carrier_form.addRow("RFM Range (±Hz):", rfm_range_spin)
-
-    rfm_speed_spin = QDoubleSpinBox()
-    rfm_speed_spin.setRange(0.0, 5.0)
-    rfm_speed_spin.setValue(0.2)
-    carrier_form.addRow("RFM Speed (Hz/s):", rfm_speed_spin)
-
-    # Apply to panel
-    carrier_group.setLayout(carrier_form)
-
-    # Store references to the controls
-    carrier_group.enabled = enabled_cb
-    carrier_group.start_freq = start_freq_spin
-    carrier_group.end_freq = end_freq_spin
+        # Calculate and display the binaural beat frequency
+        beat_label = QLabel("Binaural: 10.0 Hz")
+        
+        def update_beat_label():
+            left_start = start_freq_left_spin.value()
+            right_start = start_freq_right_spin.value()
+            left_end = end_freq_left_spin.value()
+            right_end = end_freq_right_spin.value()
+            
+            start_diff = abs(left_start - right_start)
+            end_diff = abs(left_end - right_end)
+            
+            if start_diff == end_diff:
+                beat_label.setText(f"Binaural: {start_diff:.1f} Hz")
+            else:
+                beat_label.setText(f"Binaural: {start_diff:.1f} → {end_diff:.1f} Hz")
+        
+        start_freq_left_spin.valueChanged.connect(update_beat_label)
+        end_freq_left_spin.valueChanged.connect(update_beat_label)
+        start_freq_right_spin.valueChanged.connect(update_beat_label)
+        end_freq_right_spin.valueChanged.connect(update_beat_label)
+        
+        carrier_form.addRow("Beat Frequency:", beat_label)
     
-    # New channel-specific controls
-    carrier_group.start_freq_left = start_freq_left_spin
-    carrier_group.end_freq_left = end_freq_left_spin
-    carrier_group.start_freq_right = start_freq_right_spin
-    carrier_group.end_freq_right = end_freq_right_spin
-    carrier_group.beat_label = beat_label
+        # Add another separator
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.HLine)
+        separator2.setFrameShadow(QFrame.Sunken)
+        carrier_form.addRow(separator2)
     
-    carrier_group.volume = volume_slider
-    carrier_group.volume_label = volume_label
-    carrier_group.rfm_enable = rfm_cb
-    carrier_group.rfm_range = rfm_range_spin
-    carrier_group.rfm_speed = rfm_speed_spin
-
-    return carrier_group
+        # Volume control
+        volume_slider = QSlider(Qt.Horizontal)
+        volume_slider.setRange(0, 100)
+        volume_slider.setValue(100 if carrier_num == 1 else 50)
+        volume_label = QLabel("100%" if carrier_num == 1 else "50%")
+        volume_slider.valueChanged.connect(lambda val: volume_label.setText(f"{val}%"))
+    
+        volume_layout = QHBoxLayout()
+        volume_layout.addWidget(volume_slider)
+        volume_layout.addWidget(volume_label)
+        carrier_form.addRow("Volume:", volume_layout)
+    
+        # RFM settings
+        rfm_cb = QCheckBox("Enable RFM")
+        rfm_cb.setChecked(False)
+        
+        rfm_help_btn = QPushButton("?")
+        rfm_help_btn.setMaximumWidth(30)
+        rfm_help_btn.clicked.connect(self.show_rfm_help)
+    
+        rfm_layout = QHBoxLayout()
+        rfm_layout.addWidget(rfm_cb)
+        rfm_layout.addStretch()
+        rfm_layout.addWidget(rfm_help_btn)
+        
+        carrier_form.addRow(rfm_layout)
+    
+        rfm_range_spin = QDoubleSpinBox()
+        rfm_range_spin.setRange(0.0, 20.0)
+        rfm_range_spin.setValue(0.5)
+        carrier_form.addRow("RFM Range (±Hz):", rfm_range_spin)
+    
+        rfm_speed_spin = QDoubleSpinBox()
+        rfm_speed_spin.setRange(0.0, 5.0)
+        rfm_speed_spin.setValue(0.2)
+        carrier_form.addRow("RFM Speed (Hz/s):", rfm_speed_spin)
+    
+        # Apply to panel
+        carrier_group.setLayout(carrier_form)
+    
+        # Store references to the controls
+        carrier_group.enabled = enabled_cb
+        carrier_group.start_freq = start_freq_spin
+        carrier_group.end_freq = end_freq_spin
+        
+        # New channel-specific controls
+        carrier_group.start_freq_left = start_freq_left_spin
+        carrier_group.end_freq_left = end_freq_left_spin
+        carrier_group.start_freq_right = start_freq_right_spin
+        carrier_group.end_freq_right = end_freq_right_spin
+        carrier_group.beat_label = beat_label
+        
+        carrier_group.volume = volume_slider
+        carrier_group.volume_label = volume_label
+        carrier_group.rfm_enable = rfm_cb
+        carrier_group.rfm_range = rfm_range_spin
+        carrier_group.rfm_speed = rfm_speed_spin
+    
+        return carrier_group
 
     def create_global_audio_panel(self):
         global_group = QGroupBox("Global Audio Settings")
@@ -1106,31 +1106,71 @@ class MainWindow(QMainWindow):
     # Audio settings helpers
     # ---------------------------------------------------------------
     def _update_audio_ui_from_settings(self):
-        panel = self.global_audio_panel
-        panel.enabled.setChecked(self.audio_settings.enabled)
-        panel.beat_freq.setValue(self.audio_settings.beat_freq)
-        panel.binaural.setChecked(self.audio_settings.is_binaural)
-        panel.isochronic.setChecked(self.audio_settings.is_isochronic)
-        panel.global_rfm_enable.setChecked(self.audio_settings.enable_rfm)
-        panel.global_rfm_range.setValue(self.audio_settings.rfm_range)
-        panel.global_rfm_speed.setValue(self.audio_settings.rfm_speed)
-        panel.pink_noise_enable.setChecked(self.audio_settings.enable_pink_noise)
-        panel.pink_noise_volume.setValue(int(self.audio_settings.pink_noise_volume * 100))
-        panel.pink_noise_label.setText(f"{int(self.audio_settings.pink_noise_volume*100)}%")
-        panel.sample_rate.setValue(44100) # or store a user-chosen value
+    panel = self.global_audio_panel
+    panel.enabled.setChecked(self.audio_settings.enabled)
+    panel.beat_freq.setValue(self.audio_settings.beat_freq)
+    panel.binaural.setChecked(self.audio_settings.is_binaural)
+    panel.isochronic.setChecked(self.audio_settings.is_isochronic)
+    panel.global_rfm_enable.setChecked(self.audio_settings.enable_rfm)
+    panel.global_rfm_range.setValue(self.audio_settings.rfm_range)
+    panel.global_rfm_speed.setValue(self.audio_settings.rfm_speed)
+    panel.pink_noise_enable.setChecked(self.audio_settings.enable_pink_noise)
+    panel.pink_noise_volume.setValue(int(self.audio_settings.pink_noise_volume * 100))
+    panel.pink_noise_label.setText(f"{int(self.audio_settings.pink_noise_volume*100)}%")
+    panel.sample_rate.setValue(44100) # or store a user-chosen value
 
-        # carriers
-        for i, carrier in enumerate(self.audio_settings.carriers):
-            if i < len(self.carrier_panels):
-                cpanel = self.carrier_panels[i]
-                cpanel.enabled.setChecked(carrier.enabled)
-                cpanel.start_freq.setValue(carrier.start_freq)
-                cpanel.end_freq.setValue(carrier.end_freq)
-                cpanel.volume.setValue(int(carrier.volume*100))
-                cpanel.volume_label.setText(f"{int(carrier.volume*100)}%")
-                cpanel.rfm_enable.setChecked(carrier.enable_rfm)
-                cpanel.rfm_range.setValue(carrier.rfm_range)
-                cpanel.rfm_speed.setValue(carrier.rfm_speed)
+    # carriers
+    for i, carrier in enumerate(self.audio_settings.carriers):
+        if i < len(self.carrier_panels):
+            cpanel = self.carrier_panels[i]
+            cpanel.enabled.setChecked(carrier.enabled)
+            
+            # Update base frequencies
+            cpanel.start_freq.setValue(carrier.start_freq)
+            cpanel.end_freq.setValue(carrier.end_freq)
+            
+            # Update channel-specific frequencies if they exist in the carrier
+            if hasattr(carrier, 'start_freq_left') and carrier.start_freq_left is not None:
+                cpanel.start_freq_left.setValue(carrier.start_freq_left)
+            else:
+                # Default to base frequency + half of beat frequency
+                cpanel.start_freq_left.setValue(carrier.start_freq + self.audio_settings.beat_freq/2)
+                
+            if hasattr(carrier, 'end_freq_left') and carrier.end_freq_left is not None:
+                cpanel.end_freq_left.setValue(carrier.end_freq_left)
+            else:
+                cpanel.end_freq_left.setValue(carrier.end_freq + self.audio_settings.beat_freq/2)
+                
+            if hasattr(carrier, 'start_freq_right') and carrier.start_freq_right is not None:
+                cpanel.start_freq_right.setValue(carrier.start_freq_right)
+            else:
+                cpanel.start_freq_right.setValue(carrier.start_freq - self.audio_settings.beat_freq/2)
+                
+            if hasattr(carrier, 'end_freq_right') and carrier.end_freq_right is not None:
+                cpanel.end_freq_right.setValue(carrier.end_freq_right)
+            else:
+                cpanel.end_freq_right.setValue(carrier.end_freq - self.audio_settings.beat_freq/2)
+            
+            # Update the beat frequency label
+            left_start = cpanel.start_freq_left.value()
+            right_start = cpanel.start_freq_right.value()
+            left_end = cpanel.end_freq_left.value()
+            right_end = cpanel.end_freq_right.value()
+            
+            start_diff = abs(left_start - right_start)
+            end_diff = abs(left_end - right_end)
+            
+            if start_diff == end_diff:
+                cpanel.beat_label.setText(f"Binaural: {start_diff:.1f} Hz")
+            else:
+                cpanel.beat_label.setText(f"Binaural: {start_diff:.1f} → {end_diff:.1f} Hz")
+            
+            # Update remaining carrier settings
+            cpanel.volume.setValue(int(carrier.volume*100))
+            cpanel.volume_label.setText(f"{int(carrier.volume*100)}%")
+            cpanel.rfm_enable.setChecked(carrier.enable_rfm)
+            cpanel.rfm_range.setValue(carrier.rfm_range)
+            cpanel.rfm_speed.setValue(carrier.rfm_speed)
 
     def _gather_audio_settings_from_ui(self):
         panel = self.global_audio_panel
@@ -1143,7 +1183,7 @@ class MainWindow(QMainWindow):
         self.audio_settings.rfm_speed = panel.global_rfm_speed.value()
         self.audio_settings.enable_pink_noise = panel.pink_noise_enable.isChecked()
         self.audio_settings.pink_noise_volume = panel.pink_noise_volume.value()/100.0
-
+    
         carriers = []
         for i in range(len(self.carrier_panels)):
             cpanel = self.carrier_panels[i]
@@ -1151,6 +1191,10 @@ class MainWindow(QMainWindow):
                 enabled=cpanel.enabled.isChecked(),
                 start_freq=cpanel.start_freq.value(),
                 end_freq=cpanel.end_freq.value(),
+                start_freq_left=cpanel.start_freq_left.value(),
+                end_freq_left=cpanel.end_freq_left.value(),
+                start_freq_right=cpanel.start_freq_right.value(),
+                end_freq_right=cpanel.end_freq_right.value(),
                 volume=cpanel.volume.value()/100.0,
                 enable_rfm=cpanel.rfm_enable.isChecked(),
                 rfm_range=cpanel.rfm_range.value(),
