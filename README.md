@@ -33,7 +33,6 @@ The result is a flexible platform for exploring entrainment principles. The syst
 https://github.com/user-attachments/assets/bfa61be5-ae2e-406d-882f-85ca153d7a00
 
 
-
 ---
 
 ## Features
