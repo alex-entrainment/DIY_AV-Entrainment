@@ -11,10 +11,8 @@ import board
 import busio
 from adafruit_pca9685 import PCA9685
 
-import simpleaudio  # pip install simpleaudio
+import simpleaudio
 
-# Make sure these imports match your actual file structure and that
-# sequence_model.py includes your extended Oscillator and PatternMode.
 from sequence_model import (
     Step,
     Oscillator,
