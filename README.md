@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/bfa61be5-ae2e-406d-882f-85ca153d7a00
 - **Linear Ramps**: Frequencies or duty cycles can transition over the duration of each step.
 - **Strobe Intensity**: Per-step strobe intensity or crossfade.
 - **JSON File Storage**: Save or load complete sequences, including audio settings, to a `.json` file.
-- **Stepwise Audio Generation**: Automatic `.wav` generation matching the duration and frequency ramps of each step.
+- **Stepwise Audio Generation**: Automatic `.wav` generation using the duration and frequency ramps of each step, as configured.
 
 ---
 
