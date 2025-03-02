@@ -83,6 +83,9 @@ Below is the minimal parts list used for the LED system:
 12. **Wiring** ( 22AWG jumper wires, hookup wire, etc.)
   - [Jumper Wires](https://www.amazon.com/dp/B01EV70C78?ref=ppx_yo2ov_dt_b_fed_asin_title)
 
+13. **Device Stand**
+  - [Sound Percussion Labs KBS200 Endeavor Series Double-Braced Cymbal Boom Stand](https://www.guitarcenter.com/Sound-Percussion-Labs/KBS200-Double-Braced-Cymbal-Boom-Stand-1500000405266.gc?template=0y7n73MAL4Km&storeCode=&source=4WWRWXGL&utm_medium=paid-search&utm_channel=paid-search&utm_source=google&utm_platform=google&utm_campaign=GC_G_NTM_LIA-PMX_Accessories_N&utm_ct=lia&utm_tactic=prospecting&utm_segment=accessory&utm_term=&utm_content=119280402&gad_source=1&gclid=Cj0KCQiAoJC-BhCSARIsAPhdfSh7YFz3OY7G7pWrZ0CywWRpzmroID6TKPOMfr9qcrGHxDkLxJ6iitsaAr9UEALw_wcB)
+
 ### Typical Connections
 - The PCA9685 connects via I²C (SDA, SCL) to the SBC (Raspberry Pi pins).
 - PCA9685 outputs go to the MOSFET gates (with pull-down resistors to ensure they remain off when idle).
