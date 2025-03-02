@@ -139,7 +139,8 @@ Below is the minimal parts list used for the LED system:
 ## GUI Overview
 
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
-![image](https://github.com/user-attachments/assets/db44b9f4-8f38-4098-b52d-18616c8a6409)
+![image]((https://github.com/user-attachments/assets/fdfcfa01-22c4-4547-ae28-686e61bb78d4)
+)
 
 
 Left Panel: List of steps in the sequence. You can Add, Duplicate, Remove, or Reorder steps.
