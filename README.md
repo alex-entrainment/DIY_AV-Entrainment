@@ -141,7 +141,7 @@ Below is the minimal parts list used for the LED system:
    
 
 ## Usage 
-### Commands: 
+### Commands (run_on_device_6.py): 
       1. --file <filename> // Selects the JSON sequence file to run
       2. --start-from <time> // Starts JSON sequence at <time> 
 
