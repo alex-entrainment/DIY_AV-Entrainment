@@ -2,8 +2,8 @@ import argparse
 import json
 import math
 import time
-import random
 import os
+import keyboard
 import numpy as np
 from collections import deque
 
@@ -11,7 +11,8 @@ import board
 import busio
 from adafruit_pca9685 import PCA9685
 
-import simpleaudio
+import pygame 
+from pydub import AudioSegment 
 
 from sequence_model import (
     Step,
@@ -22,9 +23,87 @@ from sequence_model import (
     AudioSettings
 )
 
+# Initialize pygame mixer for audio playback
+pygame.mixer.init()
+
+# Audio Player class to handle precise audio positioning and control
+class AudioPlayer:
+    """
+    A class to handle audio playback with precise positioning and control.
+    Uses pygame for playback control and pydub for audio processing.
+    """
+    def __init__(self, audio_file):
+        """
+        Initialize the audio player with a specific audio file.
+        
+        Parameters:
+            audio_file (str): Path to the audio file (.wav format)
+        """
+        self.audio_file = audio_file
+        self.playing = False
+        self.current_position = 0  # in milliseconds
+        
+        # Load the audio file
+        try:
+            pygame.mixer.music.load(audio_file)
+            # Also load with pydub for duration info
+            self.audio = AudioSegment.from_wav(audio_file)
+            self.duration = len(self.audio)  # Duration in ms
+            self.loaded = True
+        except Exception as e:
+            print(f"Error loading audio file: {e}")
+            self.loaded = False
+    
+    def play(self, start_position_ms=0):
+        """
+        Start playing the audio from the specified position.
+        
+        Parameters:
+            start_position_ms (int): Position to start playing from in milliseconds
+        """
+        if not self.loaded:
+            return False
+        
+        try:
+            # Ensure the position is within bounds
+            if start_position_ms >= self.duration:
+                print(f"Start position {start_position_ms}ms exceeds audio duration")
+                return False
+            
+            # Set starting position and play
+            self.current_position = max(0, start_position_ms)
+            pygame.mixer.music.play(start=self.current_position / 1000.0)  # Convert to seconds
+            self.playing = True
+            return True
+        except Exception as e:
+            print(f"Error playing audio: {e}")
+            return False
+    
+    def pause(self):
+        """Pause audio playback and store current position"""
+        if self.playing:
+            pygame.mixer.music.pause()
+            self.current_position = pygame.mixer.music.get_pos() + self.current_position
+            self.playing = False
+    
+    def resume(self):
+        """Resume audio playback from stored position"""
+        if not self.playing and self.loaded:
+            pygame.mixer.music.play(start=self.current_position / 1000.0)
+            self.playing = True
+    
+    def stop(self):
+        """Stop audio playback"""
+        pygame.mixer.music.stop()
+        self.playing = False
+        self.current_position = 0
+    
+    def is_playing(self):
+        """Check if audio is currently playing"""
+        return self.playing and pygame.mixer.music.get_busy()
 
 # ------------------------------------------------------------------
-# 0) Smooth RFM Implementation
+# 1) Smooth RFM Implementation
 # ------------------------------------------------------------------
 
 class SmoothRFM:
@@ -91,7 +170,7 @@ class SmoothRFM:
 
 
 # ------------------------------------------------------------------
-# 1) PHASE & BRIGHTNESS PATTERN FUNCTIONS
+# 2) PHASE & BRIGHTNESS PATTERN FUNCTIONS
 # ------------------------------------------------------------------
 
 def compute_phase_offset(osc: Oscillator, i: int, t: float) -> float:
@@ -184,7 +263,7 @@ def compute_brightness_mod(osc: Oscillator, i: int, t: float) -> float:
 
 
 # ------------------------------------------------------------------
-# 2) BASE OSCILLATOR & STROBE HELPER FUNCTIONS
+# 3) BASE OSCILLATOR & STROBE HELPER FUNCTIONS
 # ------------------------------------------------------------------
 
 def compute_frequency(osc: Oscillator, t: float, step_duration: float, offset: float) -> float:
@@ -246,25 +325,72 @@ def compute_strobe_intensity(sset: StrobeSet, t: float, step_duration: float, os
 
 
 # ------------------------------------------------------------------
-# 3) MAIN run_sequence FUNCTION
+# 4) MAIN run_sequence FUNCTION
 # ------------------------------------------------------------------
 
-def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_filename: str):
+
+def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_filename: str, start_from: float = 0.0):
     """
     Main routine to run the LED sequence with optional audio playback,
     applying advanced phase & brightness patterns on top of the base strobing.
+    Now supports precise audio positioning and pause functionality.
+    
+    Parameters:
+        steps (list[Step]): The sequence steps to run
+        audio_settings (AudioSettings): Audio configuration
+        sequence_filename (str): The filename of the sequence JSON
+        start_from (float): Time offset (in seconds) to start the sequence from
     """
-    audio_play_obj = None
+    # Shared variables for pause functionality
+    pause_event = threading.Event()
+    is_paused = False
+    sequence_running = True
+    total_pause_time = 0.0  # Track cumulative pause duration
+    
+    # Set up keyboard listener for pause functionality
+    def on_key_press(event):
+        nonlocal is_paused, sequence_running
+        if event.name == 'p' or event.name == 'space':
+            is_paused = not is_paused
+            if is_paused:
+                pause_event.clear()
+                # Pause audio if playing
+                if audio_player and audio_player.is_playing():
+                    audio_player.pause()
+                print("\n*** SEQUENCE PAUSED - Press 'p' or space to resume ***")
+            else:
+                # Resume audio if it was playing
+                if audio_player and audio_settings.enabled:
+                    audio_player.resume()
+                pause_event.set()
+                print("\n*** SEQUENCE RESUMED ***")
+        elif event.name == 'q':
+            sequence_running = False
+            pause_event.set()  # In case we're paused, to allow clean exit
+            print("\n*** SEQUENCE TERMINATED ***")
+    
+    # Register keyboard listener
+    keyboard.on_press(on_key_press)
+    pause_event.set()  # Initially not paused
+    
+    # Audio playback setup with enhanced player
+    audio_player = None
+    
     if audio_settings.enabled:
         base, _ = os.path.splitext(sequence_filename)
         audio_filename = base + ".wav"
         if os.path.exists(audio_filename):
             try:
-                wave_obj = simpleaudio.WaveObject.from_wave_file(audio_filename)
-                audio_play_obj = wave_obj.play()
-                print(f"Audio started: {audio_filename}")
+                # Initialize our custom audio player
+                audio_player = AudioPlayer(audio_filename)
+                if not audio_player.loaded:
+                    print(f"Failed to load audio file: {audio_filename}")
+                    audio_player = None
+                else:
+                    print(f"Audio loaded: {audio_filename}")
             except Exception as e:
-                print(f"ERROR: Could not play audio file {audio_filename}: {e}")
+                print(f"ERROR: Could not initialize audio player for {audio_filename}: {e}")
+                audio_player = None
         else:
             print(f"No matching audio file found: {audio_filename}")
 
@@ -274,7 +400,46 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
     pca.frequency = 1000
 
     try:
-        for step_index, step in enumerate(steps):
+        # Calculate the total sequence duration to determine where to start
+        sequence_durations = [step.duration for step in steps]
+        cumulative_durations = [sum(sequence_durations[:i+1]) for i in range(len(sequence_durations))]
+        
+        # Find which step to start from based on start_from parameter
+        start_step_index = 0
+        time_offset_within_step = start_from
+        
+        for i, duration in enumerate(cumulative_durations):
+            if start_from < duration:
+                start_step_index = i
+                # If not the first step, calculate offset within this step
+                if i > 0:
+                    time_offset_within_step = start_from - cumulative_durations[i-1]
+                break
+        
+        # If start_from is beyond sequence end, start from the beginning
+        if start_from >= sum(sequence_durations):
+            print(f"Start time {start_from}s exceeds sequence duration. Starting from beginning.")
+            start_step_index = 0
+            time_offset_within_step = 0
+        
+        # If we're starting from a non-zero point, provide feedback
+        if start_from > 0:
+            print(f"Starting sequence from step #{start_step_index+1} at {time_offset_within_step:.2f}s into that step")
+            
+        # Start audio playback if enabled, with proper positioning
+        if audio_settings.enabled and audio_player and audio_player.loaded:
+            # Convert sequence start position from seconds to milliseconds
+            start_position_ms = int(start_from * 1000)
+            if audio_player.play(start_position_ms):
+                print(f"Audio started at position {start_from:.2f}s")
+            else:
+                print("Failed to start audio playback")
+        
+        # Process each step
+        for step_index, step in enumerate(steps[start_step_index:], start_step_index):
+            if not sequence_running:
+                break
+                
             print(f"\n=== Starting step #{step_index+1}: '{step.description}' ===")
             print(f" Duration = {step.duration}s, {len(step.oscillators)} oscillator(s).")
 
@@ -289,16 +454,40 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
             # Initialize phase accumulators for each oscillator
             phase_accumulators = [0.0] * len(step.oscillators)
 
+            # Start time for this step
             start_time = time.monotonic()
             prev_time = start_time
-            while True:
+            step_is_complete = False
+            
+            # Apply offset for the first step if starting mid-sequence
+            initial_elapsed = 0
+            if step_index == start_step_index and time_offset_within_step > 0:
+                initial_elapsed = time_offset_within_step
+            
+            while not step_is_complete and sequence_running:
+                # Handle pause if needed
+                if is_paused:
+                    pause_start = time.monotonic()
+                    # Wait until unpaused
+                    pause_event.wait()
+                    if not sequence_running:
+                        break
+                    # Calculate how long we were paused
+                    pause_duration = time.monotonic() - pause_start
+                    total_pause_time += pause_duration
+                    # Adjust timing references to account for the pause
+                    start_time += pause_duration
+                    prev_time = time.monotonic()
+                
                 current_time = time.monotonic()
-                elapsed = current_time - start_time
+                elapsed = current_time - start_time + initial_elapsed  # Add offset if needed
                 dt = current_time - prev_time  # Actual time step
                 prev_time = current_time
                 
+                # Check if this step is complete
                 if elapsed >= step.duration:
-                    break
+                    step_is_complete = True
+                    continue
 
                 # Sleep a bit, but not as long as before since we need more precise timing
                 time.sleep(0.005)  # Shorter sleep for better timing precision
@@ -352,12 +541,23 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
                         pca.channels[channel].duty_cycle = duty_cycle
 
             print(f"Finished step: {step.description}")
+            
+            # Clear initial elapsed for subsequent steps
+            initial_elapsed = 0
 
-        print("\n=== Sequence complete. ===")
+        if sequence_running:
+            print("\n=== Sequence complete. ===")
+        else:
+            print("\n=== Sequence terminated by user. ===")
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
+    except Exception as e:
+        print(f"Error running sequence: {e}")
     finally:
+        # Cleanup keyboard listener
+        keyboard.unhook_all()
+        
         # Turn off all LED channels
         for ch in range(6):
             pca.channels[ch].duty_cycle = 0
@@ -366,8 +566,8 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
         print("All LED channels off, PCA9685 deinitialized.")
 
         # Stop audio if still playing
-        if audio_play_obj and audio_play_obj.is_playing():
-            audio_play_obj.stop()
+        if audio_player:
+            audio_player.stop()
             print("Audio stopped.")
 
 
@@ -378,11 +578,20 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
 def main():
     parser = argparse.ArgumentParser(description="Run a 6-LED strobe sequence with advanced patterns.")
     parser.add_argument("--file", default="my_sequence.json", help="Path to the sequence JSON file")
+    parser.add_argument("--start-from", type=float, default=0.0, 
+                       help="Start the sequence from this time offset (in seconds)")
     args = parser.parse_args()
 
     filename = args.file
-    with open(filename, "r") as f:
-        data = json.load(f)
+    try:
+        with open(filename, "r") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' not found.")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: File '{filename}' is not a valid JSON file.")
+        return
 
     # Build steps
     steps = []
@@ -394,8 +603,8 @@ def main():
     audio_settings_dict = data.get("audio_settings", {})
     audio_settings = AudioSettings.from_dict(audio_settings_dict)
 
-    # Run
-    run_sequence(steps, audio_settings, filename)
+    # Run with the specified start time
+    run_sequence(steps, audio_settings, filename, args.start_from)
 
 
 if __name__ == "__main__":
