@@ -1,12 +1,14 @@
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QApplication,
-                             QStatusBar, QAction, QFileDialog, QMessageBox)
+                             QStatusBar, QAction, QFileDialog, QMessageBox, QAction)
 from ui.step_list_panel import StepListPanel
 from ui.step_config_panel import StepConfigPanel
 from ui.audio_settings_panel import AudioSettingsPanel
 from controllers.step_controller import StepController
 from controllers.file_controller import FileController
 from sequence_model import Oscillator, StrobeSet, Waveform, PatternMode  # your custom models
+
+from ui.simulator import SimulatorWindow
 
 def clear_layout(layout):
     if layout is not None:
@@ -21,6 +23,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("6-LED Sequence Editor with Stepwise Audio Sync")
         self.resize(1300, 700)
+        
+        self.simulator_window = None  # to hold the simulator instance
 
         # Controllers.
         self.step_controller = StepController()
@@ -86,6 +90,18 @@ class MainWindow(QMainWindow):
         delete_act = QAction("Delete", self)
         delete_act.triggered.connect(self.handle_delete_sequence_file)
         file_menu.addAction(delete_act)
+        simulator_menu = menubar.addMenu("Simulator")
+        simulator_act = QAction("Open Simulator", self)
+        simulator_act.triggered.connect(self.open_simulator)
+        simulator_menu.addAction(simulator_act)
+
+    def open_simulator(self):
+        """Launch the LED sequence simulator window."""
+        if self.simulator_window is None:
+            self.simulator_window = SimulatorWindow(self)
+        self.simulator_window.show()
+        self.simulator_window.raise_()
+        self.simulator_window.activateWindow()
 
     def update_sequence_duration(self):
         duration = self.step_controller.update_sequence_duration()
