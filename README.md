@@ -6,6 +6,8 @@ It drives 6 high-power LEDs via a PCA9685 PWM board and MOSFETs, and optionally 
 
 Users can design custom multi-step “sequences” (lighting + audio parameters) with a PyQt-based GUI editor, then run them on hardware.
 
+Total Device Cost: ~$150
+
 ---
 
 ## Table of Contents
