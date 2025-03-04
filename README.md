@@ -29,8 +29,7 @@ The result is a flexible platform for exploring entrainment principles. The syst
 ![device back](https://github.com/user-attachments/assets/c19d92c4-99ef-4471-9ec9-e069b728cf6b)
 
 
-
-https://github.com/user-attachments/assets/bfa61be5-ae2e-406d-882f-85ca153d7a00
+![20250302_183403](https://github.com/user-attachments/assets/f70ead3a-a407-4b74-a07f-14bea2b9fd1e)
 
 
 
@@ -46,7 +45,7 @@ https://github.com/user-attachments/assets/bfa61be5-ae2e-406d-882f-85ca153d7a00
 - **Linear Ramps**: Frequencies or duty cycles can transition over the duration of each step.
 - **Strobe Intensity**: Per-step strobe intensity or crossfade.
 - **JSON File Storage**: Save or load complete sequences, including audio settings, to a `.json` file.
-- **Stepwise Audio Generation**: Automatic `.wav` generation matching the duration and frequency ramps of each step.
+- **Stepwise Audio Generation**: Automatic `.wav` generation using the duration and frequency ramps of each step, as configured.
 
 ---
 
@@ -83,6 +82,9 @@ Below is the minimal parts list used for the LED system:
    
 12. **Wiring** ( 22AWG jumper wires, hookup wire, etc.)
   - [Jumper Wires](https://www.amazon.com/dp/B01EV70C78?ref=ppx_yo2ov_dt_b_fed_asin_title)
+
+13. **Device Stand**
+  - [Sound Percussion Labs KBS200 Endeavor Series Double-Braced Cymbal Boom Stand](https://www.guitarcenter.com/Sound-Percussion-Labs/KBS200-Double-Braced-Cymbal-Boom-Stand-1500000405266.gc?template=0y7n73MAL4Km&storeCode=&source=4WWRWXGL&utm_medium=paid-search&utm_channel=paid-search&utm_source=google&utm_platform=google&utm_campaign=GC_G_NTM_LIA-PMX_Accessories_N&utm_ct=lia&utm_tactic=prospecting&utm_segment=accessory&utm_term=&utm_content=119280402&gad_source=1&gclid=Cj0KCQiAoJC-BhCSARIsAPhdfSh7YFz3OY7G7pWrZ0CywWRpzmroID6TKPOMfr9qcrGHxDkLxJ6iitsaAr9UEALw_wcB)
 
 ### Typical Connections
 - The PCA9685 connects via I²C (SDA, SCL) to the SBC (Raspberry Pi pins).
@@ -123,11 +125,12 @@ Below is the minimal parts list used for the LED system:
 4. **`run_on_device_6.py`**:
    - A command-line runner that loads a JSON sequence (created by the editor) and physically drives the PCA9685 + LEDs, optionally playing the generated `.wav` file in sync.
    - Applies real-time oscillator logic: waveforms, frequency ramps, RFM, brightness patterns, etc.
+   - To start running a sequence from a file: `python run_on_device_6.py --file "filename".json`
 
 ---
 
 ## Installation
-1. **Clone or download** this repository onto your development machine or Raspberry Pi.
+1. **Clone or download** this repository onto your development machine and/or Raspberry Pi.
 2. Install required Python packages: 
    numpy – for audio waveform generation
    simpleaudio – for real-time audio playback
@@ -135,6 +138,7 @@ Below is the minimal parts list used for the LED system:
    PyQt5 – for the GUI editor
    You may also need PyQt5-sip and other standard libraries for your Python environment.
    Enable I²C on your Raspberry Pi (if using Pi OS), then wire the PCA9685 accordingly.
+   
 
 ## GUI Overview
 
