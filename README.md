@@ -125,11 +125,12 @@ Below is the minimal parts list used for the LED system:
 4. **`run_on_device_6.py`**:
    - A command-line runner that loads a JSON sequence (created by the editor) and physically drives the PCA9685 + LEDs, optionally playing the generated `.wav` file in sync.
    - Applies real-time oscillator logic: waveforms, frequency ramps, RFM, brightness patterns, etc.
+   - To start running a sequence from a file: `python run_on_device_6.py --file "filename".json`
 
 ---
 
 ## Installation
-1. **Clone or download** this repository onto your development machine or Raspberry Pi.
+1. **Clone or download** this repository onto your development machine and/or Raspberry Pi.
 2. Install required Python packages: 
    numpy – for audio waveform generation
    simpleaudio – for real-time audio playback
@@ -137,6 +138,7 @@ Below is the minimal parts list used for the LED system:
    PyQt5 – for the GUI editor
    You may also need PyQt5-sip and other standard libraries for your Python environment.
    Enable I²C on your Raspberry Pi (if using Pi OS), then wire the PCA9685 accordingly.
+   
 
 ## GUI Overview
 
