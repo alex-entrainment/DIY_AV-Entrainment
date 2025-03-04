@@ -1,4 +1,7 @@
 simpleaudio
+keyboard
+pygame
+pydub
 pyqt5
 numpy
 adafruit-blinka
