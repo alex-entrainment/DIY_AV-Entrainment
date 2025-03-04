@@ -140,6 +140,11 @@ Below is the minimal parts list used for the LED system:
    Enable I²C on your Raspberry Pi (if using Pi OS), then wire the PCA9685 accordingly.
    
 
+## Usage 
+### Commands: 
+      1. --file <filename> // Selects the JSON sequence file to run
+      2. --start-from <time> // Starts JSON sequence at <time> 
+
 ## GUI Overview
 
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
