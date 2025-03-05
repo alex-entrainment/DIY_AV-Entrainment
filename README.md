@@ -151,7 +151,8 @@ Below is the minimal parts list used for the LED system:
 ## GUI Overview
 
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
-![image](https://github.com/user-attachments/assets/40233c2a-1e57-4668-b000-e4c5fa0e666b)
+![image](https://github.com/user-attachments/assets/4cd68e9d-2334-479b-8db8-0e1d32ed64a7)
+
 
 
 
