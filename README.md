@@ -105,7 +105,8 @@ Below is the minimal parts list used for the LED system:
 5. **3D printer** (optional if you want a custom LED holder or enclosure)
 
 ##  Circuit Diagram
-![test](https://github.com/user-attachments/assets/24c5af34-a95f-4e9e-9783-57645dcb86a8)
+![image](https://github.com/user-attachments/assets/84c5e81f-429e-4560-a3dc-5627ef1da878)
+
 
 ---
 
@@ -150,7 +151,8 @@ Below is the minimal parts list used for the LED system:
 ## GUI Overview
 
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
-![image](https://github.com/user-attachments/assets/40233c2a-1e57-4668-b000-e4c5fa0e666b)
+![image](https://github.com/user-attachments/assets/4cd68e9d-2334-479b-8db8-0e1d32ed64a7)
+
 
 
 
