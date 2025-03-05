@@ -105,7 +105,8 @@ Below is the minimal parts list used for the LED system:
 5. **3D printer** (optional if you want a custom LED holder or enclosure)
 
 ##  Circuit Diagram
-![test](https://github.com/user-attachments/assets/24c5af34-a95f-4e9e-9783-57645dcb86a8)
+![test](![image](https://github.com/user-attachments/assets/650faffd-4e3d-472c-bfc2-86ce786e3bf1)
+)
 
 ---
 
