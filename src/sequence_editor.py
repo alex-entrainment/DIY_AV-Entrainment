@@ -306,40 +306,6 @@ class MainWindow(QMainWindow):
         self.currentFile = fname
         self._save_to_file(fname)
 
-    def _save_to_file(self, fname):
-        panel = self.audio_settings_panel.global_audio_panel
-        self.audio_settings["enabled"] = panel.enabled.isChecked()
-        self.audio_settings["beat_freq"] = panel.beat_freq.value()
-        self.audio_settings["is_binaural"] = panel.binaural.isChecked()
-        self.audio_settings["is_isochronic"] = panel.isochronic.isChecked()
-        self.audio_settings["enable_rfm"] = panel.global_rfm_enable.isChecked()
-        self.audio_settings["rfm_range"] = panel.global_rfm_range.value()
-        self.audio_settings["rfm_speed"] = panel.global_rfm_speed.value()
-        self.audio_settings["enable_pink_noise"] = panel.pink_noise_enable.isChecked()
-        self.audio_settings["pink_noise_volume"] = panel.pink_noise_volume.value() / 100.0
-        carriers = []
-        for cpanel in self.audio_settings_panel.carrier_panels:
-            carrier = {
-                "enabled": cpanel.enabled.isChecked(),
-                "start_freq": cpanel.start_freq.value(),
-                "end_freq": cpanel.end_freq.value(),
-                "start_freq_left": cpanel.start_freq_left.value(),
-                "end_freq_left": cpanel.end_freq_left.value(),
-                "start_freq_right": cpanel.start_freq_right.value(),
-                "end_freq_right": cpanel.end_freq_right.value(),
-                "volume": cpanel.volume.value() / 100.0,
-                "enable_rfm": cpanel.rfm_enable.isChecked(),
-                "rfm_range": cpanel.rfm_range.value(),
-                "rfm_speed": cpanel.rfm_speed.value()
-            }
-            carriers.append(carrier)
-        self.audio_settings["carriers"] = carriers
-        if self.file_controller.save_sequence(fname, self.step_controller.steps,
-                                              self.audio_settings,
-                                              self.audio_settings_panel.global_audio_panel):
-            QMessageBox.information(self, "Saved", f"Sequence saved to {fname}")
-        self.update_sequence_duration()
-
     def handle_delete_sequence_file(self):
         fname, _ = QFileDialog.getOpenFileName(self, "Delete Sequence File", "", "Sequence Files (*.json);;All Files (*)")
         if not fname:
@@ -348,6 +314,67 @@ class MainWindow(QMainWindow):
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.file_controller.delete_sequence_file(fname)
+
+    def _save_to_file(self, fname):
+        """
+        Modified _save_to_file method for MainWindow class to handle the new carrier UI design.
+        """
+        panel = self.audio_settings_panel.global_audio_panel
+        self.audio_settings["enabled"] = panel.enabled.isChecked()
+        self.audio_settings["enable_pink_noise"] = panel.pink_noise_enable.isChecked()
+        self.audio_settings["pink_noise_volume"] = panel.pink_noise_volume.value() / 100.0
+        self.audio_settings["global_rfm_enable"] = panel.global_rfm_enable.isChecked()
+        self.audio_settings["global_rfm_range"] = panel.global_rfm_range.value()
+        self.audio_settings["global_rfm_speed"] = panel.global_rfm_speed.value()
+        self.audio_settings["sample_rate"] = panel.sample_rate.value()
+        
+        carriers = []
+        for cpanel in self.audio_settings_panel.carrier_panels:
+            # Get frequency settings based on the current mode
+            freq_settings = cpanel.get_frequency_values()
+            
+            # Build carrier dict with common settings
+            carrier = {
+                "enabled": cpanel.enabled.isChecked(),
+                "tone_mode": cpanel.tone_mode_combo.currentText(),
+                "volume": cpanel.volume.value() / 100.0,
+                "enable_rfm": cpanel.rfm_enable.isChecked(),
+                "rfm_range": cpanel.rfm_range.value(),
+                "rfm_speed": cpanel.rfm_speed.value()
+            }
+            
+            # Add mode-specific frequency settings
+            if freq_settings['mode'] == 'binaural':
+                carrier.update({
+                    "start_freq_left": freq_settings["start_freq_left"],
+                    "end_freq_left": freq_settings["end_freq_left"],
+                    "start_freq_right": freq_settings["start_freq_right"],
+                    "end_freq_right": freq_settings["end_freq_right"]
+                })
+            elif freq_settings['mode'] == 'isochronic':
+                carrier.update({
+                    "start_carrier_freq": freq_settings["start_carrier_freq"],
+                    "end_carrier_freq": freq_settings["end_carrier_freq"],
+                    "start_entrainment_freq": freq_settings["start_entrainment_freq"],
+                    "end_entrainment_freq": freq_settings["end_entrainment_freq"],
+                    "pulse_shape": freq_settings["pulse_shape"]
+                })
+            else:  # monaural
+                carrier.update({
+                    "start_freq": freq_settings["start_freq"],
+                    "end_freq": freq_settings["end_freq"]
+                })
+            
+            carriers.append(carrier)
+        
+        self.audio_settings["carriers"] = carriers
+        
+        if self.file_controller.save_sequence(fname, self.step_controller.steps,
+                                              self.audio_settings,
+                                              panel):
+            QMessageBox.information(self, "Saved", f"Sequence saved to {fname}")
+        
+        self.update_sequence_duration()
 
 def main():
     app = QApplication(sys.argv)
