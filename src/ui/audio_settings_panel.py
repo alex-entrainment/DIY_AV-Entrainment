@@ -1,3 +1,4 @@
+
 from PyQt5.QtWidgets import (QTabWidget, QWidget, QGroupBox, QFormLayout, QCheckBox,
                              QDoubleSpinBox, QSpinBox, QSlider, QLabel, QHBoxLayout, QPushButton, QComboBox)
 from PyQt5.QtCore import Qt
@@ -26,21 +27,18 @@ class CarrierPanel(QGroupBox):
         self.freq_controls_layout.setContentsMargins(0, 0, 0, 0)
         self.form.addRow(self.freq_controls_container)
         
-        # Volume control with fixed label updating
+        # Volume control with label updating
         self.volume = QSlider(Qt.Horizontal)
         self.volume.setRange(0, 100)
         self.volume.setValue(100 if carrier_num == 1 else 50)
         self.volume_label = QLabel(f"{self.volume.value()}%")
-        
-        # Connect the value change signal to update the label
         self.volume.valueChanged.connect(self.update_volume_label)
-        
         vol_layout = QHBoxLayout()
         vol_layout.addWidget(self.volume)
         vol_layout.addWidget(self.volume_label)
         self.form.addRow("Volume:", vol_layout)
         
-        # RFM settings
+        # RFM settings.
         self.rfm_enable = QCheckBox("Enable RFM")
         self.rfm_range = QDoubleSpinBox()
         self.rfm_range.setRange(0.0, 20.0)
@@ -72,7 +70,6 @@ class CarrierPanel(QGroupBox):
             item = self.freq_controls_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        
         # Create appropriate controls based on mode
         if mode == "Binaural":
             self.create_binaural_controls()
@@ -199,10 +196,7 @@ class GlobalAudioPanel(QGroupBox):
         self.pink_noise_volume.setRange(0, 100)
         self.pink_noise_volume.setValue(10)
         self.pink_noise_label = QLabel("10%")
-        
-        # Connect the value change signal to update the label
         self.pink_noise_volume.valueChanged.connect(self.update_pink_noise_label)
-        
         pn_layout = QHBoxLayout()
         pn_layout.addWidget(self.pink_noise_volume)
         pn_layout.addWidget(self.pink_noise_label)
@@ -213,10 +207,11 @@ class GlobalAudioPanel(QGroupBox):
         self.sample_rate.setValue(44100)
         self.sample_rate.setSingleStep(1000)
         form.addRow("Sample Rate (Hz):", self.sample_rate)
-        
+
     def update_pink_noise_label(self, value):
         """Update the pink noise volume label when slider value changes"""
         self.pink_noise_label.setText(f"{value}%")
+
 class AudioSettingsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)

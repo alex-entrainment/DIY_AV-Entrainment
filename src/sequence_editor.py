@@ -1,13 +1,13 @@
+
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QApplication,
-                             QStatusBar, QAction, QFileDialog, QMessageBox, QAction)
+                             QStatusBar, QAction, QFileDialog, QMessageBox)
 from ui.step_list_panel import StepListPanel
 from ui.step_config_panel import StepConfigPanel
 from ui.audio_settings_panel import AudioSettingsPanel
 from controllers.step_controller import StepController
 from controllers.file_controller import FileController
-from sequence_model import Oscillator, StrobeSet, Waveform, PatternMode  # your custom models
-
+from sequence_model import Oscillator, StrobeSet, Waveform, PatternMode
 from ui.simulator import SimulatorWindow
 
 def clear_layout(layout):
@@ -30,7 +30,7 @@ class MainWindow(QMainWindow):
         self.step_controller = StepController()
         self.file_controller = FileController()
         self.currentFile = None
-        self.audio_settings = {}  # Use a dict or your AudioSettings model
+        self.audio_settings = {}  # global audio settings (for fallback/global parameters)
 
         # Create central widget and layout.
         central = QWidget(self)
@@ -96,7 +96,6 @@ class MainWindow(QMainWindow):
         simulator_menu.addAction(simulator_act)
 
     def open_simulator(self):
-        """Launch the LED sequence simulator window."""
         if self.simulator_window is None:
             self.simulator_window = SimulatorWindow(self)
         self.simulator_window.show()
@@ -182,8 +181,34 @@ class MainWindow(QMainWindow):
         for i, sset in enumerate(step.strobe_sets):
             if i < len(self.step_config_panel.strobe_controls):
                 ctrl = self.step_config_panel.strobe_controls[i]
-                ctrl["strobe_start"].setValue(sset.start_intensity)
-                ctrl["strobe_end"].setValue(sset.end_intensity)
+                # Convert strobe intensities to int before calling setValue
+                ctrl["strobe_start"].setValue(int(sset.start_intensity))
+                ctrl["strobe_end"].setValue(int(sset.end_intensity))
+        # Update the audio settings panel with the step's audio settings.
+        audio_settings = step.audio_settings or {"carriers": []}
+        carriers = audio_settings.get("carriers", [])
+        for i, cpanel in enumerate(self.audio_settings_panel.carrier_panels):
+            if i < len(carriers):
+                carrier = carriers[i]
+                cpanel.start_freq_left.setValue(carrier.get("start_freq_left", 205.0))
+                cpanel.end_freq_left.setValue(carrier.get("end_freq_left", 205.0))
+                cpanel.start_freq_right.setValue(carrier.get("start_freq_right", 195.0))
+                cpanel.end_freq_right.setValue(carrier.get("end_freq_right", 195.0))
+                cpanel.tone_mode_combo.setCurrentText(carrier.get("tone_mode", "Binaural"))
+                cpanel.volume.setValue(int(carrier.get("volume", 1.0)*100))
+                cpanel.rfm_enable.setChecked(carrier.get("enable_rfm", False))
+                cpanel.rfm_range.setValue(carrier.get("rfm_range", 0.5))
+                cpanel.rfm_speed.setValue(carrier.get("rfm_speed", 0.2))
+            else:
+                cpanel.start_freq_left.setValue(205.0 if i == 0 else 200.0)
+                cpanel.end_freq_left.setValue(205.0 if i == 0 else 200.0)
+                cpanel.start_freq_right.setValue(195.0 if i == 0 else 200.0)
+                cpanel.end_freq_right.setValue(195.0 if i == 0 else 200.0)
+                cpanel.tone_mode_combo.setCurrentText("Binaural")
+                cpanel.volume.setValue(100 if i == 0 else 50)
+                cpanel.rfm_enable.setChecked(False)
+                cpanel.rfm_range.setValue(0.5)
+                cpanel.rfm_speed.setValue(0.2)
 
     def handle_apply_osc1_to_all(self):
         mode = self.step_config_panel.mode_combo.currentText()
@@ -259,6 +284,24 @@ class MainWindow(QMainWindow):
                                              sctrl["strobe_end"].value(), weights))
         step.oscillators = oscillators
         step.strobe_sets = strobe_sets
+
+        # Save per-step audio settings from the audio settings panel.
+        carriers = []
+        for cpanel in self.audio_settings_panel.carrier_panels:
+            carrier = {
+                "enabled": cpanel.enabled.isChecked(),
+                "start_freq_left": cpanel.start_freq_left.value(),
+                "end_freq_left": cpanel.end_freq_left.value(),
+                "start_freq_right": cpanel.start_freq_right.value(),
+                "end_freq_right": cpanel.end_freq_right.value(),
+                "tone_mode": cpanel.tone_mode_combo.currentText(),
+                "volume": cpanel.volume.value() / 100.0,
+                "enable_rfm": cpanel.rfm_enable.isChecked(),
+                "rfm_range": cpanel.rfm_range.value(),
+                "rfm_speed": cpanel.rfm_speed.value()
+            }
+            carriers.append(carrier)
+        step.audio_settings = {"carriers": carriers}
         self.step_list_panel.update_step_item(index, step.description)
         self.update_sequence_duration()
         QMessageBox.information(self, "Step Updated", f"Updated step '{step.description}'.")
@@ -306,6 +349,37 @@ class MainWindow(QMainWindow):
         self.currentFile = fname
         self._save_to_file(fname)
 
+    def _save_to_file(self, fname):
+        panel = self.audio_settings_panel.global_audio_panel
+        self.audio_settings["enabled"] = panel.enabled.isChecked()
+        self.audio_settings["enable_pink_noise"] = panel.pink_noise_enable.isChecked()
+        self.audio_settings["pink_noise_volume"] = panel.pink_noise_volume.value() / 100.0
+        self.audio_settings["global_rfm_enable"] = panel.global_rfm_enable.isChecked()
+        self.audio_settings["global_rfm_range"] = panel.global_rfm_range.value()
+        self.audio_settings["global_rfm_speed"] = panel.global_rfm_speed.value()
+        self.audio_settings["sample_rate"] = panel.sample_rate.value()
+        carriers = []
+        for cpanel in self.audio_settings_panel.carrier_panels:
+            carrier = {
+                "enabled": cpanel.enabled.isChecked(),
+                "start_freq_left": cpanel.start_freq_left.value(),
+                "end_freq_left": cpanel.end_freq_left.value(),
+                "start_freq_right": cpanel.start_freq_right.value(),
+                "end_freq_right": cpanel.end_freq_right.value(),
+                "tone_mode": cpanel.tone_mode_combo.currentText(),
+                "volume": cpanel.volume.value() / 100.0,
+                "enable_rfm": cpanel.rfm_enable.isChecked(),
+                "rfm_range": cpanel.rfm_range.value(),
+                "rfm_speed": cpanel.rfm_speed.value()
+            }
+            carriers.append(carrier)
+        self.audio_settings["carriers"] = carriers
+        if self.file_controller.save_sequence(fname, self.step_controller.steps,
+                                              self.audio_settings,
+                                              panel):
+            QMessageBox.information(self, "Saved", f"Sequence saved to {fname}")
+        self.update_sequence_duration()
+
     def handle_delete_sequence_file(self):
         fname, _ = QFileDialog.getOpenFileName(self, "Delete Sequence File", "", "Sequence Files (*.json);;All Files (*)")
         if not fname:
@@ -315,67 +389,6 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             self.file_controller.delete_sequence_file(fname)
 
-    def _save_to_file(self, fname):
-        """
-        Modified _save_to_file method for MainWindow class to handle the new carrier UI design.
-        """
-        panel = self.audio_settings_panel.global_audio_panel
-        self.audio_settings["enabled"] = panel.enabled.isChecked()
-        self.audio_settings["enable_pink_noise"] = panel.pink_noise_enable.isChecked()
-        self.audio_settings["pink_noise_volume"] = panel.pink_noise_volume.value() / 100.0
-        self.audio_settings["global_rfm_enable"] = panel.global_rfm_enable.isChecked()
-        self.audio_settings["global_rfm_range"] = panel.global_rfm_range.value()
-        self.audio_settings["global_rfm_speed"] = panel.global_rfm_speed.value()
-        self.audio_settings["sample_rate"] = panel.sample_rate.value()
-        
-        carriers = []
-        for cpanel in self.audio_settings_panel.carrier_panels:
-            # Get frequency settings based on the current mode
-            freq_settings = cpanel.get_frequency_values()
-            
-            # Build carrier dict with common settings
-            carrier = {
-                "enabled": cpanel.enabled.isChecked(),
-                "tone_mode": cpanel.tone_mode_combo.currentText(),
-                "volume": cpanel.volume.value() / 100.0,
-                "enable_rfm": cpanel.rfm_enable.isChecked(),
-                "rfm_range": cpanel.rfm_range.value(),
-                "rfm_speed": cpanel.rfm_speed.value()
-            }
-            
-            # Add mode-specific frequency settings
-            if freq_settings['mode'] == 'binaural':
-                carrier.update({
-                    "start_freq_left": freq_settings["start_freq_left"],
-                    "end_freq_left": freq_settings["end_freq_left"],
-                    "start_freq_right": freq_settings["start_freq_right"],
-                    "end_freq_right": freq_settings["end_freq_right"]
-                })
-            elif freq_settings['mode'] == 'isochronic':
-                carrier.update({
-                    "start_carrier_freq": freq_settings["start_carrier_freq"],
-                    "end_carrier_freq": freq_settings["end_carrier_freq"],
-                    "start_entrainment_freq": freq_settings["start_entrainment_freq"],
-                    "end_entrainment_freq": freq_settings["end_entrainment_freq"],
-                    "pulse_shape": freq_settings["pulse_shape"]
-                })
-            else:  # monaural
-                carrier.update({
-                    "start_freq": freq_settings["start_freq"],
-                    "end_freq": freq_settings["end_freq"]
-                })
-            
-            carriers.append(carrier)
-        
-        self.audio_settings["carriers"] = carriers
-        
-        if self.file_controller.save_sequence(fname, self.step_controller.steps,
-                                              self.audio_settings,
-                                              panel):
-            QMessageBox.information(self, "Saved", f"Sequence saved to {fname}")
-        
-        self.update_sequence_duration()
-
 def main():
     app = QApplication(sys.argv)
     win = MainWindow()
@@ -384,3 +397,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

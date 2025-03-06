@@ -1,4 +1,5 @@
 import argparse
+import threading
 import json
 import math
 import time
@@ -11,7 +12,7 @@ import board
 import busio
 from adafruit_pca9685 import PCA9685
 
-import pygame 
+from pygame import mixer
 from pydub import AudioSegment 
 
 from sequence_model import (
@@ -24,7 +25,7 @@ from sequence_model import (
 )
 
 # Initialize pygame mixer for audio playback
-pygame.mixer.init()
+mixer.init()
 
 # Audio Player class to handle precise audio positioning and control
 class AudioPlayer:

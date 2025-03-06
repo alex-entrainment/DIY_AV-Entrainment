@@ -175,27 +175,21 @@ class StrobeSet:
 # 4) Step
 #
 class Step:
-    """
-    A single step in the overall LED sequence.
-    """
-    def __init__(
-        self,
-        duration: float,
-        description: str,
-        oscillators: list,
-        strobe_sets: list
-    ):
+    def __init__(self, duration: float, description: str, oscillators: list, strobe_sets: list, audio_settings: dict = {}):
         self.duration = max(1, min(5400, duration))
         self.description = description
         self.oscillators = oscillators
         self.strobe_sets = strobe_sets
+        # New per-step audio settings (e.g. carrier parameters)
+        self.audio_settings = audio_settings or {}
 
     def to_dict(self) -> dict:
         return {
             "duration":    self.duration,
             "description": self.description,
             "oscillators": [osc.to_dict() for osc in self.oscillators],
-            "strobe_sets": [st.to_dict() for st in self.strobe_sets]
+            "strobe_sets": [st.to_dict() for st in self.strobe_sets],
+            "audio_settings": self.audio_settings
         }
 
     @classmethod
@@ -204,10 +198,10 @@ class Step:
         description = data.get("description", "Untitled Step")
         osc_list    = data.get("oscillators", [])
         strobe_list = data.get("strobe_sets", [])
-
+        audio_settings = data.get("audio_settings", {})
         oscillators = [Oscillator.from_dict(o) for o in osc_list]
         strobe_sets = [StrobeSet.from_dict(s) for s in strobe_list]
-        return cls(duration, description, oscillators, strobe_sets)
+        return cls(duration, description, oscillators, strobe_sets, audio_settings)
 
 #
 # 5) AudioCarrier
