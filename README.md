@@ -16,8 +16,9 @@ Total Device Cost: ~$150
 3. [Hardware Components](#hardware-components)
 4. [Tools Required](#tools-required)
 5. [System Architecture](#system-architecture)
-6. [Installation](#installation)
+7. [Installation](#installation)
 8. [GUI Overview](#gui-overview)
+9. [Resources](#resources)
 ---
 
 ## Overview
@@ -170,3 +171,14 @@ Oscillator Settings: Choose waveform (Sine, Square, Off), frequency start/end, d
 Strobe Intensities: Overall intensity ramp for each group of LEDs.
 
 Audio Tabs (right side): Up to 3 carriers, each with optional frequency ramps, RFM, volume control. The Global Settings tab includes enabling audio, binaural or isochronic mode, pink noise, etc.
+---
+## Resources
+
+- [Creating your own Light Sequences](https://support.pandorastar.co.uk/wp-content/uploads/sites/6/2021/01/Creating-your-own-sequences-on-PandoraStar-1.pdf)
+- [List of proprietary programs from PandoraStar, useful for examples](https://support.pandorastar.co.uk/wp-content/uploads/sites/6/2021/01/PS-Program-List-2020.pdf)
+- [Gnaural binaural / isochronic tone creation software](https://gnaural.sourceforge.net/)
+
+- [Research on photic entrainment / driving](https://indyneurofeedback.com/wp-content/uploads/2018/02/Article-1-AVE-History-and-Physiological-Mechanisms.pdf#:~:text=%28Joyce%20%26%20Siever%2C%202000%3B%20Ruuskanen,1973%3B%20Regan%2C%201966%3B%20Siever%2C%202002)
+- 
+
+
