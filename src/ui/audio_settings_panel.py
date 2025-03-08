@@ -1,4 +1,3 @@
-
 from PyQt5.QtWidgets import (QTabWidget, QWidget, QGroupBox, QFormLayout, QCheckBox,
                              QDoubleSpinBox, QSpinBox, QSlider, QLabel, QHBoxLayout, QPushButton, QComboBox)
 from PyQt5.QtCore import Qt
@@ -17,9 +16,6 @@ class CarrierPanel(QGroupBox):
         self.tone_mode_combo = QComboBox()
         self.tone_mode_combo.addItems(["Binaural", "Isochronic", "Monaural"])
         self.form.addRow("Tone Mode:", self.tone_mode_combo)
-        
-        # Connect the mode change signal to update UI elements
-        self.tone_mode_combo.currentTextChanged.connect(self.update_ui_for_mode)
         
         # Initialize frequency controls container (to be populated based on mode)
         self.freq_controls_container = QWidget()
@@ -59,25 +55,116 @@ class CarrierPanel(QGroupBox):
         # Initialize frequency controls for the default mode (Binaural)
         self.create_binaural_controls()
         
+        # Connect the mode change signal to update UI elements AFTER initialization
+        self.tone_mode_combo.currentTextChanged.connect(self.update_ui_for_mode)
+        
     def update_volume_label(self, value):
         """Update the volume label when slider value changes"""
         self.volume_label.setText(f"{value}%")
         
     def update_ui_for_mode(self, mode):
-        """Update frequency controls based on selected tone mode"""
-        # Clear existing frequency controls
+        # Store current frequency values safely
+        saved_values = {}
+        
+        # Check the current mode before trying to save values
+        current_mode = self.tone_mode_combo.currentText()
+        
+        try:
+            if current_mode == "Binaural":
+                if hasattr(self, 'start_freq_left'):
+                    saved_values["start_freq_left"] = self.start_freq_left.value()
+                if hasattr(self, 'end_freq_left'):
+                    saved_values["end_freq_left"] = self.end_freq_left.value()
+                if hasattr(self, 'start_freq_right'):
+                    saved_values["start_freq_right"] = self.start_freq_right.value()
+                if hasattr(self, 'end_freq_right'):
+                    saved_values["end_freq_right"] = self.end_freq_right.value()
+            elif current_mode == "Isochronic":
+                # Only try to access these attributes if we're currently in Isochronic mode
+                if hasattr(self, 'start_carrier_freq'):
+                    saved_values["start_carrier_freq"] = self.start_carrier_freq.value()
+                if hasattr(self, 'end_carrier_freq'):
+                    saved_values["end_carrier_freq"] = self.end_carrier_freq.value()
+                if hasattr(self, 'start_entrainment_freq'):
+                    saved_values["start_entrainment_freq"] = self.start_entrainment_freq.value()
+                if hasattr(self, 'end_entrainment_freq'):
+                    saved_values["end_entrainment_freq"] = self.end_entrainment_freq.value()
+                if hasattr(self, 'pulse_shape_combo'):
+                    saved_values["pulse_shape"] = self.pulse_shape_combo.currentText()
+            elif current_mode == "Monaural":
+                if hasattr(self, 'start_freq'):
+                    saved_values["start_freq"] = self.start_freq.value()
+                if hasattr(self, 'end_freq'):
+                    saved_values["end_freq"] = self.end_freq.value()
+        except RuntimeError:
+            # If an object has been deleted, just ignore and continue
+            pass
+            
+        # Safely remove attributes if they exist
+        for attr in ['start_freq_left', 'end_freq_left', 'start_freq_right', 'end_freq_right', 
+                    'start_carrier_freq', 'end_carrier_freq', 'start_entrainment_freq', 
+                    'end_entrainment_freq', 'pulse_shape_combo', 'start_freq', 'end_freq']:
+            if hasattr(self, attr):
+                try:
+                    delattr(self, attr)
+                except (AttributeError, RuntimeError):
+                    pass  # Ignore errors if attribute doesn't exist or can't be deleted
+            
+        # Clear existing controls from the layout
         while self.freq_controls_layout.count():
             item = self.freq_controls_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
-        # Create appropriate controls based on mode
+                try:
+                    item.widget().deleteLater()
+                except RuntimeError:
+                    pass  # Ignore if widget already deleted
+        
+        # Create controls based on the new mode
         if mode == "Binaural":
             self.create_binaural_controls()
+            # Restore saved values if available
+            try:
+                if "start_freq_left" in saved_values and hasattr(self, 'start_freq_left'):
+                    self.start_freq_left.setValue(saved_values["start_freq_left"])
+                if "end_freq_left" in saved_values and hasattr(self, 'end_freq_left'):
+                    self.end_freq_left.setValue(saved_values["end_freq_left"])
+                if "start_freq_right" in saved_values and hasattr(self, 'start_freq_right'):
+                    self.start_freq_right.setValue(saved_values["start_freq_right"])
+                if "end_freq_right" in saved_values and hasattr(self, 'end_freq_right'):
+                    self.end_freq_right.setValue(saved_values["end_freq_right"])
+            except RuntimeError:
+                pass  # Ignore if widget access fails
+                
         elif mode == "Isochronic":
             self.create_isochronic_controls()
+            # Restore saved values if available
+            try:
+                if "start_carrier_freq" in saved_values and hasattr(self, 'start_carrier_freq'):
+                    self.start_carrier_freq.setValue(saved_values["start_carrier_freq"])
+                if "end_carrier_freq" in saved_values and hasattr(self, 'end_carrier_freq'):
+                    self.end_carrier_freq.setValue(saved_values["end_carrier_freq"])
+                if "start_entrainment_freq" in saved_values and hasattr(self, 'start_entrainment_freq'):
+                    self.start_entrainment_freq.setValue(saved_values["start_entrainment_freq"])
+                if "end_entrainment_freq" in saved_values and hasattr(self, 'end_entrainment_freq'):
+                    self.end_entrainment_freq.setValue(saved_values["end_entrainment_freq"])
+                if "pulse_shape" in saved_values and hasattr(self, 'pulse_shape_combo'):
+                    index = self.pulse_shape_combo.findText(saved_values["pulse_shape"], Qt.MatchFixedString)
+                    if index >= 0:
+                        self.pulse_shape_combo.setCurrentIndex(index)
+            except RuntimeError:
+                pass  # Ignore if widget access fails
+                    
         else:  # Monaural
             self.create_monaural_controls()
-            
+            # Restore saved values if available
+            try:
+                if "start_freq" in saved_values and hasattr(self, 'start_freq'):
+                    self.start_freq.setValue(saved_values["start_freq"])
+                if "end_freq" in saved_values and hasattr(self, 'end_freq'):
+                    self.end_freq.setValue(saved_values["end_freq"])
+            except RuntimeError:
+                pass  # Ignore if widget access fails
+
     def create_binaural_controls(self):
         """Create frequency controls for Binaural mode"""
         # Left channel frequencies
@@ -225,4 +312,3 @@ class AudioSettingsPanel(QWidget):
         self.tabs.addTab(self.global_audio_panel, "Global Settings")
         layout = QHBoxLayout(self)
         layout.addWidget(self.tabs)
-

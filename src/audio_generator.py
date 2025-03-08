@@ -1,4 +1,3 @@
-
 # audio_generator.py
 import numpy as np
 import wave
@@ -101,16 +100,49 @@ def generate_waveform(duration, sr, settings):
             phase_right = 2 * np.pi * np.cumsum(effective_right) * dt
             carrier_left = np.sin(phase_left) * volume
             carrier_right = np.sin(phase_right) * volume
+
         elif tone_mode == "Isochronic":
-            avg_freq = (effective_left + effective_right) / 2
-            phase = 2 * np.pi * np.cumsum(avg_freq) * dt
+            # Enhanced isochronic tone generation
+            # Retrieve isochronic parameters
+            scf = carrier.get("start_carrier_freq", 200.0)
+            ecf = carrier.get("end_carrier_freq", 200.0)
+            sef = carrier.get("start_entrainment_freq", 10.0)
+            eef = carrier.get("end_entrainment_freq", 10.0)
+            pulse_shape = carrier.get("pulse_shape", "square").lower()
+            
+            # Compute linear ramps for carrier and entrainment frequencies
+            carrier_freq = np.linspace(scf, ecf, total_frames)
+            entrainment_freq = np.linspace(sef, eef, total_frames)
+            
+            # Apply RFM to carrier frequency if enabled
+            if enable_rfm:
+                rfm_offset = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
+            else:
+                rfm_offset = np.zeros(total_frames)
+            
+            effective_carrier = carrier_freq + rfm_offset
+            
+            # Integrate carrier frequency to phase
+            phase = 2 * np.pi * np.cumsum(effective_carrier) * dt
             carrier_signal = np.sin(phase) * volume
-            mod_freq = np.abs(effective_left - effective_right)
-            mod_freq[mod_freq < 0.1] = np.mean(mod_freq) if np.mean(mod_freq)>0 else 10.0
-            mod_phase = 2 * np.pi * np.cumsum(mod_freq) * dt
-            mod_signal = np.where(np.sin(mod_phase) >= 0, 1.0, 0.0)
+            
+            # Generate modulation signal based on pulse shape
+            mod_phase = 2 * np.pi * entrainment_freq * t
+            
+            if pulse_shape == "square":
+                # Square wave (original sharp on/off)
+                mod_signal = np.where(np.sin(mod_phase) >= 0, 1.0, 0.0)
+            elif pulse_shape == "sine":
+                # Sine wave for smoother transitions
+                mod_signal = np.clip(np.sin(mod_phase), 0, 1)
+            else:  # "soft" (default if not recognized)
+                # Soft transitions using tanh function (from original code)
+                mod_signal = 0.5 * (1 + np.tanh(100 * np.sin(mod_phase)))
+            
+            # Apply modulation to carrier
             carrier_left = carrier_signal * mod_signal
             carrier_right = carrier_left.copy()
+
         else:  # Monaural
             avg_freq = (effective_left + effective_right) / 2
             phase = 2 * np.pi * np.cumsum(avg_freq) * dt
@@ -195,16 +227,50 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, global_audi
                 phase_right = 2 * np.pi * np.cumsum(effective_right) * dt
                 carrier_left = np.sin(phase_left) * volume
                 carrier_right = np.sin(phase_right) * volume
+
             elif tone_mode == "Isochronic":
-                avg_freq = (effective_left + effective_right) / 2
-                phase = 2 * np.pi * np.cumsum(avg_freq) * dt
+                # Enhanced isochronic tone generation for step-based audio
+                scf = carrier.get("start_carrier_freq", 200.0)
+                ecf = carrier.get("end_carrier_freq", 200.0)
+                sef = carrier.get("start_entrainment_freq", 10.0)
+                eef = carrier.get("end_entrainment_freq", 10.0)
+                pulse_shape = carrier.get("pulse_shape", "square").lower()
+                
+                # Create linear ramps using UI parameters
+                carrier_freq = np.linspace(scf, ecf, total_frames)
+                entrainment_freq = np.linspace(sef, eef, total_frames)
+                
+                # Apply RFM to carrier frequency
+                if enable_rfm:
+                    rfm_offset = generate_rfm_offset(total_frames, sr, rfm_range, rfm_speed)
+                else:
+                    rfm_offset = np.zeros(total_frames)
+                    
+                effective_carrier = carrier_freq + rfm_offset
+                
+                # Generate carrier signal
+                phase = 2 * np.pi * np.cumsum(effective_carrier) * dt
                 carrier_signal = np.sin(phase) * volume
-                mod_freq = np.abs(effective_left - effective_right)
-                mod_freq[mod_freq < 0.1] = np.mean(mod_freq) if np.mean(mod_freq)>0 else 10.0
-                mod_phase = 2 * np.pi * np.cumsum(mod_freq) * dt
-                mod_signal = np.where(np.sin(mod_phase) >= 0, 1.0, 0.0)
+                
+                # Generate time-base for the entrainment frequency
+                t = np.linspace(0, duration, total_frames, endpoint=False)
+                mod_phase = 2 * np.pi * entrainment_freq * t
+                
+                # Generate modulation signal based on pulse shape
+                if pulse_shape == "square":
+                    # Square wave (sharp on/off)
+                    mod_signal = np.where(np.sin(mod_phase) >= 0, 1.0, 0.0)
+                elif pulse_shape == "sine":
+                    # Sine wave for smoother transitions
+                    mod_signal = np.clip(np.sin(mod_phase), 0, 1)
+                else:  # "soft" (default from UI)
+                    # Soft transitions using tanh function
+                    mod_signal = 0.5 * (1 + np.tanh(100 * np.sin(mod_phase)))
+                
+                # Apply modulation to carrier
                 carrier_left = carrier_signal * mod_signal
                 carrier_right = carrier_left.copy()
+                
             else:  # Monaural
                 avg_freq = (effective_left + effective_right) / 2
                 phase = 2 * np.pi * np.cumsum(avg_freq) * dt
@@ -230,4 +296,3 @@ def generate_audio_file_for_steps_offline_rfm(steps, audio_filename, global_audi
         wavef.setframerate(sr)
         wavef.writeframes(waveform_int16.tobytes())
     print(f"Done. Generated stepwise audio file: {audio_filename}")
-

@@ -1,5 +1,6 @@
-
 import sys
+
+from PyQt5 import sip
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QApplication,
                              QStatusBar, QAction, QFileDialog, QMessageBox)
 from ui.step_list_panel import StepListPanel
@@ -149,6 +150,7 @@ class MainWindow(QMainWindow):
         for step in self.step_controller.steps:
             self.step_list_panel.add_step_item(step.description)
 
+    
     def handle_step_selected(self, index):
         if index < 0 or index >= len(self.step_controller.steps):
             return
@@ -163,52 +165,96 @@ class MainWindow(QMainWindow):
             mode = "Independent"
         self.step_config_panel.mode_combo.setCurrentText(mode)
         self.step_config_panel.build_oscillator_and_strobe_controls(mode)
+        
         for i, osc in enumerate(step.oscillators):
             if i < len(self.step_config_panel.osc_controls):
                 ctrl = self.step_config_panel.osc_controls[i]
-                ctrl["wave_combo"].setCurrentIndex(osc.waveform.value)
-                ctrl["freq_start"].setValue(osc.start_freq)
-                ctrl["freq_end"].setValue(osc.end_freq)
-                ctrl["duty_start"].setValue(int(osc.start_duty))
-                ctrl["duty_end"].setValue(int(osc.end_duty))
-                ctrl["rfm_enable"].setChecked(osc.enable_rfm)
-                ctrl["rfm_range"].setValue(osc.rfm_range)
-                ctrl["rfm_speed"].setValue(osc.rfm_speed)
-                ctrl["phase_pattern_combo"].setCurrentIndex(osc.phase_pattern.value)
-                ctrl["brightness_pattern_combo"].setCurrentIndex(osc.brightness_pattern.value)
-                ctrl["pattern_strength_spin"].setValue(osc.pattern_strength)
-                ctrl["pattern_freq_spin"].setValue(osc.pattern_freq)
+                try:
+                    if not sip.isdeleted(ctrl["wave_combo"]):
+                        ctrl["wave_combo"].setCurrentIndex(osc.waveform.value)
+                    if not sip.isdeleted(ctrl["freq_start"]):
+                        ctrl["freq_start"].setValue(osc.start_freq)
+                    if not sip.isdeleted(ctrl["freq_end"]):
+                        ctrl["freq_end"].setValue(osc.end_freq)
+                    if not sip.isdeleted(ctrl["duty_start"]):
+                        ctrl["duty_start"].setValue(int(osc.start_duty))
+                    if not sip.isdeleted(ctrl["duty_end"]):
+                        ctrl["duty_end"].setValue(int(osc.end_duty))
+                    if not sip.isdeleted(ctrl["rfm_enable"]):
+                        ctrl["rfm_enable"].setChecked(osc.enable_rfm)
+                    if not sip.isdeleted(ctrl["rfm_range"]):
+                        ctrl["rfm_range"].setValue(osc.rfm_range)
+                    if not sip.isdeleted(ctrl["rfm_speed"]):
+                        ctrl["rfm_speed"].setValue(osc.rfm_speed)
+                    if not sip.isdeleted(ctrl["phase_pattern_combo"]):
+                        ctrl["phase_pattern_combo"].setCurrentIndex(osc.phase_pattern.value)
+                    if not sip.isdeleted(ctrl["brightness_pattern_combo"]):
+                        ctrl["brightness_pattern_combo"].setCurrentIndex(osc.brightness_pattern.value)
+                    if not sip.isdeleted(ctrl["pattern_strength_spin"]):
+                        ctrl["pattern_strength_spin"].setValue(osc.pattern_strength)
+                    if not sip.isdeleted(ctrl["pattern_freq_spin"]):
+                        ctrl["pattern_freq_spin"].setValue(osc.pattern_freq)
+                except Exception as e:
+                    print(f"Error updating oscillator control {i}: {e}")
+        
         for i, sset in enumerate(step.strobe_sets):
             if i < len(self.step_config_panel.strobe_controls):
                 ctrl = self.step_config_panel.strobe_controls[i]
-                # Convert strobe intensities to int before calling setValue
-                ctrl["strobe_start"].setValue(int(sset.start_intensity))
-                ctrl["strobe_end"].setValue(int(sset.end_intensity))
+                try:
+                    if not sip.isdeleted(ctrl["strobe_start"]):
+                        ctrl["strobe_start"].setValue(int(sset.start_intensity))
+                    if not sip.isdeleted(ctrl["strobe_end"]):
+                        ctrl["strobe_end"].setValue(int(sset.end_intensity))
+                except Exception as e:
+                    print(f"Error setting strobe values for control {i}: {e}")
+        
         # Update the audio settings panel with the step's audio settings.
         audio_settings = step.audio_settings or {"carriers": []}
         carriers = audio_settings.get("carriers", [])
         for i, cpanel in enumerate(self.audio_settings_panel.carrier_panels):
-            if i < len(carriers):
-                carrier = carriers[i]
-                cpanel.start_freq_left.setValue(carrier.get("start_freq_left", 205.0))
-                cpanel.end_freq_left.setValue(carrier.get("end_freq_left", 205.0))
-                cpanel.start_freq_right.setValue(carrier.get("start_freq_right", 195.0))
-                cpanel.end_freq_right.setValue(carrier.get("end_freq_right", 195.0))
-                cpanel.tone_mode_combo.setCurrentText(carrier.get("tone_mode", "Binaural"))
-                cpanel.volume.setValue(int(carrier.get("volume", 1.0)*100))
-                cpanel.rfm_enable.setChecked(carrier.get("enable_rfm", False))
-                cpanel.rfm_range.setValue(carrier.get("rfm_range", 0.5))
-                cpanel.rfm_speed.setValue(carrier.get("rfm_speed", 0.2))
-            else:
-                cpanel.start_freq_left.setValue(205.0 if i == 0 else 200.0)
-                cpanel.end_freq_left.setValue(205.0 if i == 0 else 200.0)
-                cpanel.start_freq_right.setValue(195.0 if i == 0 else 200.0)
-                cpanel.end_freq_right.setValue(195.0 if i == 0 else 200.0)
-                cpanel.tone_mode_combo.setCurrentText("Binaural")
-                cpanel.volume.setValue(100 if i == 0 else 50)
-                cpanel.rfm_enable.setChecked(False)
-                cpanel.rfm_range.setValue(0.5)
-                cpanel.rfm_speed.setValue(0.2)
+            try:
+                if not sip.isdeleted(cpanel):
+                    if i < len(carriers):
+                        carrier = carriers[i]
+                        if not sip.isdeleted(cpanel.start_freq_left):
+                            cpanel.start_freq_left.setValue(carrier.get("start_freq_left", 205.0))
+                        if not sip.isdeleted(cpanel.end_freq_left):
+                            cpanel.end_freq_left.setValue(carrier.get("end_freq_left", 205.0))
+                        if not sip.isdeleted(cpanel.start_freq_right):
+                            cpanel.start_freq_right.setValue(carrier.get("start_freq_right", 195.0))
+                        if not sip.isdeleted(cpanel.end_freq_right):
+                            cpanel.end_freq_right.setValue(carrier.get("end_freq_right", 195.0))
+                        if not sip.isdeleted(cpanel.tone_mode_combo):
+                            cpanel.tone_mode_combo.setCurrentText(carrier.get("tone_mode", "Binaural"))
+                        if not sip.isdeleted(cpanel.volume):
+                            cpanel.volume.setValue(int(carrier.get("volume", 1.0)*100))
+                        if not sip.isdeleted(cpanel.rfm_enable):
+                            cpanel.rfm_enable.setChecked(carrier.get("enable_rfm", False))
+                        if not sip.isdeleted(cpanel.rfm_range):
+                            cpanel.rfm_range.setValue(carrier.get("rfm_range", 0.5))
+                        if not sip.isdeleted(cpanel.rfm_speed):
+                            cpanel.rfm_speed.setValue(carrier.get("rfm_speed", 0.2))
+                    else:
+                        if not sip.isdeleted(cpanel.start_freq_left):
+                            cpanel.start_freq_left.setValue(205.0 if i == 0 else 200.0)
+                        if not sip.isdeleted(cpanel.end_freq_left):
+                            cpanel.end_freq_left.setValue(205.0 if i == 0 else 200.0)
+                        if not sip.isdeleted(cpanel.start_freq_right):
+                            cpanel.start_freq_right.setValue(195.0 if i == 0 else 200.0)
+                        if not sip.isdeleted(cpanel.end_freq_right):
+                            cpanel.end_freq_right.setValue(195.0 if i == 0 else 200.0)
+                        if not sip.isdeleted(cpanel.tone_mode_combo):
+                            cpanel.tone_mode_combo.setCurrentText("Binaural")
+                        if not sip.isdeleted(cpanel.volume):
+                            cpanel.volume.setValue(100 if i == 0 else 50)
+                        if not sip.isdeleted(cpanel.rfm_enable):
+                            cpanel.rfm_enable.setChecked(False)
+                        if not sip.isdeleted(cpanel.rfm_range):
+                            cpanel.rfm_range.setValue(0.5)
+                        if not sip.isdeleted(cpanel.rfm_speed):
+                            cpanel.rfm_speed.setValue(0.2)
+            except Exception as e:
+                print(f"Error updating audio settings for carrier panel {i}: {e}")
 
     def handle_apply_osc1_to_all(self):
         mode = self.step_config_panel.mode_combo.currentText()
@@ -232,6 +278,7 @@ class MainWindow(QMainWindow):
     def handle_mode_changed(self, mode):
         self.step_config_panel.build_oscillator_and_strobe_controls(mode)
 
+    
     def handle_submit_step(self):
         index = self.step_list_panel.step_list.currentRow()
         if index < 0 or index >= len(self.step_controller.steps):
@@ -286,20 +333,33 @@ class MainWindow(QMainWindow):
         step.strobe_sets = strobe_sets
 
         # Save per-step audio settings from the audio settings panel.
+        
+# Save per-step audio settings from the audio settings panel.
         carriers = []
         for cpanel in self.audio_settings_panel.carrier_panels:
+            tone_mode = cpanel.tone_mode_combo.currentText()
             carrier = {
                 "enabled": cpanel.enabled.isChecked(),
-                "start_freq_left": cpanel.start_freq_left.value(),
-                "end_freq_left": cpanel.end_freq_left.value(),
-                "start_freq_right": cpanel.start_freq_right.value(),
-                "end_freq_right": cpanel.end_freq_right.value(),
-                "tone_mode": cpanel.tone_mode_combo.currentText(),
+                "tone_mode": tone_mode,
                 "volume": cpanel.volume.value() / 100.0,
                 "enable_rfm": cpanel.rfm_enable.isChecked(),
                 "rfm_range": cpanel.rfm_range.value(),
                 "rfm_speed": cpanel.rfm_speed.value()
             }
+            if tone_mode == "Binaural":
+                carrier["start_freq_left"] = cpanel.start_freq_left.value()
+                carrier["end_freq_left"] = cpanel.end_freq_left.value()
+                carrier["start_freq_right"] = cpanel.start_freq_right.value()
+                carrier["end_freq_right"] = cpanel.end_freq_right.value()
+            elif tone_mode == "Isochronic":
+                carrier["start_carrier_freq"] = cpanel.start_carrier_freq.value()
+                carrier["end_carrier_freq"] = cpanel.end_carrier_freq.value()
+                carrier["start_entrainment_freq"] = cpanel.start_entrainment_freq.value()
+                carrier["end_entrainment_freq"] = cpanel.end_entrainment_freq.value()
+                carrier["pulse_shape"] = cpanel.pulse_shape_combo.currentText().lower()
+            else:  # Monaural
+                carrier["start_freq"] = cpanel.start_freq.value()
+                carrier["end_freq"] = cpanel.end_freq.value()
             carriers.append(carrier)
         step.audio_settings = {"carriers": carriers}
         self.step_list_panel.update_step_item(index, step.description)
@@ -351,28 +411,74 @@ class MainWindow(QMainWindow):
 
     def _save_to_file(self, fname):
         panel = self.audio_settings_panel.global_audio_panel
-        self.audio_settings["enabled"] = panel.enabled.isChecked()
-        self.audio_settings["enable_pink_noise"] = panel.pink_noise_enable.isChecked()
-        self.audio_settings["pink_noise_volume"] = panel.pink_noise_volume.value() / 100.0
-        self.audio_settings["global_rfm_enable"] = panel.global_rfm_enable.isChecked()
-        self.audio_settings["global_rfm_range"] = panel.global_rfm_range.value()
-        self.audio_settings["global_rfm_speed"] = panel.global_rfm_speed.value()
-        self.audio_settings["sample_rate"] = panel.sample_rate.value()
+        try:
+            if not sip.isdeleted(panel):
+                self.audio_settings["enabled"] = panel.enabled.isChecked()
+                self.audio_settings["enable_pink_noise"] = panel.pink_noise_enable.isChecked()
+                self.audio_settings["pink_noise_volume"] = panel.pink_noise_volume.value() / 100.0
+                self.audio_settings["global_rfm_enable"] = panel.global_rfm_enable.isChecked()
+                self.audio_settings["global_rfm_range"] = panel.global_rfm_range.value()
+                self.audio_settings["global_rfm_speed"] = panel.global_rfm_speed.value()
+                self.audio_settings["sample_rate"] = panel.sample_rate.value()
+        except Exception as e:
+            print(f"Error reading global audio panel: {e}")
+        
         carriers = []
-        for cpanel in self.audio_settings_panel.carrier_panels:
-            carrier = {
-                "enabled": cpanel.enabled.isChecked(),
-                "start_freq_left": cpanel.start_freq_left.value(),
-                "end_freq_left": cpanel.end_freq_left.value(),
-                "start_freq_right": cpanel.start_freq_right.value(),
-                "end_freq_right": cpanel.end_freq_right.value(),
-                "tone_mode": cpanel.tone_mode_combo.currentText(),
-                "volume": cpanel.volume.value() / 100.0,
-                "enable_rfm": cpanel.rfm_enable.isChecked(),
-                "rfm_range": cpanel.rfm_range.value(),
-                "rfm_speed": cpanel.rfm_speed.value()
-            }
-            carriers.append(carrier)
+        for i, cpanel in enumerate(self.audio_settings_panel.carrier_panels):
+            try:
+                if not sip.isdeleted(cpanel):
+                    tone_mode = cpanel.tone_mode_combo.currentText()
+                    carrier = {
+                        "enabled": cpanel.enabled.isChecked(),
+                        "tone_mode": tone_mode,
+                        "volume": cpanel.volume.value() / 100.0,
+                        "enable_rfm": cpanel.rfm_enable.isChecked(),
+                        "rfm_range": cpanel.rfm_range.value(),
+                        "rfm_speed": cpanel.rfm_speed.value()
+                    }
+                    if tone_mode == "Binaural":
+                        carrier["start_freq_left"] = cpanel.start_freq_left.value()
+                        carrier["end_freq_left"] = cpanel.end_freq_left.value()
+                        carrier["start_freq_right"] = cpanel.start_freq_right.value()
+                        carrier["end_freq_right"] = cpanel.end_freq_right.value()
+                    elif tone_mode == "Isochronic":
+                        carrier["start_carrier_freq"] = cpanel.start_carrier_freq.value()
+                        carrier["end_carrier_freq"] = cpanel.end_carrier_freq.value()
+                        carrier["start_entrainment_freq"] = cpanel.start_entrainment_freq.value()
+                        carrier["end_entrainment_freq"] = cpanel.end_entrainment_freq.value()
+                        carrier["pulse_shape"] = cpanel.pulse_shape_combo.currentText().lower()
+                    else:  # Monaural
+                        carrier["start_freq"] = cpanel.start_freq.value()
+                        carrier["end_freq"] = cpanel.end_freq.value()
+                else:
+                    # Use defaults if panel is deleted.
+                    carrier = {
+                        "enabled": True,
+                        "tone_mode": "Binaural",
+                        "volume": 1.0 if i == 0 else 0.5,
+                        "enable_rfm": False,
+                        "rfm_range": 0.5,
+                        "rfm_speed": 0.2,
+                        "start_freq_left": 205.0 if i == 0 else 200.0,
+                        "end_freq_left": 205.0 if i == 0 else 200.0,
+                        "start_freq_right": 195.0 if i == 0 else 200.0,
+                        "end_freq_right": 195.0 if i == 0 else 200.0
+                    }
+                carriers.append(carrier)
+            except Exception as e:
+                print(f"Error reading carrier panel {i}: {e}")
+                carriers.append({
+                    "enabled": True,
+                    "tone_mode": "Binaural",
+                    "volume": 1.0 if i == 0 else 0.5,
+                    "enable_rfm": False,
+                    "rfm_range": 0.5,
+                    "rfm_speed": 0.2,
+                    "start_freq_left": 205.0 if i == 0 else 200.0,
+                    "end_freq_left": 205.0 if i == 0 else 200.0,
+                    "start_freq_right": 195.0 if i == 0 else 200.0,
+                    "end_freq_right": 195.0 if i == 0 else 200.0
+                })
         self.audio_settings["carriers"] = carriers
         if self.file_controller.save_sequence(fname, self.step_controller.steps,
                                               self.audio_settings,
