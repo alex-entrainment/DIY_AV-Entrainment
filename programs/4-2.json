@@ -1,0 +1,975 @@
+{
+  "steps": [
+    {
+      "duration": 60.0,
+      "description": "60 10Hz intro",
+      "oscillators": [
+        {
+          "start_freq": 10.0,
+          "end_freq": 10.0,
+          "waveform": 1,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 20,
+          "end_intensity": 50,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 360.0,
+      "description": "360 10Hz -> 4Hz",
+      "oscillators": [
+        {
+          "start_freq": 10.0,
+          "end_freq": 4.0,
+          "waveform": 1,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 50,
+          "end_intensity": 50,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 360.0,
+      "description": "360 4Hz ",
+      "oscillators": [
+        {
+          "start_freq": 4.0,
+          "end_freq": 4.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 50,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 60.0,
+      "description": "60 4Hz -> 2Hz ",
+      "oscillators": [
+        {
+          "start_freq": 4.0,
+          "end_freq": 2.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 240.0,
+      "description": "240 2Hz ",
+      "oscillators": [
+        {
+          "start_freq": 2.0,
+          "end_freq": 2.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 60.0,
+      "description": "60 2Hz -> 4Hz ",
+      "oscillators": [
+        {
+          "start_freq": 2.0,
+          "end_freq": 4.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 360.0,
+      "description": "360 4Hz (2)",
+      "oscillators": [
+        {
+          "start_freq": 4.0,
+          "end_freq": 4.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 60.0,
+      "description": "60 4Hz -> 2Hz  (2)",
+      "oscillators": [
+        {
+          "start_freq": 4.0,
+          "end_freq": 2.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 240.0,
+      "description": "240 2Hz  ",
+      "oscillators": [
+        {
+          "start_freq": 2.0,
+          "end_freq": 2.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 60.0,
+      "description": "60 2Hz -> 4Hz  (2)",
+      "oscillators": [
+        {
+          "start_freq": 2.0,
+          "end_freq": 4.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 360.0,
+      "description": "360 4Hz (2) (Copy)",
+      "oscillators": [
+        {
+          "start_freq": 4.0,
+          "end_freq": 4.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 40,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    },
+    {
+      "duration": 180.0,
+      "description": "END",
+      "oscillators": [
+        {
+          "start_freq": 4.0,
+          "end_freq": 20.0,
+          "waveform": 2,
+          "start_duty": 50,
+          "end_duty": 50,
+          "enable_rfm": false,
+          "rfm_range": 0.5,
+          "rfm_speed": 0.2,
+          "phase_pattern": 0,
+          "brightness_pattern": 0,
+          "pattern_strength": 1.0,
+          "pattern_freq": 1.0
+        }
+      ],
+      "strobe_sets": [
+        {
+          "channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "start_intensity": 40,
+          "end_intensity": 20,
+          "oscillator_weights": [
+            1.0
+          ]
+        }
+      ],
+      "audio_settings": {
+        "carriers": [
+          {
+            "enabled": true,
+            "tone_mode": "Binaural",
+            "volume": 1.0,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 205.0,
+            "end_freq_left": 205.0,
+            "start_freq_right": 195.0,
+            "end_freq_right": 195.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          },
+          {
+            "enabled": false,
+            "tone_mode": "Binaural",
+            "volume": 0.5,
+            "enable_rfm": false,
+            "rfm_range": 0.5,
+            "rfm_speed": 0.2,
+            "start_freq_left": 200.0,
+            "end_freq_left": 200.0,
+            "start_freq_right": 200.0,
+            "end_freq_right": 200.0
+          }
+        ]
+      }
+    }
+  ],
+  "audio_settings": {
+    "enabled": false,
+    "enable_pink_noise": false,
+    "pink_noise_volume": 0.1,
+    "global_rfm_enable": false,
+    "global_rfm_range": 0.5,
+    "global_rfm_speed": 0.2,
+    "sample_rate": 44100,
+    "carriers": [
+      {
+        "enabled": true,
+        "tone_mode": "Binaural",
+        "volume": 1.0,
+        "enable_rfm": false,
+        "rfm_range": 0.5,
+        "rfm_speed": 0.2,
+        "start_freq_left": 205.0,
+        "end_freq_left": 205.0,
+        "start_freq_right": 195.0,
+        "end_freq_right": 195.0
+      },
+      {
+        "enabled": false,
+        "tone_mode": "Binaural",
+        "volume": 0.5,
+        "enable_rfm": false,
+        "rfm_range": 0.5,
+        "rfm_speed": 0.2,
+        "start_freq_left": 200.0,
+        "end_freq_left": 200.0,
+        "start_freq_right": 200.0,
+        "end_freq_right": 200.0
+      },
+      {
+        "enabled": false,
+        "tone_mode": "Binaural",
+        "volume": 0.5,
+        "enable_rfm": false,
+        "rfm_range": 0.5,
+        "rfm_speed": 0.2,
+        "start_freq_left": 200.0,
+        "end_freq_left": 200.0,
+        "start_freq_right": 200.0,
+        "end_freq_right": 200.0
+      }
+    ]
+  }
+}
