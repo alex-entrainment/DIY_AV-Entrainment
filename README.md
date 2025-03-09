@@ -31,8 +31,7 @@ The result is a flexible platform for exploring entrainment principles. The syst
 ![device front](https://github.com/user-attachments/assets/9552d6c8-8354-40ea-99f3-c1e1ff4e83d6)
 ![device back](https://github.com/user-attachments/assets/c19d92c4-99ef-4471-9ec9-e069b728cf6b)
 
-
-![20250302_183403](https://github.com/user-attachments/assets/f70ead3a-a407-4b74-a07f-14bea2b9fd1e)
+![20250308_190018](https://github.com/user-attachments/assets/f11bc455-edf9-4216-9470-9396f6ea62ef)
 
 
 
