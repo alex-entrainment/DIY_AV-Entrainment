@@ -7,6 +7,7 @@ import time
 import os
 import numpy as np
 from collections import deque
+import subprocess  # For calling ffplay
 
 import board
 import busio
@@ -14,6 +15,8 @@ from adafruit_pca9685 import PCA9685
 
 import wave
 import pyaudio
+import soundfile as sf
+import io
 
 from sequence_model import (
     Step,
@@ -25,43 +28,51 @@ from sequence_model import (
 )
 
 # ------------------------------------------------------------------
-# Streaming AudioPlayer class using wave and PyAudio with callback
+# Streaming AudioPlayer class supporting WAV, FLAC, and MP3 formats
 # ------------------------------------------------------------------
 
 class AudioPlayer:
     """
     An optimized streaming audio player for Raspberry Pi using PyAudio's callback mechanism.
-    This approach offloads timing to PyAudio and uses the default ALSA device (allowing the plug plugin
-    to handle sample conversion and buffering), which reduces clicky artifacts.
+    Supports WAV, FLAC, and MP3 formats.
+    
+    For FLAC files, instead of loading the file into memory, a subprocess call is made
+    to ffplay (with -nodisp and -autoexit) to play the file, which you can synchronize
+    with your LED sequence.
     """
     def __init__(self, audio_file, volume=1.0, chunk_size=8192):
         """
         Parameters:
-            audio_file (str): Path to the .wav file
+            audio_file (str): Path to the audio file (.wav, .flac, or .mp3)
             volume (float): Volume multiplier (1.0 is normal volume)
             chunk_size (int): Number of frames per buffer (increased for smoother playback)
         """
         self.audio_file = audio_file
         self.volume = volume
-        self.chunk_size = chunk_size  # Increased chunk size for smoother playback
+        self.chunk_size = chunk_size
         self.playing = False
         self.paused = False
         self.stop_flag = False
         self.lock = threading.Lock()
-        
-        # Open and analyze the audio file
+        self.temp_wav_file = None  # Not used in this version
+        self.proc = None  # For ffplay subprocess (FLAC playback)
+
+        # Determine file format from extension
+        _, file_ext = os.path.splitext(audio_file.lower())
+        self.file_format = file_ext[1:]  # Remove the dot
+
         try:
-            self.wf = wave.open(audio_file, 'rb')
-            self.channels = self.wf.getnchannels()
-            self.sample_width = self.wf.getsampwidth()
-            self.frame_rate = self.wf.getframerate()
-            self.total_frames = self.wf.getnframes()
-            self.duration = (self.total_frames / self.frame_rate) * 1000  # in milliseconds
-            
+            if self.file_format == 'wav':
+                self._load_wav()
+            elif self.file_format == 'flac':
+                self._prepare_flac()  # Use ffprobe/info, not loading full data
+            elif self.file_format == 'mp3':
+                self._load_mp3()
+            else:
+                raise ValueError(f"Unsupported audio format: {self.file_format}")
+
             # Log audio file details for debugging
             print(f"Audio file details: {self.channels} channels, {self.sample_width} bytes/sample, {self.frame_rate} Hz")
-            
-            # Check if frame rate is suitable for Pi (reduce if too high)
             if self.frame_rate > 44100 and self.channels > 1:
                 print(f"Warning: High sample rate ({self.frame_rate}Hz) with {self.channels} channels may cause issues on Raspberry Pi")
                 
@@ -70,13 +81,55 @@ class AudioPlayer:
             print(f"Error loading audio file: {e}")
             self.loaded = False
             
-        # Initialize PyAudio
+        # Initialize PyAudio (only used for wav/mp3 playback)
         self.pyaudio_instance = pyaudio.PyAudio()
         self.stream = None
 
+    def _load_wav(self):
+        """Load a WAV file using the wave module"""
+        self.wf = wave.open(self.audio_file, 'rb')
+        self.channels = self.wf.getnchannels()
+        self.sample_width = self.wf.getsampwidth()
+        self.frame_rate = self.wf.getframerate()
+        self.total_frames = self.wf.getnframes()
+        self.duration = (self.total_frames / self.frame_rate) * 1000  # in milliseconds
+
+    def _prepare_flac(self):
+        """
+        Prepare a FLAC file by reading its info without loading full data.
+        We use sf.info() to retrieve parameters and then rely on ffplay for playback.
+        """
+        info = sf.info(self.audio_file)
+        self.channels = info.channels
+        self.frame_rate = info.samplerate
+        self.total_frames = info.frames
+        self.duration = (self.total_frames / self.frame_rate) * 1000  # in milliseconds
+        self.sample_width = 2  # Assuming 16-bit audio
+
+    def _load_mp3(self):
+        """Load an MP3 file using ffmpeg to convert to an in-memory WAV stream"""
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-i", self.audio_file,
+            "-f", "wav",
+            "-"
+        ]
+        process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode != 0:
+            raise Exception("ffmpeg error: " + process.stderr.decode())
+        wav_data = process.stdout
+        wav_io = io.BytesIO(wav_data)
+        self.wf = wave.open(wav_io, 'rb')
+        self.channels = self.wf.getnchannels()
+        self.frame_rate = self.wf.getframerate()
+        self.sample_width = self.wf.getsampwidth()
+        self.total_frames = self.wf.getnframes()
+        self.duration = (self.total_frames / self.frame_rate) * 1000  # in milliseconds
+
     def _callback(self, in_data, frame_count, time_info, status):
         """
-        PyAudio callback function that streams audio data from the wave file.
+        PyAudio callback function that streams audio data from the file.
+        This is used for WAV and MP3 playback.
         """
         data = self.wf.readframes(frame_count)
         if len(data) == 0:
@@ -95,30 +148,38 @@ class AudioPlayer:
         if not self.loaded:
             return False
         try:
-            # Stop any previous stream
-            if self.stream is not None:
-                self.stop()
-
-            # Set the wave file pointer
-            start_frame = int((start_position_ms / 1000.0) * self.frame_rate)
-            self.wf.setpos(start_frame)
-
-            # Reset flags
-            self.stop_flag = False
-            self.playing = True
-            self.paused = False
-
-            # Open the stream using the callback mechanism and the default ALSA device
-            self.stream = self.pyaudio_instance.open(
-                format=self.pyaudio_instance.get_format_from_width(self.sample_width),
-                channels=self.channels,
-                rate=self.frame_rate,
-                output=True,
-                frames_per_buffer=self.chunk_size,
-                output_device_index=0,  # Use default device (will utilize plug plugin)
-                stream_callback=self._callback
-            )
-            self.stream.start_stream()
+            if self.file_format == 'flac':
+                # For FLAC files, spawn ffplay to handle playback.
+                start_seconds = start_position_ms / 1000.0
+                cmd = [
+                    "ffplay",
+                    "-nodisp",
+                    "-autoexit",
+                    "-loglevel", "error",
+                    "-ss", str(start_seconds),
+                    self.audio_file
+                ]
+                self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                # For WAV and MP3, use PyAudio's callback mechanism.
+                if self.stream is not None:
+                    self.stop()
+                # Set file pointer
+                start_frame = int((start_position_ms / 1000.0) * self.frame_rate)
+                self.wf.setpos(start_frame)
+                self.stop_flag = False
+                self.playing = True
+                self.paused = False
+                self.stream = self.pyaudio_instance.open(
+                    format=self.pyaudio_instance.get_format_from_width(self.sample_width),
+                    channels=self.channels,
+                    rate=self.frame_rate,
+                    output=True,
+                    frames_per_buffer=self.chunk_size,
+                    output_device_index=0,
+                    stream_callback=self._callback
+                )
+                self.stream.start_stream()
             return True
         except Exception as e:
             print(f"Error playing audio: {e}")
@@ -128,16 +189,23 @@ class AudioPlayer:
         with self.lock:
             self.stop_flag = True
             self.playing = False
-        if self.stream is not None:
-            try:
-                self.stream.stop_stream()
-                self.stream.close()
-            except Exception as e:
-                print(f"Error closing stream: {e}")
-            self.stream = None
-        # Rewind the file for potential future playback
-        if self.loaded:
-            self.wf.rewind()
+        if self.file_format == 'flac':
+            if self.proc is not None:
+                try:
+                    self.proc.terminate()
+                    self.proc = None
+                except Exception as e:
+                    print(f"Error stopping ffplay process: {e}")
+        else:
+            if self.stream is not None:
+                try:
+                    self.stream.stop_stream()
+                    self.stream.close()
+                except Exception as e:
+                    print(f"Error closing stream: {e}")
+                self.stream = None
+            if self.loaded:
+                self.wf.rewind()
 
     def is_playing(self):
         return self.playing and not self.paused
@@ -147,11 +215,16 @@ class AudioPlayer:
         self.stop()
         if hasattr(self, 'pyaudio_instance') and self.pyaudio_instance:
             self.pyaudio_instance.terminate()
-        if hasattr(self, 'wf') and self.wf:
+        if hasattr(self, 'wf') and self.file_format in ['wav', 'mp3'] and self.wf:
             self.wf.close()
+        if self.proc is not None:
+            try:
+                self.proc.terminate()
+            except:
+                pass
 
 # ------------------------------------------------------------------
-# 1) Smooth RFM Implementation
+# Smooth RFM Implementation (unchanged)
 # ------------------------------------------------------------------
 
 class SmoothRFM:
@@ -193,7 +266,7 @@ class SmoothRFM:
         return smoothed_offset
 
 # ------------------------------------------------------------------
-# 2) PHASE & BRIGHTNESS PATTERN FUNCTIONS
+# Phase & Brightness Pattern Functions (unchanged)
 # ------------------------------------------------------------------
 
 def compute_phase_offset(osc: Oscillator, i: int, t: float) -> float:
@@ -247,7 +320,7 @@ def compute_brightness_mod(osc: Oscillator, i: int, t: float) -> float:
     return 1.0
 
 # ------------------------------------------------------------------
-# 3) BASE OSCILLATOR & STROBE HELPER FUNCTIONS
+# Base Oscillator & Strobe Helper Functions (unchanged)
 # ------------------------------------------------------------------
 
 def compute_frequency(osc: Oscillator, t: float, step_duration: float, offset: float) -> float:
@@ -277,37 +350,48 @@ def compute_strobe_intensity(sset: StrobeSet, t: float, step_duration: float, os
     return (base / 100.0) * mixed
 
 # ------------------------------------------------------------------
-# 4) MAIN run_sequence FUNCTION
+# Main run_sequence FUNCTION
 # ------------------------------------------------------------------
 
 def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_filename: str,
                  start_from: float = 0.0, volume: float = 1.0):
     """
-    Main routine to run the LED sequence with optional audio playback.
-    Uses the streaming AudioPlayer (now using callback streaming) to reduce memory usage and CPU overhead.
+    Main routine to run the LED sequence with audio playback.
+    Audio detection is always enabled by default.
+    For FLAC files, playback is handled by ffplay via a subprocess.
     """
     audio_player = None
-    if audio_settings.enabled:
-        base, _ = os.path.splitext(sequence_filename)
-        audio_filename = base + ".wav"
-        if os.path.exists(audio_filename):
-            try:
-                # Check the audio file using the wave module directly first
+    base, _ = os.path.splitext(sequence_filename)
+    audio_formats = [".wav", ".flac", ".mp3"]
+    audio_filename = None
+
+    for ext in audio_formats:
+        temp_filename = base + ext
+        if os.path.exists(temp_filename):
+            audio_filename = temp_filename
+            print(f"Found audio file: {audio_filename}")
+            break
+
+    if audio_filename:
+        try:
+            # For WAV files, do a preliminary check with wave module
+            _, file_ext = os.path.splitext(audio_filename.lower())
+            if file_ext == ".wav":
                 with wave.open(audio_filename, 'rb') as wf:
                     print(f"Audio file check: {wf.getnchannels()} channels, {wf.getsampwidth()} bytes/sample, {wf.getframerate()} Hz")
-                    
-                # Create the audio player with an increased chunk size for smoother playback
-                audio_player = AudioPlayer(audio_filename, volume, chunk_size=8192)
-                if not audio_player.loaded:
-                    print(f"Failed to load audio file: {audio_filename}")
-                    audio_player = None
-                else:
-                    print(f"Audio loaded: {audio_filename}")
-            except Exception as e:
-                print(f"ERROR: Could not initialize audio player for {audio_filename}: {e}")
+            audio_player = AudioPlayer(audio_filename, volume, chunk_size=8192)
+            if not audio_player.loaded:
+                print(f"Failed to load audio file: {audio_filename}")
                 audio_player = None
-        else:
-            print(f"No matching audio file found: {audio_filename}")
+            else:
+                print(f"Audio loaded: {audio_filename}")
+        except Exception as e:
+            print(f"ERROR: Could not initialize audio player for {audio_filename}: {e}")
+            audio_player = None
+    else:
+        print(f"No matching audio file found for {base} with extensions {audio_formats}")
+        print("Continuing sequence without audio playback")
+
     i2c = busio.I2C(board.SCL, board.SDA)
     pca = PCA9685(i2c)
     pca.frequency = 1000
@@ -329,14 +413,13 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
             time_offset_within_step = 0
         if start_from > 0:
             print(f"Starting sequence from step #{start_step_index+1} at {time_offset_within_step:.2f}s into that step")
-        if audio_settings.enabled and audio_player and audio_player.loaded:
+        if audio_player and audio_player.loaded:
             start_position_ms = int(start_from * 1000)
             if audio_player.play(start_position_ms):
                 print(f"Audio started at position {start_from:.2f}s")
             else:
                 print("Failed to start audio playback")
-        
-        # Process each step; note the sleep interval is kept minimal
+
         for step_index, step in enumerate(steps[start_step_index:], start_step_index):
             print(f"\n=== Starting step #{step_index+1}: '{step.description}' ===")
             print(f" Duration = {step.duration}s, {len(step.oscillators)} oscillator(s).")
@@ -350,9 +433,7 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
             start_time = time.monotonic()
             prev_time = start_time
             step_is_complete = False
-            initial_elapsed = 0
-            if step_index == start_step_index and time_offset_within_step > 0:
-                initial_elapsed = time_offset_within_step
+            initial_elapsed = time_offset_within_step if (step_index == start_step_index and time_offset_within_step > 0) else 0
             while not step_is_complete:
                 current_time = time.monotonic()
                 elapsed = current_time - start_time + initial_elapsed
@@ -361,7 +442,6 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
                 if elapsed >= step.duration:
                     step_is_complete = True
                     continue
-                # Update oscillator modulation parameters
                 rfm_offsets = [0.0] * len(step.oscillators)
                 for i, osc in enumerate(step.oscillators):
                     if rfm_modules[i] is not None:
@@ -407,7 +487,7 @@ def run_sequence(steps: list[Step], audio_settings: AudioSettings, sequence_file
             print("Audio stopped.")
 
 # ------------------------------------------------------------------
-# 5) MAIN ENTRY POINT
+# Main Entry Point
 # ------------------------------------------------------------------
 
 def main():
@@ -428,11 +508,10 @@ def main():
     except json.JSONDecodeError:
         print(f"Error: File '{filename}' is not a valid JSON file.")
         return
-    steps = []
-    for s_dict in data["steps"]:
-        step_obj = Step.from_dict(s_dict)
-        steps.append(step_obj)
+    steps = [Step.from_dict(s_dict) for s_dict in data["steps"]]
+    
     audio_settings_dict = data.get("audio_settings", {})
+    audio_settings_dict["enabled"] = True  # Ensure audio is always enabled
     audio_settings = AudioSettings.from_dict(audio_settings_dict)
     run_sequence(steps, audio_settings, filename, args.start_from, args.volume)
 

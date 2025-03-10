@@ -1,5 +1,4 @@
-simpleaudio
-keyboard
+pyaudio
 pygame
 pydub
 pyqt5
