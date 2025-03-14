@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Callable
+from typing import Dict, List, Callable
+from .voice import VoiceParams
 
 @dataclass
 class NodeInterpolation:
