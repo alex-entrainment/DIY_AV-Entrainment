@@ -32,10 +32,49 @@ class BaseVoice(ABC):
         """Generate stereo audio output for this voice"""
         pass
         
-    def _calculate_parameter_ramp(self, duration: float, start_val: float, end_val: float) -> np.ndarray:
-        """Create linear ramp between two values over duration"""
-        samples = int(duration * self.sample_rate)
-        return np.linspace(start_val, end_val, samples)
+    def _interpolate_parameter(self, time: np.ndarray, param_name: str) -> np.ndarray:
+        """Calculate interpolated parameter values across time array"""
+        if not self.nodes:
+            return np.zeros_like(time)
+            
+        values = np.zeros_like(time)
+        current_time = 0.0
+        current_value = getattr(self.nodes[0].params, param_name)
+        
+        for i, node in enumerate(self.nodes):
+            if i == 0:
+                # First node - constant value until next node
+                next_time = node.params.duration
+                mask = (time >= current_time) & (time < next_time)
+                values[mask] = current_value
+                current_time = next_time
+                continue
+                
+            # Get interpolation configuration
+            interp = node.interpolations.get(param_name)
+            if interp is None:
+                # No interpolation - jump to new value
+                mask = (time >= current_time) & (time < current_time + node.params.duration)
+                values[mask] = getattr(node.params, param_name)
+                current_time += node.params.duration
+                continue
+                
+            # Calculate interpolated values
+            interp_end = current_time + interp.duration
+            mask = (time >= current_time) & (time < interp_end)
+            t_interp = time[mask] - current_time
+            values[mask] = interp.start_value + (getattr(node.params, param_name) - interp.start_value) * (t_interp / interp.duration)
+            
+            # Remaining node duration after interpolation
+            remaining_duration = node.params.duration - interp.duration
+            if remaining_duration > 0:
+                mask = (time >= interp_end) & (time < interp_end + remaining_duration)
+                values[mask] = getattr(node.params, param_name)
+                current_time = interp_end + remaining_duration
+            else:
+                current_time = interp_end
+                
+        return values
     
 class BinauralBeatVoice(BaseVoice):
     """Generates binaural beats with configurable carrier and beat frequencies"""
