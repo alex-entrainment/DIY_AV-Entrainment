@@ -5,14 +5,7 @@ from typing import List
 from .node import VoiceNode
 from .envelope import apply_envelope
 import librosa
-
-@dataclass
-class VoiceParams:
-    duration: float
-    beat_freq: float
-    base_freq: float
-    vol_left: float
-    vol_right: float
+from .voice_params import VoiceParams
 
 class BaseVoice(ABC):
     """Abstract base class for all voice types"""

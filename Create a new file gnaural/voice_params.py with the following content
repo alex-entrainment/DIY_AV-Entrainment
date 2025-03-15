@@ -1,0 +1,9 @@
+from dataclasses import dataclass
+
+@dataclass
+class VoiceParams:
+    duration: float
+    beat_freq: float
+    base_freq: float
+    vol_left: float
+    vol_right: float
