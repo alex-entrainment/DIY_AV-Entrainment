@@ -68,6 +68,8 @@ class BaseVoice(ABC):
             else:
                 current_time = interp_end
                 
+        mask = time >= current_time
+        values[mask] = getattr(self.nodes[-1].params, param_name)
         return values
     
 class BinauralBeatVoice(BaseVoice):
