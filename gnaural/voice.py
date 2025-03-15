@@ -147,6 +147,7 @@ class PinkNoiseVoice(BaseVoice):
         pink[:, 0] *= left_vol
         pink[:, 1] *= right_vol
         return apply_envelope(pink, self.sample_rate)
+
 class ExternalAudioVoice(BaseVoice):
     """Loads an external audio file and uses it as voice source for generation."""
     
