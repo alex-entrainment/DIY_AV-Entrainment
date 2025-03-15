@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List
 from .node import VoiceNode
 from .envelope import apply_envelope
+import librosa
 
 @dataclass
 class VoiceParams:
@@ -106,19 +107,61 @@ class IsochronicVoice(BaseVoice):
     """Generates isochronic pulse trains with configurable duty cycle"""
     
     def generate(self, duration: float) -> np.ndarray:
-        # Similar structure to binaural but with pulsed amplitude
-        pass
+        total_samples = int(duration * self.sample_rate)
+        time = np.linspace(0, duration, total_samples, endpoint=False)
+        freq = self._interpolate_parameter(time, 'base_freq')
+        left_vol = self._interpolate_parameter(time, 'vol_left')
+        right_vol = self._interpolate_parameter(time, 'vol_right')
+        pulse = (np.sin(2 * np.pi * freq * time) > 0).astype(np.float32)
+        stereo = np.column_stack((pulse * left_vol, pulse * right_vol))
+        return apply_envelope(stereo, self.sample_rate)
         
 class AlternatingIsoVoice(BaseVoice):
     """Generates alternating isochronic pulses between channels"""
     
     def generate(self, duration: float) -> np.ndarray:
-        # Implementation with alternating pulses
-        pass
+        total_samples = int(duration * self.sample_rate)
+        time = np.linspace(0, duration, total_samples, endpoint=False)
+        freq = self._interpolate_parameter(time, 'base_freq')
+        left_vol = self._interpolate_parameter(time, 'vol_left')
+        right_vol = self._interpolate_parameter(time, 'vol_right')
+        sine_wave = np.sin(2 * np.pi * freq * time)
+        pulses = (sine_wave > 0).astype(np.int32)
+        alt = np.mod(np.floor(time * freq), 2)
+        left = pulses * ((alt % 2) == 0) * left_vol
+        right = pulses * ((alt % 2) == 1) * right_vol
+        stereo = np.column_stack((left, right)).astype(np.float32)
+        return apply_envelope(stereo, self.sample_rate)
         
 class PinkNoiseVoice(BaseVoice):
     """Generates colored noise with configurable spectral profile"""
     
     def generate(self, duration: float) -> np.ndarray:
-        # Pink/brown noise implementation
-        pass
+        total_samples = int(duration * self.sample_rate)
+        white = np.random.normal(0, 1, (total_samples, 2)).astype(np.float32)
+        pink = np.cumsum(white, axis=0)
+        pink /= np.max(np.abs(pink))
+        t = np.linspace(0, duration, total_samples, endpoint=False)
+        left_vol = self._interpolate_parameter(t, 'vol_left')
+        right_vol = self._interpolate_parameter(t, 'vol_right')
+        pink[:, 0] *= left_vol
+        pink[:, 1] *= right_vol
+        return apply_envelope(pink, self.sample_rate)
+class ExternalAudioVoice(BaseVoice):
+    """Loads an external audio file and uses it as voice source for generation."""
+    
+    def __init__(self, voice_id: str, sample_rate: int, file_path: str, description: str = ""):
+        super().__init__(voice_id, sample_rate, description)
+        self.file_path = file_path
+        audio_data, sr = librosa.load(file_path, sr=sample_rate, mono=False)
+        if audio_data.ndim == 1:
+            audio_data = np.vstack([audio_data, audio_data])
+        self.audio_data = audio_data
+        self.duration_in_samples = audio_data.shape[1]
+        
+    def generate(self, duration: float) -> np.ndarray:
+        total_samples = int(duration * self.sample_rate)
+        repeats = -(-total_samples // self.duration_in_samples)
+        audio = np.tile(self.audio_data, repeats)[:, :total_samples]
+        stereo = audio.T.astype(np.float32)
+        return apply_envelope(stereo, self.sample_rate)

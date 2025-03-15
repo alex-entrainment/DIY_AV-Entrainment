@@ -4,7 +4,7 @@ from pydub import AudioSegment
 from scipy.signal import butter, lfilter
 from typing import List, Dict
 from dataclasses import dataclass
-from .voice import BaseVoice, BinauralBeatVoice, IsochronicVoice, PinkNoiseVoice, AlternatingIsoVoice
+from .voice import BaseVoice, BinauralBeatVoice, IsochronicVoice, PinkNoiseVoice, AlternatingIsoVoice, ExternalAudioVoice
 from .node import VoiceNode
 from .envelope import apply_envelope
 
@@ -23,7 +23,8 @@ class AudioGenerator:
             'binaural': BinauralBeatVoice,
             'isochronic': IsochronicVoice,
             'alternating': AlternatingIsoVoice,
-            'noise': PinkNoiseVoice
+            'noise': PinkNoiseVoice,
+            'external': ExternalAudioVoice
         }
         
         if voice_type not in voice_classes:
