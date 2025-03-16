@@ -1,7 +1,8 @@
-
 import numpy as np
 import librosa
 import soundfile as sf
+import scipy.signal
+
 
 # -----------------------------------------------------------
 # Data Classes
@@ -17,6 +18,14 @@ class Node:
 
 
 class Voice:
+    """
+    Base voice class. Subclasses should override `generate_samples` with
+    their specific audio synthesis logic. This version provides:
+
+      1) Timeline building: total duration, sample count, and node start times.
+      2) Automatic creation of interpolation arrays for base_freq, beat_freq,
+         volume_left, volume_right. This avoids Python-level per-sample loops.
+    """
     def __init__(self, nodes, sample_rate=44100):
         self.nodes = nodes
         self.sample_rate = sample_rate
@@ -29,38 +38,63 @@ class Voice:
         self.total_duration = sum(n.duration for n in self.nodes)
         self.num_samples = int(self.total_duration * self.sample_rate)
 
-    def _get_interpolated_params(self, t):
-        """
-        Returns (base_freq, beat_freq, volume_left, volume_right)
-        with linear interpolation from node to node.
-        """
-        if t >= self.total_duration:
-            last = self.nodes[-1]
-            return (last.base_freq, last.beat_freq,
-                    last.volume_left, last.volume_right)
+        # Pre-build arrays for interpolation
+        self.node_times = np.array(self.start_times, dtype=np.float64)
+        self.base_freq_values = np.array([n.base_freq for n in self.nodes], dtype=np.float64)
+        self.beat_freq_values = np.array([n.beat_freq for n in self.nodes], dtype=np.float64)
+        self.vol_left_values = np.array([n.volume_left for n in self.nodes], dtype=np.float64)
+        self.vol_right_values = np.array([n.volume_right for n in self.nodes], dtype=np.float64)
 
-        for i in range(len(self.nodes) - 1):
-            t0 = self.start_times[i]
-            t1 = self.start_times[i+1]
-            if t0 <= t < t1:
-                frac = (t - t0) / (t1 - t0)
-                n0, n1 = self.nodes[i], self.nodes[i+1]
-                base = n0.base_freq + frac*(n1.base_freq - n0.base_freq)
-                beat = n0.beat_freq + frac*(n1.beat_freq - n0.beat_freq)
-                vl = n0.volume_left + frac*(n1.volume_left - n0.volume_left)
-                vr = n0.volume_right + frac*(n1.volume_right - n0.volume_right)
-                return (base, beat, vl, vr)
+    def _get_param_arrays(self):
+        """
+        Returns:
+          t_array          : time array [0..total_duration)
+          base_freq_array  : base freq interpolated across nodes
+          beat_freq_array  : beat freq interpolated across nodes
+          vol_left_array   : volume left interpolated across nodes
+          vol_right_array  : volume right interpolated across nodes
+        """
+        if self.num_samples == 0:
+            # Edge case: no samples
+            return (
+                np.array([], dtype=np.float32),
+                np.array([], dtype=np.float32),
+                np.array([], dtype=np.float32),
+                np.array([], dtype=np.float32),
+                np.array([], dtype=np.float32),
+            )
 
-        # If we somehow didn't return, it means we're after last node but < total_duration
-        last = self.nodes[-1]
-        return (last.base_freq, last.beat_freq, last.volume_left, last.volume_right)
+        t_array = np.arange(self.num_samples, dtype=np.float64) / self.sample_rate
+
+        # Use np.interp to do linear interpolation across node boundaries
+        base_freq_array = np.interp(
+            t_array, self.node_times, self.base_freq_values
+        )
+        beat_freq_array = np.interp(
+            t_array, self.node_times, self.beat_freq_values
+        )
+        vol_left_array = np.interp(
+            t_array, self.node_times, self.vol_left_values
+        )
+        vol_right_array = np.interp(
+            t_array, self.node_times, self.vol_right_values
+        )
+
+        return (
+            t_array,
+            base_freq_array,
+            beat_freq_array,
+            vol_left_array,
+            vol_right_array,
+        )
 
     def generate_samples(self):
         """
-        Subclasses override this method to produce the actual audio buffer
-        as a NumPy array of shape (num_samples, 2).
+        Subclasses override this method to produce an audio buffer
+        as a NumPy array of shape (num_samples, 2), float32.
         """
         raise NotImplementedError()
+
 
 # -----------------------------------------------------------
 # Spatial Angle Modulation (SAM) Voice
@@ -68,344 +102,488 @@ class Voice:
 
 class SpatialAngleModVoice(Voice):
     """
-    A general-purpose Spatial Angle Modulation (SAM) voice that lets you:
-      - Use a carrier frequency (or each node's base_freq, if you wish)
-      - Define an arc "movement" frequency (arc_freq) for each channel
-      - Define max arc angles, optional phase offsets, or different arcs left vs right
-    This replicates the Monroe Institute concept that you can move a perceived
-    source in a stereo field at certain rates to encourage brainwave entrainment,
-    especially in gamma or other bands, but generalized for user-defined arcs.
+    A general-purpose Spatial Angle Modulation (SAM) voice that:
+      - Uses interpolated base_freq and volumes from node data.
+      - Each ear has its own angle motion: arc_freq_left, arc_freq_right, etc.
+      - arc_function can be 'sin' or 'triangle'.
     """
 
     def __init__(self, nodes, sample_rate=44100,
-                 # Arc shape parameters
-                 carrier_from_nodes=False,      # If True, each node's base_freq is used as carrier
-                 carrier_freq=200.0,           # Default if not from nodes
-                 arc_freq_left=10.0,           # Movement freq for left channel
-                 arc_freq_right=10.0,          # Movement freq for right channel
-                 arc_peak_left=np.pi/2,        # Max angle offset (radians) for left channel
-                 arc_peak_right=np.pi/2,       # Max angle offset (radians) for right channel
-                 phase_offset_left=0.0,        # Additional offset for left arc
-                 phase_offset_right=0.0,       # Additional offset for right arc,
-                 arc_function='sin'            # 'sin' or 'triangle' or any shape you define
-                 ):
-        """
-        :param nodes: list of Node objects (for durations & volume).
-        :param sample_rate: standard sample rate
-        :param carrier_from_nodes: whether to read node.base_freq at each sample
-                                   or just use a fixed 'carrier_freq' param
-        :param carrier_freq: base frequency if not using node base_freq
-        :param arc_freq_left: how many arcs/sec on left
-        :param arc_freq_right: how many arcs/sec on right
-        :param arc_peak_left: amplitude (peak) of angle for left channel
-        :param arc_peak_right: amplitude (peak) of angle for right channel
-        :param phase_offset_left: shift arcs on left by some radians
-        :param phase_offset_right: shift arcs on right by some radians
-        :param arc_function: 'sin' is typical. You could do custom wave shapes.
-        """
+                 arc_freq_left=10.0,
+                 arc_freq_right=10.0,
+                 arc_center_left=0.0,
+                 arc_center_right=0.0,
+                 arc_peak_left=np.pi/2,
+                 arc_peak_right=np.pi/2,
+                 phase_offset_left=0.0,
+                 phase_offset_right=0.0,
+                 arc_function='sin'):
         super().__init__(nodes, sample_rate)
-        self.carrier_from_nodes = carrier_from_nodes
-        self.carrier_freq = carrier_freq
+        self.arc_freq_left = float(arc_freq_left)
+        self.arc_freq_right = float(arc_freq_right)
+        self.arc_center_left = float(arc_center_left)
+        self.arc_center_right = float(arc_center_right)
+        self.arc_peak_left = float(arc_peak_left)
+        self.arc_peak_right = float(arc_peak_right)
+        self.phase_offset_left = float(phase_offset_left)
+        self.phase_offset_right = float(phase_offset_right)
+        self.arc_function = arc_function.lower().strip()
 
-        self.arc_freq_left = arc_freq_left
-        self.arc_freq_right = arc_freq_right
-        self.arc_peak_left = arc_peak_left
-        self.arc_peak_right = arc_peak_right
-        self.phase_offset_left = phase_offset_left
-        self.phase_offset_right = phase_offset_right
-
-        self.arc_function = arc_function.lower()
-
-    def _arc_value(self, t, freq, peak, phase):
+    def _arc_value_vector(self, t, freq, center, peak, phase, shape):
         """
-        Return the instantaneous angle offset for a given time t,
-        using the chosen wave shape. Currently supports 'sin' or 'triangle'.
+        Return the instantaneous angle offset for array t in radians:
+          angle = center + peak * wave(2π * freq * t + phase).
         """
-        if self.arc_function == 'sin':
-            return peak * np.sin(2.0 * np.pi * freq * t + phase)
-        elif self.arc_function == 'triangle':
-            # A quick triangular wave approach:
-            # We'll use sawtooth & then convert to triangle, or direct:
-            # triangle( x ) = 2*|2*((x+0.25) mod 1) -1| -1
-            # But simpler is to do a linear ramp modded. We'll do a simplified version.
-            # We'll do 'abs(sawtooth)', etc. For brevity:
-            import scipy.signal
-            saw = scipy.signal.sawtooth(2.0*np.pi*freq*t + phase, 0.5)  # tri wave
-            return peak * saw
+        omega_t = 2.0 * np.pi * freq * t + phase
+        if shape == 'triangle':
+            # Triangular wave in range [-1, +1], width=0.5 => symmetrical triangle
+            val = scipy.signal.sawtooth(omega_t, width=0.5)
         else:
-            # Fallback: sin
-            return peak * np.sin(2.0 * np.pi * freq * t + phase)
+            # default 'sin'
+            val = np.sin(omega_t)
+        return center + peak * val
 
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
+        # 1) Build param arrays
+        t_array, base_freq_array, _, vol_left_array, vol_right_array = self._get_param_arrays()
+        num_samples = t_array.size
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
 
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
+        # 2) Compute angles for left/right
+        angle_left_array = self._arc_value_vector(
+            t_array,
+            self.arc_freq_left,
+            self.arc_center_left,
+            self.arc_peak_left,
+            self.phase_offset_left,
+            self.arc_function
+        )
+        angle_right_array = self._arc_value_vector(
+            t_array,
+            self.arc_freq_right,
+            self.arc_center_right,
+            self.arc_peak_right,
+            self.phase_offset_right,
+            self.arc_function
+        )
 
-            # Interpolate node volumes, etc.
-            base, beat, vol_left, vol_right = self._get_interpolated_params(t)
+        # 3) Compute the final waveforms
+        # left ear => sin(2π * base_freq_array * t + angle_left_array)
+        # right ear => sin(2π * base_freq_array * t + angle_right_array)
+        phase_left = 2.0 * np.pi * base_freq_array * t_array + angle_left_array
+        phase_right = 2.0 * np.pi * base_freq_array * t_array + angle_right_array
 
-            # Choose a carrier freq
-            carrier = base if self.carrier_from_nodes else self.carrier_freq
+        s_left = np.sin(phase_left) * vol_left_array
+        s_right = np.sin(phase_right) * vol_right_array
 
-            # Determine arc offsets for left/right
-            # i.e. the user "angle" in radians
-            angle_l = self._arc_value(t, self.arc_freq_left, self.arc_peak_left, self.phase_offset_left)
-            angle_r = self._arc_value(t, self.arc_freq_right, self.arc_peak_right, self.phase_offset_right)
-
-            # Basic stereo signals:
-            # left ear => sin(2 pi carrier * t + angle_l)
-            # right ear => sin(2 pi carrier * t + angle_r)
-            phase_left = 2.0*np.pi*carrier*t + angle_l
-            phase_right = 2.0*np.pi*carrier*t + angle_r
-
-            s_left = np.sin(phase_left) * vol_left
-            s_right = np.sin(phase_right) * vol_right
-
-            audio[i, 0] = s_left
-            audio[i, 1] = s_right
-
+        audio = np.column_stack((s_left, s_right)).astype(np.float32)
         return audio
 
+
 # -----------------------------------------------------------
-# Binaural Beats (unchanged)
+# Binaural Beats
 # -----------------------------------------------------------
 
 class BinauralBeatVoice(Voice):
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
-            base, beat, vl, vr = self._get_interpolated_params(t)
-            left_freq = base - beat/2.0
-            right_freq = base + beat/2.0
-            audio[i, 0] = np.sin(2*np.pi*left_freq*t) * vl
-            audio[i, 1] = np.sin(2*np.pi*right_freq*t) * vr
+        # Vectorized approach for Binaural Beats
+        t_array, base_freq_array, beat_freq_array, vol_left_array, vol_right_array = self._get_param_arrays()
+        num_samples = t_array.size
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+
+        # left_freq = base - (beat/2), right_freq = base + (beat/2)
+        left_freq_array = base_freq_array - beat_freq_array / 2.0
+        right_freq_array = base_freq_array + beat_freq_array / 2.0
+
+        phase_left = 2.0 * np.pi * left_freq_array * t_array
+        phase_right = 2.0 * np.pi * right_freq_array * t_array
+
+        s_left = np.sin(phase_left) * vol_left_array
+        s_right = np.sin(phase_right) * vol_right_array
+
+        audio = np.column_stack((s_left, s_right)).astype(np.float32)
         return audio
 
 
 # -----------------------------------------------------------
-# Trapezoidal Isochronic (NEW approach)
+# Isochronic Trapezoid Envelope (Vectorized)
 # -----------------------------------------------------------
-def trapezoid_envelope(t_in_cycle, cycle_len, ramp_percent, gap_percent):
-    """
-    Returns amplitude in [0..1] for the time-in-cycle.
-    We break the cycle into four parts:
-      - ramp_up
-      - stable_top
-      - ramp_down
-      - gap (zero amplitude)
 
-    cycle_len = 1.0 / beat
-    ramp_percent: fraction (0..0.5) that controls ramp up/down
-    gap_percent : fraction (0..0.5) that controls trailing gap
-    The remainder is the stable_top portion.
+def trapezoid_envelope_vectorized(t_in_cycle, cycle_len, ramp_percent, gap_percent):
     """
-    if cycle_len <= 0:
-        return 0.0
+    Vectorized trapezoidal envelope. Inputs are arrays of the same shape.
+    Each element i satisfies:
+      - 0 <= t_in_cycle[i] < cycle_len[i]
+      - cycle_len[i] > 0
+    We'll break the cycle into: ramp_up + stable + ramp_down + gap.
+    Return envelope in [0..1].
+    If cycle_len <= 0, envelope is 0. (Handled via mask.)
+    """
+    # Allocate the envelope
+    env = np.zeros_like(t_in_cycle, dtype=np.float64)
 
-    # The portion of the cycle used for the audible pulse
-    audible_len = cycle_len * (1 - gap_percent)
-    # The total portion for ramp up and ramp down combined
+    # Protect against invalid or zero cycle lengths
+    valid_mask = cycle_len > 0
+    if not np.any(valid_mask):
+        return env  # all zeros
+
+    # The portion used for the audible pulse
+    audible_len = (1.0 - gap_percent) * cycle_len
+    # The total ramp portion
     ramp_total = audible_len * ramp_percent * 2.0
-    # The stable portion is what's left in audible_len
+    # The stable portion is what's left
     stable_len = audible_len - ramp_total
-    if stable_len < 0:
-        # If ramp_percent + gap_percent is too large, clamp stable to 0
-        ramp_total = audible_len
-        stable_len = 0
 
-    # Boundaries:
-    #   ramp_up ends at ramp_up_len
-    #   stable ends at ramp_up_len + stable_len
-    #   ramp_down ends at ramp_up_len + stable_len + ramp_down_len
+    # We also need to handle stable_len < 0
+    # We'll do it in piecewise logic (some cycles might differ from others)
+    # So let's define piecewise approach:
+
+    # For each element:
+    #   if t_in_cycle[i] >= audible_len[i], env=0
+    #   else if t_in_cycle[i] < ramp_up_len[i], env = scale up
+    #   else if t_in_cycle[i] < stable_end[i], env = 1
+    #   else if t_in_cycle[i] < audible_len[i], env = ramp down
+
+    # Build arrays
     ramp_up_len = ramp_total / 2.0
-    ramp_down_len = ramp_total / 2.0
+    # If stable_len < 0 => stable portion is 0, so ramp_up_len & ramp_down_len = audible_len/2
+    stable_len_clamped = np.maximum(stable_len, 0.0)
+    ramp_total_clamped = audible_len - stable_len_clamped
+    ramp_up_len_clamped = ramp_total_clamped / 2.0
 
-    if t_in_cycle >= audible_len:
-        # inside the gap portion
-        return 0.0
+    stable_end = ramp_up_len_clamped + stable_len_clamped
 
-    # Ramp up region
-    if t_in_cycle < ramp_up_len:
-        return t_in_cycle / ramp_up_len
+    # For any t_in_cycle >= audible_len, env = 0
+    in_gap_mask = (t_in_cycle >= audible_len)
 
-    # Stable top region
-    if t_in_cycle < (ramp_up_len + stable_len):
-        return 1.0
+    # Ramp up: t_in_cycle < ramp_up_len_clamped
+    ramp_up_mask = (t_in_cycle < ramp_up_len_clamped) & (~in_gap_mask) & valid_mask
+    # ramp down: t_in_cycle >= stable_end & t_in_cycle < audible_len
+    ramp_down_mask = (t_in_cycle >= stable_end) & (t_in_cycle < audible_len) & valid_mask
+    # stable: between ramp up end and stable_end
+    stable_mask = (t_in_cycle >= ramp_up_len_clamped) & (t_in_cycle < stable_end) & (~in_gap_mask) & valid_mask
 
-    # Ramp down region
-    time_into_down = t_in_cycle - (ramp_up_len + stable_len)
-    return 1.0 - (time_into_down / ramp_down_len)
+    # Ramp up
+    env[ramp_up_mask] = (
+        t_in_cycle[ramp_up_mask] / ramp_up_len_clamped[ramp_up_mask]
+    )
+    # Stable
+    env[stable_mask] = 1.0
+    # Ramp down
+    # We compute how far we are into the ramp down
+    time_into_down = (t_in_cycle[ramp_down_mask] - stable_end[ramp_down_mask])
+    down_len = (audible_len[ramp_down_mask] - stable_end[ramp_down_mask])
+    # envelope is 1 - (time_into_down / down_len)
+    env[ramp_down_mask] = 1.0 - (time_into_down / down_len)
+
+    # Any invalid cycle_len or in the gap => env=0 by default
+    return env
 
 
 class IsochronicVoice(Voice):
     """
     A trapezoidal isochronic generator: each beat cycle has
-    ramp up, stable top, ramp down, and gap. We then multiply
-    that amplitude by a carrier sine wave at base_freq.
+    ramp up, stable top, ramp down, and gap. We multiply that amplitude
+    by a carrier sine wave at base_freq. This is vectorized, but note that
+    if beat_freq changes continuously, the notion of 'cycle' also continuously
+    changes. We handle that by computing t_in_cycle = t % (1/beat_array),
+    which is approximate if beat_array is not constant. 
     """
     def __init__(self, nodes, sample_rate=44100,
                  ramp_percent=0.2, gap_percent=0.15, amplitude=1.0):
         super().__init__(nodes, sample_rate)
-        self.ramp_percent = ramp_percent
-        self.gap_percent = gap_percent
-        self.amplitude = amplitude
+        self.ramp_percent = float(ramp_percent)
+        self.gap_percent = float(gap_percent)
+        self.amplitude = float(amplitude)
 
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
-            base, beat, vl, vr = self._get_interpolated_params(t)
-            if beat <= 0:
-                continue
-            cycle_len = 1.0 / beat
-            t_in_cycle = (t % cycle_len)
-            env = trapezoid_envelope(t_in_cycle, cycle_len,
-                                     self.ramp_percent, self.gap_percent)
-            # Multiply by a carrier wave at base_freq
-            carrier = np.sin(2 * np.pi * base * t) * env * self.amplitude
-            audio[i, 0] = carrier * vl
-            audio[i, 1] = carrier * vr
+        t_array, base_freq_array, beat_freq_array, vol_left_array, vol_right_array = self._get_param_arrays()
+        num_samples = t_array.size
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+
+        # cycle_len_array = 1 / beat_freq_array
+        # but watch out for zero or negative beat_freq
+        cycle_len_array = np.zeros_like(beat_freq_array, dtype=np.float64)
+        valid_beat_mask = (beat_freq_array > 0)
+        cycle_len_array[valid_beat_mask] = 1.0 / beat_freq_array[valid_beat_mask]
+
+        # t_in_cycle = t % cycle_len_array, but that doesn't work well if cycle_len is changing each sample
+        # We'll do it anyway as an approximation:
+        t_in_cycle = np.mod(t_array, cycle_len_array, where=valid_beat_mask, out=np.zeros_like(t_array))
+
+        env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array,
+                                            self.ramp_percent, self.gap_percent)
+
+        # Multiply by a carrier wave at base_freq
+        carrier = np.sin(2.0 * np.pi * base_freq_array * t_array) * env * self.amplitude
+
+        left = carrier * vol_left_array
+        right = carrier * vol_right_array
+        audio = np.column_stack((left, right)).astype(np.float32)
         return audio
 
 
 class AltIsochronicVoice(Voice):
     """
     Same trapezoidal approach, but we alternate entire cycles
-    between left and right channels.
+    between left and right channels. We do so with a loop because
+    truly vectorizing "stateful toggling" requires more advanced
+    logic (tracking the sum of cycle lengths).
+    
+    If you want a fully vectorized solution, we need to do a cumulative
+    sum of cycle_len_array, see when t_array crosses each cycle boundary,
+    etc. This is more complicated if beat_freq changes over time.
+
+    Below we at least vectorize the envelope calculations inside each cycle,
+    but we still do a for-loop over cycles. If beat_freq changes at node
+    boundaries only (not constantly changing each sample), you could break
+    it up by node to reduce overhead.
     """
     def __init__(self, nodes, sample_rate=44100,
                  ramp_percent=0.2, gap_percent=0.15, amplitude=1.0):
         super().__init__(nodes, sample_rate)
-        self.ramp_percent = ramp_percent
-        self.gap_percent = gap_percent
-        self.amplitude = amplitude
+        self.ramp_percent = float(ramp_percent)
+        self.gap_percent = float(gap_percent)
+        self.amplitude = float(amplitude)
 
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
+        # We do a single pass from t=0 to t=total_duration, toggling channels each cycle.
+        # If beat is changing, it's tricky to interpret "one cycle is 1.0/beat" at each moment.
+        # We'll treat the FIRST sample's beat as the cycle length, then recalc at each cycle boundary.
+        # If you want a different approach, we'd need more design input.
+        num_samples = self.num_samples
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+
+        # Interpolation arrays
+        t_array, base_freq_array, beat_freq_array, vol_left_array, vol_right_array = self._get_param_arrays()
+
+        audio = np.zeros((num_samples, 2), dtype=np.float32)
+
         current_left = True
-        cycle_start = 0.0
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
-            base, beat, vl, vr = self._get_interpolated_params(t)
+        i_start = 0
+        while i_start < num_samples:
+            # read beat freq at i_start
+            beat = beat_freq_array[i_start]
             if beat <= 0:
+                # skip or treat as silence
+                i_start += 1
                 continue
             cycle_duration = 1.0 / beat
-            if t - cycle_start >= cycle_duration:
-                cycle_start += cycle_duration
-                current_left = not current_left
+            if cycle_duration <= 0:
+                i_start += 1
+                continue
 
-            # time within current beat cycle
-            t_in_cycle = t - cycle_start
-            env = trapezoid_envelope(t_in_cycle, cycle_duration,
-                                     self.ramp_percent, self.gap_percent)
-            carrier = np.sin(2 * np.pi * base * t) * env * self.amplitude
+            # figure out how many samples remain in this cycle
+            # we want all samples from t_array[i_start] up to t_array[i_start] + cycle_duration
+            t0 = t_array[i_start]
+            t_end = t0 + cycle_duration
+
+            # We can find the index range:
+            # we want all i in [i_start..i_end) s.t. t_array[i] < t_end
+            # do a search
+            # if t_end > total_duration, i_end = num_samples
+            # else find i_end = largest i where t_array[i] < t_end
+            # We'll use np.searchsorted:
+            i_end = np.searchsorted(t_array, t_end, side='left')
+            if i_end > num_samples:
+                i_end = num_samples
+
+            # Now we have a subarray from i_start to i_end
+            sub_indices = slice(i_start, i_end)
+            sub_t = t_array[sub_indices]
+            sub_base = base_freq_array[sub_indices]
+            sub_vol_left = vol_left_array[sub_indices]
+            sub_vol_right = vol_right_array[sub_indices]
+
+            # Within this subarray, we define t_in_cycle = sub_t - t0
+            sub_t_in_cycle = sub_t - t0
+            # Vector envelope
+            env = trapezoid_envelope_vectorized(
+                sub_t_in_cycle, 
+                np.full_like(sub_t_in_cycle, cycle_duration),
+                self.ramp_percent,
+                self.gap_percent
+            )
+            carrier = np.sin(2.0 * np.pi * sub_base * sub_t) * env * self.amplitude
+
             if current_left:
-                audio[i, 0] = carrier * vl
-                audio[i, 1] = 0.0
+                audio[sub_indices, 0] = carrier * sub_vol_left
+                audio[sub_indices, 1] = 0.0
             else:
-                audio[i, 0] = 0.0
-                audio[i, 1] = carrier * vr
+                audio[sub_indices, 0] = 0.0
+                audio[sub_indices, 1] = carrier * sub_vol_right
+
+            current_left = not current_left
+            i_start = i_end
+
         return audio
 
 
 class AltIsochronic2Voice(Voice):
     """
-    'Intra-beat' approach: half cycle on left, half cycle on right.
-    We'll still shape each half-cycle with the trapezoidal envelope.
+    Half-cycle on left, half-cycle on right for each beat cycle,
+    with a trapezoid envelope for each half. This also has a
+    stateful "which half are we in?" approach, so we do a loop
+    over each cycle (similar to AltIsochronicVoice).
     """
     def __init__(self, nodes, sample_rate=44100,
                  ramp_percent=0.2, gap_percent=0.15, amplitude=1.0):
         super().__init__(nodes, sample_rate)
-        self.ramp_percent = ramp_percent
-        self.gap_percent = gap_percent
-        self.amplitude = amplitude
+        self.ramp_percent = float(ramp_percent)
+        self.gap_percent = float(gap_percent)
+        self.amplitude = float(amplitude)
 
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
-            base, beat, vl, vr = self._get_interpolated_params(t)
-            if beat <= 0:
-                continue
-            cycle_len = 1.0 / beat
-            t_in_cycle = (t % cycle_len)
+        num_samples = self.num_samples
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
 
-            # We'll split the cycle in half: 0..0.5 for left, 0.5..1.0 for right
-            half_cycle = cycle_len / 2.0
-            if t_in_cycle < half_cycle:
-                # left channel
-                env = trapezoid_envelope(t_in_cycle, half_cycle,
-                                         self.ramp_percent, self.gap_percent)
-                carrier = np.sin(2*np.pi*base*t) * env * self.amplitude
-                audio[i, 0] = carrier * vl
-                audio[i, 1] = 0.0
-            else:
-                # right channel
-                # time in half-cycle
-                t_in_half = t_in_cycle - half_cycle
-                env = trapezoid_envelope(t_in_half, half_cycle,
-                                         self.ramp_percent, self.gap_percent)
-                carrier = np.sin(2*np.pi*base*t) * env * self.amplitude
-                audio[i, 0] = 0.0
-                audio[i, 1] = carrier * vr
+        t_array, base_freq_array, beat_freq_array, vol_left_array, vol_right_array = self._get_param_arrays()
+        audio = np.zeros((num_samples, 2), dtype=np.float32)
+
+        i_start = 0
+        while i_start < num_samples:
+            beat = beat_freq_array[i_start]
+            if beat <= 0:
+                i_start += 1
+                continue
+            cycle_duration = 1.0 / beat
+            if cycle_duration <= 0:
+                i_start += 1
+                continue
+
+            t0 = t_array[i_start]
+            t_end = t0 + cycle_duration
+            i_end = np.searchsorted(t_array, t_end, side='left')
+            if i_end > num_samples:
+                i_end = num_samples
+
+            sub_indices = slice(i_start, i_end)
+            sub_t = t_array[sub_indices]
+            sub_base = base_freq_array[sub_indices]
+            sub_vol_left = vol_left_array[sub_indices]
+            sub_vol_right = vol_right_array[sub_indices]
+
+            # half cycle
+            half_duration = cycle_duration / 2.0
+
+            # For each sample in sub_t, check if it's in the left half or right half:
+            # local time
+            sub_t_in_cycle = sub_t - t0
+            left_mask = (sub_t_in_cycle < half_duration)
+            right_mask = ~left_mask
+
+            # Envelope for left half
+            t_in_left = sub_t_in_cycle[left_mask]
+            env_left = trapezoid_envelope_vectorized(
+                t_in_left,
+                np.full_like(t_in_left, half_duration),
+                self.ramp_percent,
+                self.gap_percent
+            )
+            carrier_left = np.sin(2.0 * np.pi * sub_base[left_mask] * sub_t[left_mask]) * env_left * self.amplitude
+            audio[sub_indices][left_mask, 0] = carrier_left * sub_vol_left[left_mask]
+            audio[sub_indices][left_mask, 1] = 0.0
+
+            # Envelope for right half
+            t_in_right = sub_t_in_cycle[right_mask] - half_duration
+            env_right = trapezoid_envelope_vectorized(
+                t_in_right,
+                np.full_like(t_in_right, half_duration),
+                self.ramp_percent,
+                self.gap_percent
+            )
+            carrier_right = np.sin(2.0 * np.pi * sub_base[right_mask] * sub_t[right_mask]) * env_right * self.amplitude
+            audio[sub_indices][right_mask, 0] = 0.0
+            audio[sub_indices][right_mask, 1] = carrier_right * sub_vol_right[right_mask]
+
+            i_start = i_end
+
         return audio
 
 
 # -----------------------------------------------------------
-# Pink Noise Voice (unchanged)
+# Pink Noise Voice
 # -----------------------------------------------------------
 
 class PinkNoiseVoice(Voice):
+    """
+    We can vectorize pink noise generation too, at least partly.
+    The standard "Voss-McCartney" or "filtered white" approach can be used.
+    Below is a simple IIR filter approach: pink[i] = alpha*pink[i-1] + (1-alpha)*white[i].
+    We still do a loop inside NumPy arrays. Alternatively, we can do it with np.cumsum or
+    an IIR filter from scipy.signal.lfilter. We'll do a quick partial approach.
+    """
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
-        white = np.random.normal(0, 1, self.num_samples).astype(np.float32)
-        pink = np.zeros(self.num_samples, dtype=np.float32)
+        t_array, _, _, vol_left_array, vol_right_array = self._get_param_arrays()
+        num_samples = t_array.size
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+
+        audio = np.zeros((num_samples, 2), dtype=np.float32)
+        # Generate white noise
+        white = np.random.normal(0, 1, num_samples).astype(np.float32)
+        # We do a simple 1-pole filter to approximate pink noise
         alpha = 0.98
+        pink = np.zeros(num_samples, dtype=np.float32)
         pink[0] = white[0]
-        for i in range(1, self.num_samples):
-            pink[i] = alpha*pink[i-1] + (1-alpha)*white[i]
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
-            _, _, vl, vr = self._get_interpolated_params(t)
-            audio[i, 0] = pink[i] * vl * 0.1
-            audio[i, 1] = pink[i] * vr * 0.1
+        for i in range(1, num_samples):
+            pink[i] = alpha * pink[i-1] + (1.0 - alpha) * white[i]
+
+        # Now multiply by volumes
+        audio[:, 0] = pink * vol_left_array * 0.1
+        audio[:, 1] = pink * vol_right_array * 0.1
         return audio
 
 
 # -----------------------------------------------------------
-# External Audio Voice (unchanged)
+# External Audio Voice
 # -----------------------------------------------------------
 
 class ExternalAudioVoice(Voice):
+    """
+    Loads external audio from file (mono or stereo),
+    then multiplies it by the volume envelopes from the nodes.
+    """
     def __init__(self, nodes, file_path, sample_rate=44100):
         super().__init__(nodes, sample_rate)
         self.file_path = file_path
         data, sr = librosa.load(self.file_path, sr=sample_rate, mono=False)
         if data.ndim == 1:
-            data = data[np.newaxis, :]
+            # shape = (samples,)
+            data = data[np.newaxis, :]  # shape = (1, samples)
         self.ext_audio = data
         self.ext_length = self.ext_audio.shape[1]
 
     def generate_samples(self):
-        audio = np.zeros((self.num_samples, 2), dtype=np.float32)
-        for i in range(self.num_samples):
-            t = i / self.sample_rate
-            _, _, vl, vr = self._get_interpolated_params(t)
-            idx = i
-            if idx < self.ext_length:
-                if self.ext_audio.shape[0] == 1:
-                    val_l = self.ext_audio[0, idx]
-                    val_r = self.ext_audio[0, idx]
-                else:
-                    val_l = self.ext_audio[0, idx]
-                    val_r = self.ext_audio[1, idx]
-            else:
-                val_l = 0.0
-                val_r = 0.0
-            audio[i, 0] = val_l * vl
-            audio[i, 1] = val_r * vr
+        t_array, _, _, vol_left_array, vol_right_array = self._get_param_arrays()
+        num_samples = t_array.size
+        if num_samples == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+
+        audio = np.zeros((num_samples, 2), dtype=np.float32)
+
+        # Build an index array: 0..num_samples-1
+        idx_array = np.arange(num_samples)
+        # clamp to the ext_length
+        idx_array = np.minimum(idx_array, self.ext_length - 1)
+
+        if self.ext_audio.shape[0] == 1:
+            # Mono: use same signal for L and R
+            mono_samples = self.ext_audio[0][idx_array]
+            audio[:, 0] = mono_samples * vol_left_array
+            audio[:, 1] = mono_samples * vol_right_array
+        else:
+            # Stereo
+            left_samples = self.ext_audio[0][idx_array]
+            right_samples = self.ext_audio[1][idx_array]
+            audio[:, 0] = left_samples * vol_left_array
+            audio[:, 1] = right_samples * vol_right_array
+
         return audio
 
 
@@ -414,13 +592,23 @@ class ExternalAudioVoice(Voice):
 # -----------------------------------------------------------
 
 def generate_track_audio(voices, sample_rate=44100):
+    """
+    Given a list of Voice objects, generate each voice's samples,
+    mix them together, and normalize if needed.
+    """
+    if not voices:
+        return np.zeros((0, 2), dtype=np.float32)
+
     track_length_seconds = max(v.total_duration for v in voices)
     total_samples = int(track_length_seconds * sample_rate)
     mixed = np.zeros((total_samples, 2), dtype=np.float32)
+
     for v in voices:
         buf = v.generate_samples()
         length = buf.shape[0]
-        mixed[:length] += buf
+        if length > 0:
+            mixed[:length, :] += buf
+
     max_val = np.max(np.abs(mixed))
     if max_val > 1.0:
         mixed /= max_val
@@ -439,10 +627,10 @@ def export_flac(audio_data, sample_rate, file_path):
 
 def export_mp3(audio_data, sample_rate, file_path):
     from pydub import AudioSegment
+    import os
     temp_wav = file_path + ".temp.wav"
     sf.write(temp_wav, audio_data, sample_rate, format='WAV')
     seg = AudioSegment.from_wav(temp_wav)
     seg.export(file_path, format="mp3")
-    import os
     os.remove(temp_wav)
 
