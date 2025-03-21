@@ -3,6 +3,7 @@ import sys
 import json
 import numpy as np
 import sounddevice as sd
+import traceback
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -14,7 +15,9 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer
 import pyqtgraph as pg
 
-import audio_engine
+# Import the integrated audio engine instead of the original
+import audio_engine_2 as audio_engine
+from audio_engine_2 import SoundPath
 
 
 ########################################################################
@@ -22,30 +25,54 @@ import audio_engine
 ########################################################################
 
 class NodeData:
-    def __init__(self, duration, base_freq, beat_freq, volume_left, volume_right):
+    def __init__(self, duration, base_freq, beat_freq, volume_left, volume_right,
+                 phase_deviation=0.7, left_phase_offset=0.0, right_phase_offset=0.0,
+                 sound_path=SoundPath.CIRCULAR):
         self.duration = duration
         self.base_freq = base_freq
         self.beat_freq = beat_freq
         self.volume_left = volume_left
         self.volume_right = volume_right
-
+        
+        # SAM-specific parameters (updated to match new implementation)
+        self.phase_deviation = phase_deviation
+        self.left_phase_offset = left_phase_offset
+        self.right_phase_offset = right_phase_offset
+        self.sound_path = sound_path
+        
     def to_dict(self):
         return {
             "duration": self.duration,
             "base_freq": self.base_freq,
             "beat_freq": self.beat_freq,
             "volume_left": self.volume_left,
-            "volume_right": self.volume_right
+            "volume_right": self.volume_right,
+            "phase_deviation": self.phase_deviation,
+            "left_phase_offset": self.left_phase_offset,
+            "right_phase_offset": self.right_phase_offset,
+            "sound_path": self.sound_path.value if isinstance(self.sound_path, SoundPath) else self.sound_path
         }
-
+    
     @staticmethod
     def from_dict(d):
+        # Convert string to SoundPath enum if needed
+        sound_path = d.get("sound_path", SoundPath.CIRCULAR)
+        if isinstance(sound_path, str):
+            try:
+                sound_path = SoundPath[sound_path.upper()]
+            except (KeyError, AttributeError):
+                sound_path = SoundPath.CIRCULAR
+                
         return NodeData(
             d["duration"],
             d["base_freq"],
             d["beat_freq"],
             d["volume_left"],
-            d["volume_right"]
+            d["volume_right"],
+            d.get("phase_deviation", 0.7),
+            d.get("left_phase_offset", 0.0),
+            d.get("right_phase_offset", 0.0),
+            sound_path
         )
 
 
@@ -56,7 +83,7 @@ class VoiceData:
         Generic voice data for any voice type:
         - nodes: a list of NodeData
         - For isochronic: ramp/gap/amplitude
-        - For SAM: arc parameters in degrees
+        - For SAM: spatial modulation parameters
         """
         self.voice_type = voice_type
         self.voice_name = voice_name
@@ -67,16 +94,17 @@ class VoiceData:
         self.muted = False
         self.view_enabled = True
 
-        # SpatialAngleMod fields (all in degrees for arcs):
-        self.sam_arc_freq_left = 10.0
-        self.sam_arc_freq_right = 10.0
-        self.sam_arc_center_left = 0.0
-        self.sam_arc_center_right = 0.0
-        self.sam_arc_peak_left = 90.0
-        self.sam_arc_peak_right = 90.0
-        self.sam_phase_offset_left = 0.0
-        self.sam_phase_offset_right = 0.0
-        self.sam_arc_function = "sin"
+        # SAM parameters (updated to match new implementation)
+        self.phase_deviation = 0.7
+        self.left_phase_offset = 0.0
+        self.right_phase_offset = 0.0
+        self.sound_path = SoundPath.CIRCULAR
+        
+        # Add support for MultiSAMBinauralVoice
+        self.secondary_freq_ratio = 1.5
+        self.secondary_spatial_ratio = 0.7
+        self.secondary_volume = 0.4
+        self.use_secondary_source = False
 
     def to_dict(self):
         return {
@@ -89,16 +117,17 @@ class VoiceData:
             "view_enabled": self.view_enabled,
             "nodes": [n.to_dict() for n in self.nodes],
 
-            # SAM arcs in degrees
-            "sam_arc_freq_left": self.sam_arc_freq_left,
-            "sam_arc_freq_right": self.sam_arc_freq_right,
-            "sam_arc_center_left": self.sam_arc_center_left,
-            "sam_arc_center_right": self.sam_arc_center_right,
-            "sam_arc_peak_left": self.sam_arc_peak_left,
-            "sam_arc_peak_right": self.sam_arc_peak_right,
-            "sam_phase_offset_left": self.sam_phase_offset_left,
-            "sam_phase_offset_right": self.sam_phase_offset_right,
-            "sam_arc_function": self.sam_arc_function
+            # SAM parameters (updated)
+            "phase_deviation": self.phase_deviation,
+            "left_phase_offset": self.left_phase_offset,
+            "right_phase_offset": self.right_phase_offset,
+            "sound_path": self.sound_path.value if isinstance(self.sound_path, SoundPath) else self.sound_path,
+            
+            # Multi-source parameters
+            "secondary_freq_ratio": self.secondary_freq_ratio,
+            "secondary_spatial_ratio": self.secondary_spatial_ratio,
+            "secondary_volume": self.secondary_volume,
+            "use_secondary_source": self.use_secondary_source
         }
 
     @staticmethod
@@ -117,16 +146,26 @@ class VoiceData:
         for nd in d.get("nodes", []):
             v.nodes.append(NodeData.from_dict(nd))
 
-        # SAM in degrees
-        v.sam_arc_freq_left = d.get("sam_arc_freq_left", 10.0)
-        v.sam_arc_freq_right = d.get("sam_arc_freq_right", 10.0)
-        v.sam_arc_center_left = d.get("sam_arc_center_left", 0.0)
-        v.sam_arc_center_right = d.get("sam_arc_center_right", 0.0)
-        v.sam_arc_peak_left = d.get("sam_arc_peak_left", 90.0)
-        v.sam_arc_peak_right = d.get("sam_arc_peak_right", 90.0)
-        v.sam_phase_offset_left = d.get("sam_phase_offset_left", 0.0)
-        v.sam_phase_offset_right = d.get("sam_phase_offset_right", 0.0)
-        v.sam_arc_function = d.get("sam_arc_function", "sin")
+        # SAM parameters (updated)
+        v.phase_deviation = d.get("phase_deviation", 0.7)
+        v.left_phase_offset = d.get("left_phase_offset", 0.0)
+        v.right_phase_offset = d.get("right_phase_offset", 0.0)
+        
+        # Convert sound_path string to enum
+        sound_path = d.get("sound_path", SoundPath.CIRCULAR)
+        if isinstance(sound_path, str):
+            try:
+                v.sound_path = SoundPath[sound_path.upper()]
+            except (KeyError, AttributeError):
+                v.sound_path = SoundPath.CIRCULAR
+        else:
+            v.sound_path = sound_path
+            
+        # Multi-source parameters
+        v.secondary_freq_ratio = d.get("secondary_freq_ratio", 1.5)
+        v.secondary_spatial_ratio = d.get("secondary_spatial_ratio", 0.7)
+        v.secondary_volume = d.get("secondary_volume", 0.4)
+        v.use_secondary_source = d.get("use_secondary_source", False)
 
         return v
 
@@ -166,7 +205,8 @@ class VoiceCreationDialog(QDialog):
             "AltIsochronic2",
             "PinkNoise",
             "ExternalAudio",
-            "SpatialAngleMod"
+            "SAMBinaural",
+            "MultiSAMBinaural"
         ])
         form = QFormLayout()
         form.addRow("Voice Type:", self.voice_type_box)
@@ -183,12 +223,15 @@ class NodeEditDialog(QDialog):
     """
     Allows user to edit the NodeData for either SAM or other voices.
     The same node structure is used: (duration, base_freq, beat_freq, vol_left, vol_right).
+    Additional parameters are shown when editing a node in a SAM voice.
     """
-    def __init__(self, node, parent=None):
+    def __init__(self, node, voice_type="BinauralBeat", parent=None):
         super().__init__(parent)
         self.node = node
+        self.voice_type = voice_type
         self.setWindowTitle("Edit Node")
 
+        # Create basic node parameters
         self.spin_duration = QDoubleSpinBox()
         self.spin_duration.setRange(0.0, 9999.0)
         self.spin_duration.setSingleStep(0.5)
@@ -201,8 +244,9 @@ class NodeEditDialog(QDialog):
 
         self.spin_beat_freq = QDoubleSpinBox()
         self.spin_beat_freq.setRange(0.0, 20000.0)
-        self.spin_beat_freq.setSingleStep(1.0)
+        self.spin_beat_freq.setSingleStep(0.1)
         self.spin_beat_freq.setValue(self.node.beat_freq)
+        self.spin_beat_freq.setToolTip("For SAM voices, this controls spatial oscillation frequency (Hz)")
 
         self.spin_vol_left = QDoubleSpinBox()
         self.spin_vol_left.setRange(0.0, 1.0)
@@ -217,9 +261,50 @@ class NodeEditDialog(QDialog):
         form = QFormLayout()
         form.addRow("Duration (sec):", self.spin_duration)
         form.addRow("Base Frequency:", self.spin_base_freq)
-        form.addRow("Beat Frequency:", self.spin_beat_freq)
+        form.addRow("Beat/Spatial Frequency:", self.spin_beat_freq)
         form.addRow("Volume Left:", self.spin_vol_left)
         form.addRow("Volume Right:", self.spin_vol_right)
+
+        # Add SAM-specific controls if this is a SAM voice
+        if voice_type in ["SAMBinaural", "MultiSAMBinaural"]:
+            # Create controls for SAM parameters
+            self.spin_phase_deviation = QDoubleSpinBox()
+            self.spin_phase_deviation.setRange(0.0, 5.0)
+            self.spin_phase_deviation.setSingleStep(0.1)
+            self.spin_phase_deviation.setValue(getattr(self.node, 'phase_deviation', 0.7))
+            self.spin_phase_deviation.setToolTip("Controls perceived spatial width")
+            
+            self.spin_left_phase_offset = QDoubleSpinBox()
+            self.spin_left_phase_offset.setRange(-3.14, 3.14)
+            self.spin_left_phase_offset.setSingleStep(0.1)
+            self.spin_left_phase_offset.setValue(getattr(self.node, 'left_phase_offset', 0.0))
+            self.spin_left_phase_offset.setToolTip("Phase offset for left channel (radians)")
+            
+            self.spin_right_phase_offset = QDoubleSpinBox()
+            self.spin_right_phase_offset.setRange(-3.14, 3.14)
+            self.spin_right_phase_offset.setSingleStep(0.1)
+            self.spin_right_phase_offset.setValue(getattr(self.node, 'right_phase_offset', 0.0))
+            self.spin_right_phase_offset.setToolTip("Phase offset for right channel (radians)")
+            
+            self.combo_sound_path = QComboBox()
+            for path in SoundPath:
+                self.combo_sound_path.addItem(path.value.title(), path)
+                
+            # Set current sound path if it exists
+            current_path = getattr(self.node, 'sound_path', SoundPath.CIRCULAR)
+            for i in range(self.combo_sound_path.count()):
+                if self.combo_sound_path.itemData(i) == current_path:
+                    self.combo_sound_path.setCurrentIndex(i)
+                    break
+            
+            self.combo_sound_path.setToolTip("Type of perceived movement pattern")
+            
+            # Add to form layout with a separator
+            form.addRow(QLabel("--- SAM Parameters ---"))
+            form.addRow("Phase Deviation:", self.spin_phase_deviation)
+            form.addRow("Left Phase Offset:", self.spin_left_phase_offset)
+            form.addRow("Right Phase Offset:", self.spin_right_phase_offset)
+            form.addRow("Sound Path:", self.combo_sound_path)
 
         buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttonBox.accepted.connect(self.accept_data)
@@ -231,11 +316,20 @@ class NodeEditDialog(QDialog):
         self.setLayout(layout)
 
     def accept_data(self):
+        # Update basic node parameters
         self.node.duration = self.spin_duration.value()
         self.node.base_freq = self.spin_base_freq.value()
         self.node.beat_freq = self.spin_beat_freq.value()
         self.node.volume_left = self.spin_vol_left.value()
         self.node.volume_right = self.spin_vol_right.value()
+
+        # Update SAM parameters if they exist
+        if hasattr(self, 'spin_phase_deviation'):
+            self.node.phase_deviation = self.spin_phase_deviation.value()
+            self.node.left_phase_offset = self.spin_left_phase_offset.value()
+            self.node.right_phase_offset = self.spin_right_phase_offset.value()
+            self.node.sound_path = self.combo_sound_path.currentData()
+            
         self.accept()
 
 
@@ -383,85 +477,97 @@ class MainWindow(QMainWindow):
         middle_layout.addLayout(iso_layout, stretch=1)
 
         # SAM param layout
-        self.sam_group_label = QLabel("Spatial Angle Mod (SAM) - Node-Based Carrier")
+        self.sam_group_label = QLabel("Spatial Angle Modulation (SAM) Parameters")
 
-        self.label_arc_freq_left = QLabel("Arc Freq Left (Hz)")
-        self.spin_arc_freq_left = QDoubleSpinBox()
-        self.spin_arc_freq_left.setRange(0.0, 200.0)
-        self.spin_arc_freq_left.setValue(10.0)
-        self.spin_arc_freq_left.setToolTip("Left ear arcs/s. E.g. 40 => gamma region.")
+        self.label_phase_deviation = QLabel("Phase Deviation")
+        self.spin_phase_deviation = QDoubleSpinBox()
+        self.spin_phase_deviation.setRange(0.0, 5.0)
+        self.spin_phase_deviation.setSingleStep(0.1)
+        self.spin_phase_deviation.setValue(0.7)
+        self.spin_phase_deviation.setToolTip("Controls perceived spatial width")
 
-        self.label_arc_freq_right = QLabel("Arc Freq Right (Hz)")
-        self.spin_arc_freq_right = QDoubleSpinBox()
-        self.spin_arc_freq_right.setRange(0.0, 200.0)
-        self.spin_arc_freq_right.setValue(10.0)
-        self.spin_arc_freq_right.setToolTip("Right ear arcs/s.")
+        self.label_left_phase_offset = QLabel("Left Phase Offset")
+        self.spin_left_phase_offset = QDoubleSpinBox()
+        self.spin_left_phase_offset.setRange(-3.14, 3.14)
+        self.spin_left_phase_offset.setSingleStep(0.1)
+        self.spin_left_phase_offset.setValue(0.0)
+        self.spin_left_phase_offset.setToolTip("Phase offset for left channel (radians)")
 
-        self.label_arc_center_left = QLabel("Arc Center Left (deg)")
-        self.spin_arc_center_left = QDoubleSpinBox()
-        self.spin_arc_center_left.setRange(-360, 360)
-        self.spin_arc_center_left.setToolTip("Central angle offset for left arcs, in degrees.")
+        self.label_right_phase_offset = QLabel("Right Phase Offset")
+        self.spin_right_phase_offset = QDoubleSpinBox()
+        self.spin_right_phase_offset.setRange(-3.14, 3.14)
+        self.spin_right_phase_offset.setSingleStep(0.1)
+        self.spin_right_phase_offset.setValue(0.0)
+        self.spin_right_phase_offset.setToolTip("Phase offset for right channel (radians)")
 
-        self.label_arc_center_right = QLabel("Arc Center Right (deg)")
-        self.spin_arc_center_right = QDoubleSpinBox()
-        self.spin_arc_center_right.setRange(-360, 360)
+        self.label_sound_path = QLabel("Sound Path")
+        self.combo_sound_path = QComboBox()
+        for path in SoundPath:
+            self.combo_sound_path.addItem(path.value.title(), path)
+        self.combo_sound_path.setToolTip("Type of perceived movement pattern")
 
-        self.label_arc_peak_left = QLabel("Arc Peak Left (deg)")
-        self.spin_arc_peak_left = QDoubleSpinBox()
-        self.spin_arc_peak_left.setRange(0.0, 360.0)
-        self.spin_arc_peak_left.setToolTip("Amplitude of arc for left ear in degrees. e.g. 180 => ±180 = 360 revolve")
+        # MultiSAM specific controls
+        self.label_use_secondary = QLabel("Use Secondary Source")
+        self.check_use_secondary = QPushButton("Secondary Source")
+        self.check_use_secondary.setCheckable(True)
+        self.check_use_secondary.setChecked(False)
+        self.check_use_secondary.clicked.connect(self.on_secondary_source_toggled)
 
-        self.label_arc_peak_right = QLabel("Arc Peak Right (deg)")
-        self.spin_arc_peak_right = QDoubleSpinBox()
-        self.spin_arc_peak_right.setRange(0.0, 360.0)
+        self.label_secondary_freq_ratio = QLabel("Secondary Freq Ratio")
+        self.spin_secondary_freq_ratio = QDoubleSpinBox()
+        self.spin_secondary_freq_ratio.setRange(0.5, 3.0)
+        self.spin_secondary_freq_ratio.setSingleStep(0.1)
+        self.spin_secondary_freq_ratio.setValue(1.5)
+        self.spin_secondary_freq_ratio.setToolTip("Ratio of secondary source frequency to primary")
 
-        self.label_phase_offset_left = QLabel("Phase Offset L (deg)")
-        self.spin_phase_offset_left = QDoubleSpinBox()
-        self.spin_phase_offset_left.setRange(-360, 360.0)
+        self.label_secondary_spatial_ratio = QLabel("Secondary Spatial Ratio")
+        self.spin_secondary_spatial_ratio = QDoubleSpinBox()
+        self.spin_secondary_spatial_ratio.setRange(0.1, 2.0)
+        self.spin_secondary_spatial_ratio.setSingleStep(0.1)
+        self.spin_secondary_spatial_ratio.setValue(0.7)
+        self.spin_secondary_spatial_ratio.setToolTip("Ratio of secondary spatial frequency to primary")
 
-        self.label_phase_offset_right = QLabel("Phase Offset R (deg)")
-        self.spin_phase_offset_right = QDoubleSpinBox()
-        self.spin_phase_offset_right.setRange(-360, 360.0)
-
-        self.label_arc_function = QLabel("Arc Shape")
-        self.combo_arc_function = QComboBox()
-        self.combo_arc_function.addItems(["sin", "triangle"])
+        self.label_secondary_volume = QLabel("Secondary Volume")
+        self.spin_secondary_volume = QDoubleSpinBox()
+        self.spin_secondary_volume.setRange(0.0, 1.0)
+        self.spin_secondary_volume.setSingleStep(0.1)
+        self.spin_secondary_volume.setValue(0.4)
+        self.spin_secondary_volume.setToolTip("Volume of secondary source relative to primary")
 
         self.sam_layout = QGridLayout()
-        self.sam_layout.addWidget(self.sam_group_label,         0, 0, 1, 2)
-        self.sam_layout.addWidget(self.label_arc_freq_left,      1, 0)
-        self.sam_layout.addWidget(self.spin_arc_freq_left,       1, 1)
-        self.sam_layout.addWidget(self.label_arc_freq_right,     2, 0)
-        self.sam_layout.addWidget(self.spin_arc_freq_right,      2, 1)
-        self.sam_layout.addWidget(self.label_arc_center_left,    3, 0)
-        self.sam_layout.addWidget(self.spin_arc_center_left,     3, 1)
-        self.sam_layout.addWidget(self.label_arc_center_right,   4, 0)
-        self.sam_layout.addWidget(self.spin_arc_center_right,    4, 1)
-        self.sam_layout.addWidget(self.label_arc_peak_left,      5, 0)
-        self.sam_layout.addWidget(self.spin_arc_peak_left,       5, 1)
-        self.sam_layout.addWidget(self.label_arc_peak_right,     6, 0)
-        self.sam_layout.addWidget(self.spin_arc_peak_right,      6, 1)
-        self.sam_layout.addWidget(self.label_phase_offset_left,  7, 0)
-        self.sam_layout.addWidget(self.spin_phase_offset_left,   7, 1)
-        self.sam_layout.addWidget(self.label_phase_offset_right, 8, 0)
-        self.sam_layout.addWidget(self.spin_phase_offset_right,  8, 1)
-        self.sam_layout.addWidget(self.label_arc_function,       9, 0)
-        self.sam_layout.addWidget(self.combo_arc_function,       9, 1)
+        self.sam_layout.addWidget(self.sam_group_label, 0, 0, 1, 2)
+        self.sam_layout.addWidget(self.label_phase_deviation, 1, 0)
+        self.sam_layout.addWidget(self.spin_phase_deviation, 1, 1)
+        self.sam_layout.addWidget(self.label_left_phase_offset, 2, 0)
+        self.sam_layout.addWidget(self.spin_left_phase_offset, 2, 1)
+        self.sam_layout.addWidget(self.label_right_phase_offset, 3, 0)
+        self.sam_layout.addWidget(self.spin_right_phase_offset, 3, 1)
+        self.sam_layout.addWidget(self.label_sound_path, 4, 0)
+        self.sam_layout.addWidget(self.combo_sound_path, 4, 1)
+        
+        # Secondary source controls
+        self.sam_layout.addWidget(QLabel("--- Secondary Source ---"), 5, 0, 1, 2)
+        self.sam_layout.addWidget(self.label_use_secondary, 6, 0)
+        self.sam_layout.addWidget(self.check_use_secondary, 6, 1)
+        self.sam_layout.addWidget(self.label_secondary_freq_ratio, 7, 0)
+        self.sam_layout.addWidget(self.spin_secondary_freq_ratio, 7, 1)
+        self.sam_layout.addWidget(self.label_secondary_spatial_ratio, 8, 0)
+        self.sam_layout.addWidget(self.spin_secondary_spatial_ratio, 8, 1)
+        self.sam_layout.addWidget(self.label_secondary_volume, 9, 0)
+        self.sam_layout.addWidget(self.spin_secondary_volume, 9, 1)
 
         self.sam_container = QWidget()
         self.sam_container.setLayout(self.sam_layout)
         self.sam_container.hide()
 
-        # Hook up signals
-        self.spin_arc_freq_left.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_arc_freq_right.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_arc_center_left.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_arc_center_right.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_arc_peak_left.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_arc_peak_right.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_phase_offset_left.valueChanged.connect(self.on_sam_params_changed)
-        self.spin_phase_offset_right.valueChanged.connect(self.on_sam_params_changed)
-        self.combo_arc_function.currentIndexChanged.connect(self.on_sam_params_changed)
+        # Hook up signals for SAM controls
+        self.spin_phase_deviation.valueChanged.connect(self.on_sam_params_changed)
+        self.spin_left_phase_offset.valueChanged.connect(self.on_sam_params_changed)
+        self.spin_right_phase_offset.valueChanged.connect(self.on_sam_params_changed)
+        self.combo_sound_path.currentIndexChanged.connect(self.on_sam_params_changed)
+        self.spin_secondary_freq_ratio.valueChanged.connect(self.on_sam_params_changed)
+        self.spin_secondary_spatial_ratio.valueChanged.connect(self.on_sam_params_changed)
+        self.spin_secondary_volume.valueChanged.connect(self.on_sam_params_changed)
 
         middle_layout.addWidget(self.sam_container)
 
@@ -517,6 +623,18 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(middle_container, stretch=3)
         main_layout.addWidget(right_container, stretch=4)
 
+    def on_secondary_source_toggled(self, checked):
+        """Handle toggling the secondary source checkbox"""
+        row = self.voice_table.currentRow()
+        if row < 0 or row >= len(self.track.voices):
+            return
+        v = self.track.voices[row]
+        v.use_secondary_source = checked
+
+        # Enable or disable secondary controls
+        self.spin_secondary_freq_ratio.setEnabled(checked)
+        self.spin_secondary_spatial_ratio.setEnabled(checked)
+        self.spin_secondary_volume.setEnabled(checked)
 
     ####################################################################
     # Voice Table / Node Table
@@ -527,8 +645,29 @@ class MainWindow(QMainWindow):
         if dlg.exec_() == dlg.Accepted:
             vtype = dlg.voice_type_box.currentText()
             v = VoiceData(voice_type=vtype, voice_name=f"{vtype}")
-            # Provide a default node so user can see something
-            v.nodes.append(NodeData(5.0, 100.0, 0.0, 1.0, 1.0))
+            
+            # Provide a default node with appropriate parameters
+            if vtype in ["SAMBinaural", "MultiSAMBinaural"]:
+                # Create node with SAM parameters
+                node = NodeData(
+                    5.0, 250.0, 0.5, 0.8, 0.8,  # Basic parameters
+                    phase_deviation=0.7,
+                    left_phase_offset=0.0,
+                    right_phase_offset=0.0,
+                    sound_path=SoundPath.CIRCULAR
+                )
+                
+                # Set appropriate defaults for MultiSAMBinaural
+                if vtype == "MultiSAMBinaural":
+                    v.use_secondary_source = True
+                    v.secondary_freq_ratio = 1.5
+                    v.secondary_spatial_ratio = 0.7
+                    v.secondary_volume = 0.4
+            else:
+                # Standard node for other voice types
+                node = NodeData(5.0, 100.0, 0.0, 1.0, 1.0)
+                
+            v.nodes.append(node)
             self.track.voices.append(v)
             self.refresh_voice_table()
 
@@ -575,6 +714,7 @@ class MainWindow(QMainWindow):
         else:
             self.node_table.setRowCount(0)
 
+    
     def on_voice_table_selected(self, currentRow, currentColumn, previousRow, previousColumn):
         if currentRow < 0 or currentRow >= len(self.track.voices):
             self.node_table.setRowCount(0)
@@ -587,18 +727,51 @@ class MainWindow(QMainWindow):
         self.spin_amp.setValue(v.amplitude)
 
         # If it's SAM, show the SAM param area
-        if v.voice_type == "SpatialAngleMod":
+        if v.voice_type in ["SAMBinaural", "MultiSAMBinaural"]:
             self.sam_container.show()
-            self.spin_arc_freq_left.setValue(v.sam_arc_freq_left)
-            self.spin_arc_freq_right.setValue(v.sam_arc_freq_right)
-            self.spin_arc_center_left.setValue(v.sam_arc_center_left)
-            self.spin_arc_center_right.setValue(v.sam_arc_center_right)
-            self.spin_arc_peak_left.setValue(v.sam_arc_peak_left)
-            self.spin_arc_peak_right.setValue(v.sam_arc_peak_right)
-            self.spin_phase_offset_left.setValue(v.sam_phase_offset_left)
-            self.spin_phase_offset_right.setValue(v.sam_phase_offset_right)
-            idx_func = 0 if v.sam_arc_function == "sin" else 1
-            self.combo_arc_function.setCurrentIndex(idx_func)
+            
+            # Set SAM parameters
+            self.spin_phase_deviation.setValue(v.phase_deviation)
+            self.spin_left_phase_offset.setValue(v.left_phase_offset)
+            self.spin_right_phase_offset.setValue(v.right_phase_offset)
+            
+            # Set sound path combobox
+            for i in range(self.combo_sound_path.count()):
+                if self.combo_sound_path.itemData(i) == v.sound_path:
+                    self.combo_sound_path.setCurrentIndex(i)
+                    break
+            
+            # Show/hide secondary source controls based on voice type
+            if v.voice_type == "MultiSAMBinaural":
+                self.check_use_secondary.setVisible(True)
+                self.label_use_secondary.setVisible(True)
+                self.label_secondary_freq_ratio.setVisible(True)
+                self.spin_secondary_freq_ratio.setVisible(True)
+                self.label_secondary_spatial_ratio.setVisible(True)
+                self.spin_secondary_spatial_ratio.setVisible(True)
+                self.label_secondary_volume.setVisible(True)
+                self.spin_secondary_volume.setVisible(True)
+                
+                # Set secondary source parameters
+                self.check_use_secondary.setChecked(v.use_secondary_source)
+                self.spin_secondary_freq_ratio.setValue(v.secondary_freq_ratio)
+                self.spin_secondary_spatial_ratio.setValue(v.secondary_spatial_ratio)
+                self.spin_secondary_volume.setValue(v.secondary_volume)
+                
+                # Enable/disable based on use_secondary_source
+                self.spin_secondary_freq_ratio.setEnabled(v.use_secondary_source)
+                self.spin_secondary_spatial_ratio.setEnabled(v.use_secondary_source)
+                self.spin_secondary_volume.setEnabled(v.use_secondary_source)
+            else:
+                # Hide secondary source controls for regular SAM
+                self.check_use_secondary.setVisible(False)
+                self.label_use_secondary.setVisible(False)
+                self.label_secondary_freq_ratio.setVisible(False)
+                self.spin_secondary_freq_ratio.setVisible(False)
+                self.label_secondary_spatial_ratio.setVisible(False)
+                self.spin_secondary_spatial_ratio.setVisible(False)
+                self.label_secondary_volume.setVisible(False)
+                self.spin_secondary_volume.setVisible(False)
         else:
             self.sam_container.hide()
 
@@ -639,8 +812,20 @@ class MainWindow(QMainWindow):
         if row < 0 or row >= len(self.track.voices):
             return
         v = self.track.voices[row]
-        # Add a default node for 5s, 100Hz, volumes=1
-        new_node = NodeData(5.0, 100.0, 0.0, 1.0, 1.0)
+        
+        # Add appropriate node based on voice type
+        if v.voice_type in ["SAMBinaural", "MultiSAMBinaural"]:
+            new_node = NodeData(
+                5.0, 250.0, 0.5, 0.8, 0.8,  # Basic parameters
+                phase_deviation=v.phase_deviation,
+                left_phase_offset=v.left_phase_offset,
+                right_phase_offset=v.right_phase_offset,
+                sound_path=v.sound_path
+            )
+        else:
+            # Standard node for other voice types
+            new_node = NodeData(5.0, 100.0, 0.0, 1.0, 1.0)
+            
         v.nodes.append(new_node)
         self.on_voice_table_selected(row, 0, 0, 0)
 
@@ -704,25 +889,32 @@ class MainWindow(QMainWindow):
         if row < 0 or row >= len(self.track.voices):
             return
         v = self.track.voices[row]
-        if v.voice_type != "SpatialAngleMod":
+        if v.voice_type not in ["SAMBinaural", "MultiSAMBinaural"]:
             return
 
-        v.sam_arc_freq_left = self.spin_arc_freq_left.value()
-        v.sam_arc_freq_right = self.spin_arc_freq_right.value()
-        v.sam_arc_center_left = self.spin_arc_center_left.value()
-        v.sam_arc_center_right = self.spin_arc_center_right.value()
-        v.sam_arc_peak_left = self.spin_arc_peak_left.value()
-        v.sam_arc_peak_right = self.spin_arc_peak_right.value()
-        v.sam_phase_offset_left = self.spin_phase_offset_left.value()
-        v.sam_phase_offset_right = self.spin_phase_offset_right.value()
+        # Update voice-level parameters
+        v.phase_deviation = self.spin_phase_deviation.value()
+        v.left_phase_offset = self.spin_left_phase_offset.value()
+        v.right_phase_offset = self.spin_right_phase_offset.value()
+        v.sound_path = self.combo_sound_path.currentData()
+        
+        # Update secondary source parameters if MultiSAM
+        if v.voice_type == "MultiSAMBinaural":
+            v.secondary_freq_ratio = self.spin_secondary_freq_ratio.value()
+            v.secondary_spatial_ratio = self.spin_secondary_spatial_ratio.value()
+            v.secondary_volume = self.spin_secondary_volume.value()
 
-        if self.combo_arc_function.currentIndex() == 0:
-            v.sam_arc_function = "sin"
-        else:
-            v.sam_arc_function = "triangle"
+        # Update each node with the same parameters (if user wants global control)
+        # You might want to add a checkbox in the UI to toggle this behavior
+        update_nodes = True  # Add UI control for this if needed
+        if update_nodes:
+            for node in v.nodes:
+                node.phase_deviation = v.phase_deviation
+                node.left_phase_offset = v.left_phase_offset
+                node.right_phase_offset = v.right_phase_offset
+                node.sound_path = v.sound_path
 
-        self.update_graph()
-
+        self.update_graph() 
     ####################################################################
     # Graph & Node Click
     ####################################################################
@@ -851,7 +1043,7 @@ class MainWindow(QMainWindow):
         if node_idx < 0 or node_idx >= len(v.nodes):
             return
         nd = v.nodes[node_idx]
-        dlg = NodeEditDialog(nd, self)
+        dlg = NodeEditDialog(nd, voice_type=v.voice_type, parent=self)
         if dlg.exec_() == dlg.Accepted:
             self.refresh_voice_table()
 
@@ -861,10 +1053,18 @@ class MainWindow(QMainWindow):
     def generate_full_audio_if_needed(self):
         if self.is_playing:
             return
+        
+        print("Generating full audio...")
         voices = []
-        for v in self.track.voices:
-            voices.append(self.build_voice_from_data(v))
+        for i, v in enumerate(self.track.voices):
+            print(f"Processing voice {i}: {v.voice_name} ({v.voice_type})")
+            voice_obj = self.build_voice_from_data(v)
+            voices.append(voice_obj)
+            
+        print(f"Generating audio from {len(voices)} voices...")
         self.final_audio = audio_engine.generate_track_audio(voices, self.track.sample_rate)
+        print(f"Generated audio shape: {self.final_audio.shape if self.final_audio is not None else 'None'}")
+        print(f"Audio max value: {np.max(np.abs(self.final_audio)) if self.final_audio is not None and self.final_audio.size > 0 else 'N/A'}")
 
     def build_voice_from_data(self, vdata):
         if vdata.muted or not vdata.nodes:
@@ -873,15 +1073,21 @@ class MainWindow(QMainWindow):
                 [audio_engine.Node(total_dur, 0, 0, 0, 0)],
                 self.track.sample_rate
             )
+            
         # Convert NodeData -> audio_engine.Node
         nodes = []
         for nd in vdata.nodes:
+            # SAM-specific parameters need to be included for SAM voices
             node = audio_engine.Node(
                 nd.duration,
                 nd.base_freq,
                 nd.beat_freq,
                 nd.volume_left,
-                nd.volume_right
+                nd.volume_right,
+                phase_deviation=getattr(nd, 'phase_deviation', 0.7),
+                left_phase_offset=getattr(nd, 'left_phase_offset', 0.0),
+                right_phase_offset=getattr(nd, 'right_phase_offset', 0.0),
+                sound_path=getattr(nd, 'sound_path', SoundPath.CIRCULAR)
             )
             nodes.append(node)
 
@@ -916,21 +1122,41 @@ class MainWindow(QMainWindow):
                 nodes, file_path="some_file.wav",
                 sample_rate=self.track.sample_rate
             )
-        elif vt == "SpatialAngleMod":
-            # Convert degrees -> radians
-            return audio_engine.SpatialAngleModVoice(
-                nodes,
-                sample_rate=self.track.sample_rate,
-                arc_freq_left=vdata.sam_arc_freq_left,
-                arc_freq_right=vdata.sam_arc_freq_right,
-                arc_center_left=math.radians(vdata.sam_arc_center_left),
-                arc_center_right=math.radians(vdata.sam_arc_center_right),
-                arc_peak_left=math.radians(vdata.sam_arc_peak_left),
-                arc_peak_right=math.radians(vdata.sam_arc_peak_right),
-                phase_offset_left=math.radians(vdata.sam_phase_offset_left),
-                phase_offset_right=math.radians(vdata.sam_phase_offset_right),
-                arc_function=vdata.sam_arc_function
-            )
+        elif vt == "SAMBinaural":
+            print(f"Creating SAM Binaural voice with {len(nodes)} nodes")
+            try:
+                # Create the SAM voice with node-level parameters
+                sam_voice = audio_engine.SAMBinauralVoice(
+                    nodes,
+                    sample_rate=self.track.sample_rate
+                )
+                return sam_voice
+            except Exception as e:
+                print(f"Error creating SAM voice: {e}")
+                traceback.print_exc()
+                # Fall back to a simpler voice type
+                return audio_engine.BinauralBeatVoice(nodes, self.track.sample_rate)
+        elif vt == "MultiSAMBinaural":
+            print(f"Creating Multi-SAM Binaural voice with {len(nodes)} nodes")
+            try:
+                # Only use MultiSAMBinauralVoice if secondary source is enabled
+                if vdata.use_secondary_source:
+                    multi_sam_voice = audio_engine.MultiSAMBinauralVoice(
+                        nodes,
+                        sample_rate=self.track.sample_rate,
+                        secondary_freq_ratio=vdata.secondary_freq_ratio,
+                        secondary_spatial_ratio=vdata.secondary_spatial_ratio,
+                        secondary_volume=vdata.secondary_volume
+                    )
+                    return multi_sam_voice
+                else:
+                    # Use regular SAMBinauralVoice if secondary is disabled
+                    return audio_engine.SAMBinauralVoice(nodes, self.track.sample_rate)
+            except Exception as e:
+                print(f"Error creating Multi-SAM voice: {e}")
+                traceback.print_exc()
+                # Fall back to a simpler voice type
+                return audio_engine.BinauralBeatVoice(nodes, self.track.sample_rate)
         else:
             return audio_engine.BinauralBeatVoice(nodes, self.track.sample_rate)
 
@@ -1041,7 +1267,15 @@ class MainWindow(QMainWindow):
     def export_generic(self, path, fmt):
         self.generate_full_audio_if_needed()
         if self.final_audio is None:
+            QMessageBox.warning(self, "Export Error", "No audio data to export")
             return
+        
+        # Add verification
+        max_val = np.max(np.abs(self.final_audio)) if self.final_audio.size > 0 else 0
+        print(f"Audio verification - Shape: {self.final_audio.shape}, Max value: {max_val}")
+        
+        if max_val < 1e-6:
+            print("Warning: Audio appears to be silent")
         if fmt == "wav":
             audio_engine.export_wav(self.final_audio, self.track.sample_rate, path)
         elif fmt == "flac":
@@ -1060,4 +1294,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
