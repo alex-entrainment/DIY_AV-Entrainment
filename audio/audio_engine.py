@@ -1384,43 +1384,4 @@ def export_mp3(audio_data, sample_rate, file_path):
         return False
 
 
-# -----------------------------------------------------------
-# Example Usage
-# -----------------------------------------------------------
 
-def create_example_audio():
-    """
-    Create a simple example audio file demonstrating the improved implementation.
-    """
-    # Create nodes for a 30-second alpha relaxation
-    nodes = get_preset_nodes_for_state(BrainwaveState.ALPHA, duration=30.0)
-    
-    # Create different voice types
-    sam_voice = ImprovedSAMVoice(nodes)
-    binaural_voice = BinauralBeatVoice(nodes)
-    
-    # Generate audio with SAM voice
-    sam_audio = sam_voice.generate_samples()
-    export_wav(sam_audio, 44100, "sam_example.wav")
-    
-    # Generate audio with binaural voice
-    binaural_audio = binaural_voice.generate_samples()
-    export_wav(binaural_audio, 44100, "binaural_example.wav")
-    
-    # Create a multi-voice track with background pink noise
-    noise_voice = PinkNoiseVoice(nodes)
-    
-    # Mix voices together with relative volumes
-    mixed_voices = [
-        sam_voice,       # Main entrainment
-        noise_voice      # Background noise
-    ]
-    
-    mixed_audio = generate_track_audio(mixed_voices)
-    export_wav(mixed_audio, 44100, "mixed_example.wav")
-    
-    print("Created example audio files.")
-
-
-if __name__ == "__main__":
- 

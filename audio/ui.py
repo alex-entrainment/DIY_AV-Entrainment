@@ -10,14 +10,14 @@ from PyQt5.QtWidgets import (
     QGridLayout, QLabel, QPushButton, QComboBox, QSpinBox, QDoubleSpinBox,
     QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog,
     QLineEdit, QMessageBox, QAction, QMenuBar, QDialog, QDialogButtonBox,
-    QFormLayout, QSlider
+    QFormLayout, QSlider, QSplitter
 )
 from PyQt5.QtCore import Qt, QTimer
 import pyqtgraph as pg
 
 # Import the integrated audio engine instead of the original
-import audio_engine_2 as audio_engine
-from audio_engine_2 import SoundPath
+import audio_engine as audio_engine
+from audio_engine import SoundPath
 
 
 ########################################################################
@@ -364,6 +364,7 @@ class MainWindow(QMainWindow):
 
         self.create_menu()
         self.setup_ui()
+        self.connect_node_table_selection()  # Add this line
 
         self.play_timer = QTimer()
         self.play_timer.setInterval(200)
@@ -402,8 +403,11 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)  # Changed to QVBoxLayout for main container
 
+        # Create main splitter for horizontal arrangement
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        
         # Voice table
         self.voice_table = QTableWidget()
         self.voice_table.setColumnCount(5)
@@ -426,18 +430,27 @@ class MainWindow(QMainWindow):
         voice_btn_layout.addWidget(self.btn_remove_voice)
         voice_layout.addLayout(voice_btn_layout)
 
+        # Voice container widget
+        voices_container = QWidget()
+        voices_container.setLayout(voice_layout)
+        
         # Node table
         self.node_table = QTableWidget()
         self.node_table.setColumnCount(5)
         self.node_table.setHorizontalHeaderLabels(["Duration","BaseFreq","BeatFreq","VolLeft","VolRight"])
         self.node_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.node_table.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.node_table.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Changed to ExtendedSelection
         self.node_table.itemChanged.connect(self.on_node_table_item_changed)
 
         self.btn_add_node = QPushButton("Add Node")
         self.btn_add_node.clicked.connect(self.add_node)
         self.btn_remove_node = QPushButton("Remove Node")
         self.btn_remove_node.clicked.connect(self.remove_node)
+        
+        # Add button for batch editing multiple nodes
+        self.btn_edit_multiple_nodes = QPushButton("Edit Selected Nodes")
+        self.btn_edit_multiple_nodes.clicked.connect(self.edit_multiple_nodes)
+        self.btn_edit_multiple_nodes.setToolTip("Edit parameters for all selected nodes at once")
 
         node_layout = QVBoxLayout()
         node_layout.addWidget(QLabel("Nodes:"))
@@ -445,6 +458,7 @@ class MainWindow(QMainWindow):
         node_btn_layout = QHBoxLayout()
         node_btn_layout.addWidget(self.btn_add_node)
         node_btn_layout.addWidget(self.btn_remove_node)
+        node_btn_layout.addWidget(self.btn_edit_multiple_nodes)
         node_layout.addLayout(node_btn_layout)
 
         # Iso param controls
@@ -534,6 +548,13 @@ class MainWindow(QMainWindow):
         self.spin_secondary_volume.setValue(0.4)
         self.spin_secondary_volume.setToolTip("Volume of secondary source relative to primary")
 
+        # Node selection help text
+        self.node_selection_help = QLabel(
+            "Selection Tips: Shift+Click node to edit. Ctrl+Click to select multiple nodes."
+        )
+        self.node_selection_help.setWordWrap(True)
+        self.node_selection_help.setStyleSheet("color: gray; font-style: italic;")
+
         self.sam_layout = QGridLayout()
         self.sam_layout.addWidget(self.sam_group_label, 0, 0, 1, 2)
         self.sam_layout.addWidget(self.label_phase_deviation, 1, 0)
@@ -555,6 +576,9 @@ class MainWindow(QMainWindow):
         self.sam_layout.addWidget(self.spin_secondary_spatial_ratio, 8, 1)
         self.sam_layout.addWidget(self.label_secondary_volume, 9, 0)
         self.sam_layout.addWidget(self.spin_secondary_volume, 9, 1)
+        
+        # Add node selection help
+        self.sam_layout.addWidget(self.node_selection_help, 10, 0, 1, 2)
 
         self.sam_container = QWidget()
         self.sam_container.setLayout(self.sam_layout)
@@ -610,19 +634,194 @@ class MainWindow(QMainWindow):
         right_graph_layout.addWidget(self.plot_widget, stretch=2)
         right_graph_layout.addLayout(pb_layout, stretch=1)
 
-        voices_container = QWidget()
-        voices_container.setLayout(voice_layout)
-
         middle_container = QWidget()
         middle_container.setLayout(middle_layout)
 
         right_container = QWidget()
         right_container.setLayout(right_graph_layout)
 
-        main_layout.addWidget(voices_container, stretch=2)
-        main_layout.addWidget(middle_container, stretch=3)
-        main_layout.addWidget(right_container, stretch=4)
+        # Add the widgets to the main horizontal splitter
+        self.main_splitter.addWidget(voices_container)
+        self.main_splitter.addWidget(middle_container)
+        self.main_splitter.addWidget(right_container)
+        
+        # Set initial sizes for the splitter
+        self.main_splitter.setSizes([200, 300, 500])
+        
+        # Add the main splitter to the layout
+        main_layout.addWidget(self.main_splitter)
 
+    def edit_multiple_nodes(self):
+        """Edit parameters for multiple selected nodes at once."""
+        voice_idx = self.voice_table.currentRow()
+        if voice_idx < 0 or voice_idx >= len(self.track.voices):
+            return
+        
+        voice = self.track.voices[voice_idx]
+        
+        # Get all selected rows from node table
+        selected_rows = sorted(set([item.row() for item in self.node_table.selectedItems()]))
+        if not selected_rows:
+            QMessageBox.information(self, "Selection", "Please select at least one node to edit.")
+            return
+            
+        # Create a dialog for batch editing
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Batch Edit Nodes")
+        layout = QVBoxLayout()
+        
+        form = QFormLayout()
+        
+        # Create checkboxes and spinboxes for each parameter
+        chk_duration = QCheckBox("Edit Duration")
+        spin_duration = QDoubleSpinBox()
+        spin_duration.setRange(0.0, 9999.0)
+        spin_duration.setSingleStep(0.5)
+        spin_duration.setValue(voice.nodes[selected_rows[0]].duration)
+        spin_duration.setEnabled(False)
+        chk_duration.toggled.connect(spin_duration.setEnabled)
+        
+        chk_base_freq = QCheckBox("Edit Base Frequency")
+        spin_base_freq = QDoubleSpinBox()
+        spin_base_freq.setRange(0.0, 20000.0)
+        spin_base_freq.setSingleStep(1.0)
+        spin_base_freq.setValue(voice.nodes[selected_rows[0]].base_freq)
+        spin_base_freq.setEnabled(False)
+        chk_base_freq.toggled.connect(spin_base_freq.setEnabled)
+        
+        chk_beat_freq = QCheckBox("Edit Beat Frequency")
+        spin_beat_freq = QDoubleSpinBox()
+        spin_beat_freq.setRange(0.0, 20000.0)
+        spin_beat_freq.setSingleStep(0.1)
+        spin_beat_freq.setValue(voice.nodes[selected_rows[0]].beat_freq)
+        spin_beat_freq.setEnabled(False)
+        chk_beat_freq.toggled.connect(spin_beat_freq.setEnabled)
+        
+        chk_vol_left = QCheckBox("Edit Left Volume")
+        spin_vol_left = QDoubleSpinBox()
+        spin_vol_left.setRange(0.0, 1.0)
+        spin_vol_left.setSingleStep(0.1)
+        spin_vol_left.setValue(voice.nodes[selected_rows[0]].volume_left)
+        spin_vol_left.setEnabled(False)
+        chk_vol_left.toggled.connect(spin_vol_left.setEnabled)
+        
+        chk_vol_right = QCheckBox("Edit Right Volume")
+        spin_vol_right = QDoubleSpinBox()
+        spin_vol_right.setRange(0.0, 1.0)
+        spin_vol_right.setSingleStep(0.1)
+        spin_vol_right.setValue(voice.nodes[selected_rows[0]].volume_right)
+        spin_vol_right.setEnabled(False)
+        chk_vol_right.toggled.connect(spin_vol_right.setEnabled)
+        
+        # Add SAM-specific parameters if applicable
+        sam_controls = []
+        if voice.voice_type in ["SAMBinaural", "MultiSAMBinaural"]:
+            # Phase deviation
+            chk_phase_dev = QCheckBox("Edit Phase Deviation")
+            spin_phase_dev = QDoubleSpinBox()
+            spin_phase_dev.setRange(0.0, 5.0)
+            spin_phase_dev.setSingleStep(0.1)
+            spin_phase_dev.setValue(getattr(voice.nodes[selected_rows[0]], 'phase_deviation', 0.7))
+            spin_phase_dev.setEnabled(False)
+            chk_phase_dev.toggled.connect(spin_phase_dev.setEnabled)
+            
+            # Left phase offset
+            chk_left_offset = QCheckBox("Edit Left Phase Offset")
+            spin_left_offset = QDoubleSpinBox()
+            spin_left_offset.setRange(-3.14, 3.14)
+            spin_left_offset.setSingleStep(0.1)
+            spin_left_offset.setValue(getattr(voice.nodes[selected_rows[0]], 'left_phase_offset', 0.0))
+            spin_left_offset.setEnabled(False)
+            chk_left_offset.toggled.connect(spin_left_offset.setEnabled)
+            
+            # Right phase offset
+            chk_right_offset = QCheckBox("Edit Right Phase Offset")
+            spin_right_offset = QDoubleSpinBox()
+            spin_right_offset.setRange(-3.14, 3.14)
+            spin_right_offset.setSingleStep(0.1)
+            spin_right_offset.setValue(getattr(voice.nodes[selected_rows[0]], 'right_phase_offset', 0.0))
+            spin_right_offset.setEnabled(False)
+            chk_right_offset.toggled.connect(spin_right_offset.setEnabled)
+            
+            # Sound path
+            chk_sound_path = QCheckBox("Edit Sound Path")
+            combo_sound_path = QComboBox()
+            for path in SoundPath:
+                combo_sound_path.addItem(path.value.title(), path)
+            
+            # Set current sound path
+            current_path = getattr(voice.nodes[selected_rows[0]], 'sound_path', SoundPath.CIRCULAR)
+            for i in range(combo_sound_path.count()):
+                if combo_sound_path.itemData(i) == current_path:
+                    combo_sound_path.setCurrentIndex(i)
+                    break
+            
+            combo_sound_path.setEnabled(False)
+            chk_sound_path.toggled.connect(combo_sound_path.setEnabled)
+            
+            # Add to controls list for later reference
+            sam_controls = [
+                (chk_phase_dev, spin_phase_dev, 'phase_deviation'),
+                (chk_left_offset, spin_left_offset, 'left_phase_offset'),
+                (chk_right_offset, spin_right_offset, 'right_phase_offset'),
+                (chk_sound_path, combo_sound_path, 'sound_path')
+            ]
+
+        # Add basic parameters to form
+        form.addRow(chk_duration, spin_duration)
+        form.addRow(chk_base_freq, spin_base_freq)
+        form.addRow(chk_beat_freq, spin_beat_freq)
+        form.addRow(chk_vol_left, spin_vol_left)
+        form.addRow(chk_vol_right, spin_vol_right)
+        
+        # Add SAM parameters if applicable
+        if voice.voice_type in ["SAMBinaural", "MultiSAMBinaural"]:
+            form.addRow(QLabel("--- SAM Parameters ---"))
+            for chk, ctrl, _ in sam_controls:
+                form.addRow(chk, ctrl)
+        
+        # Button box
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        
+        layout.addLayout(form)
+        layout.addWidget(buttonBox)
+        dlg.setLayout(layout)
+        
+        # Connect button signals
+        buttonBox.accepted.connect(dlg.accept)
+        buttonBox.rejected.connect(dlg.reject)
+        
+        # Show the dialog
+        if dlg.exec_() == QDialog.Accepted:
+            # Apply changes to all selected nodes
+            for idx in selected_rows:
+                if idx < len(voice.nodes):
+                    node = voice.nodes[idx]
+                    
+                    # Update basic parameters if checked
+                    if chk_duration.isChecked():
+                        node.duration = spin_duration.value()
+                    if chk_base_freq.isChecked():
+                        node.base_freq = spin_base_freq.value()
+                    if chk_beat_freq.isChecked():
+                        node.beat_freq = spin_beat_freq.value()
+                    if chk_vol_left.isChecked():
+                        node.volume_left = spin_vol_left.value()
+                    if chk_vol_right.isChecked():
+                        node.volume_right = spin_vol_right.value()
+                    
+                    # Update SAM parameters if checked
+                    if voice.voice_type in ["SAMBinaural", "MultiSAMBinaural"]:
+                        for chk, ctrl, param_name in sam_controls:
+                            if chk.isChecked():
+                                if param_name == 'sound_path':
+                                    setattr(node, param_name, ctrl.currentData())
+                                else:
+                                    setattr(node, param_name, ctrl.value())
+            
+            # Refresh the node table and graph
+            self.on_voice_table_selected(voice_idx, 0, 0, 0)
+            self.update_graph()
     def on_secondary_source_toggled(self, checked):
         """Handle toggling the secondary source checkbox"""
         row = self.voice_table.currentRow()
@@ -840,6 +1039,27 @@ class MainWindow(QMainWindow):
                 v.nodes.pop(r)
         self.on_voice_table_selected(row, 0, 0, 0)
 
+    def connect_node_table_selection(self):
+        """Connect node table selection to update the graph selection."""
+        self.node_table.itemSelectionChanged.connect(self.on_node_table_selection_changed)
+
+    def on_node_table_selection_changed(self):
+        """Update graph selection when node table selection changes."""
+        voice_idx = self.voice_table.currentRow()
+        if voice_idx < 0 or voice_idx >= len(self.track.voices):
+            return
+        
+        # Clear current selection
+        self.selected_nodes.clear()
+        
+        # Add all selected nodes
+        for item in self.node_table.selectedItems():
+            node_idx = item.row()
+            self.selected_nodes.add((voice_idx, node_idx))
+        
+        # Update graph
+        self.highlight_selected_nodes()
+
     def on_node_table_item_changed(self, item):
         vrow = self.voice_table.currentRow()
         if vrow < 0 or vrow >= len(self.track.voices):
@@ -981,22 +1201,33 @@ class MainWindow(QMainWindow):
 
         mods = QApplication.keyboardModifiers()
         if mods & Qt.ControlModifier:
-            # toggle
+            # toggle selection
             if (voice_idx, node_idx) in self.selected_nodes:
                 self.selected_nodes.remove((voice_idx, node_idx))
             else:
                 self.selected_nodes.add((voice_idx, node_idx))
+                
+            # Update node table selection to match
+            self.voice_table.setCurrentCell(voice_idx, 0)
+            self.node_table.clearSelection()
+            for _, n_idx in self.selected_nodes:
+                if n_idx < self.node_table.rowCount():
+                    self.node_table.selectRow(n_idx)
+                    
+        elif mods & Qt.ShiftModifier:
+            # Single node edit
+            self.edit_single_node(voice_idx, node_idx)
         else:
+            # Clear selection and select just this node
             self.selected_nodes.clear()
             self.selected_nodes.add((voice_idx, node_idx))
+            
+            # Update node table selection
+            self.voice_table.setCurrentCell(voice_idx, 0)
+            self.node_table.clearSelection()
+            self.node_table.selectRow(node_idx)
 
-        # SHIFT => open node editor
-        if mods & Qt.ShiftModifier:
-            self.edit_single_node(voice_idx, node_idx)
-
-        # highlight
-        self.voice_table.setCurrentCell(voice_idx, 0)
-        self.node_table.setCurrentCell(node_idx, 0)
+        # highlight selections
         self.highlight_selected_nodes()
 
     def highlight_selected_nodes(self):
