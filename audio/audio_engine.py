@@ -34,8 +34,8 @@ class BrainwaveState(Enum):
 
 class Node:
     def __init__(self, duration, base_freq, beat_freq, volume_left, volume_right,
-                 phase_deviation=0.05, left_phase_offset=0.0, right_phase_offset=0.0,
-                 sound_path=SoundPath.CIRCULAR):
+             phase_deviation=0.5, left_phase_offset=0.0, right_phase_offset=0.0,
+             sound_path=SoundPath.CIRCULAR):
         """
         Initialize a node for audio generation.
         
@@ -45,7 +45,7 @@ class Node:
             beat_freq: Beat/spatial frequency in Hz (used differently by different voices)
             volume_left: Volume for left channel (0.0 to 1.0)
             volume_right: Volume for right channel (0.0 to 1.0)
-            phase_deviation: Maximum phase deviation (reduced from original to prevent buzzing)
+            phase_deviation: Maximum phase deviation (increased from 0.1 to allow stronger effect)
             left_phase_offset: Static phase offset for left channel
             right_phase_offset: Static phase offset for right channel
             sound_path: Type of spatial sound movement
@@ -55,25 +55,24 @@ class Node:
         self.beat_freq = float(beat_freq)
         self.volume_left = float(volume_left)
         self.volume_right = float(volume_right)
-        # SAM-specific parameters (with reduced phase_deviation)
-        self.phase_deviation = min(float(phase_deviation), 0.1)  # Cap at 0.1 to prevent buzzing
+        # Increased maximum phase deviation cap to allow more noticeable effect
+        self.phase_deviation = min(float(phase_deviation), 1.0)  # Increased from 0.1 to 1.0
         self.left_phase_offset = float(left_phase_offset)
         self.right_phase_offset = float(right_phase_offset)
-        self.sound_path = sound_path if isinstance(sound_path, SoundPath) else SoundPath.CIRCULAR
-    
-    def to_dict(self):
-        """Convert node to dictionary for serialization."""
-        return {
-            "duration": self.duration,
-            "base_freq": self.base_freq,
-            "beat_freq": self.beat_freq,
-            "volume_left": self.volume_left,
-            "volume_right": self.volume_right,
-            "phase_deviation": self.phase_deviation,
-            "left_phase_offset": self.left_phase_offset,
-            "right_phase_offset": self.right_phase_offset,
-            "sound_path": self.sound_path.value if isinstance(self.sound_path, Enum) else self.sound_path
-        }
+        self.sound_path = sound_path if isinstance(sound_path, SoundPath) else SoundPath.CIRCULAR    
+        def to_dict(self):
+            """Convert node to dictionary for serialization."""
+            return {
+                "duration": self.duration,
+                "base_freq": self.base_freq,
+                "beat_freq": self.beat_freq,
+                "volume_left": self.volume_left,
+                "volume_right": self.volume_right,
+                "phase_deviation": self.phase_deviation,
+                "left_phase_offset": self.left_phase_offset,
+                "right_phase_offset": self.right_phase_offset,
+                "sound_path": self.sound_path.value if isinstance(self.sound_path, Enum) else self.sound_path
+            }
     
     @staticmethod
     def from_dict(d):
@@ -187,44 +186,61 @@ class Voice:
 def generate_spatial_modulator(t, spatial_freq, phase_deviation, sound_path, phase_offset=0.0):
     """
     Generate a phase modulation signal based on the specified sound path type.
+    Enhanced to produce more noticeable spatial effects.
     
     Args:
         t: Time array
-        spatial_freq: Frequency of spatial modulation (Hz)
-        phase_deviation: Maximum phase deviation (radians)
+        spatial_freq: Frequency of spatial modulation (Hz) - can be array or scalar
+        phase_deviation: Maximum phase deviation (radians) - can be array or scalar
         sound_path: Type of perceived movement
-        phase_offset: Static phase offset (radians)
+        phase_offset: Static phase offset (radians) - can be array or scalar
         
     Returns:
         Phase modulation array
     """
-    # Base angular frequency
-    omega = 2.0 * np.pi * spatial_freq
+    # Support both scalar and array inputs for spatial_freq and phase_deviation
+    spatial_freq = np.asarray(spatial_freq)
+    phase_deviation = np.asarray(phase_deviation)
     
-    # Generate the modulation based on sound path type
-    if sound_path == SoundPath.CIRCULAR:
-        mod = phase_deviation * np.sin(omega * t)
-    elif sound_path == SoundPath.SEMI_CIRCULAR:
-        mod = phase_deviation * 0.5 * (np.sin(omega * t) + 1)
-    elif sound_path == SoundPath.OPEN:
-        # Smoother sawtooth for open path
-        t_mod = np.mod(omega * t, 2 * np.pi) / np.pi
-        mod = phase_deviation * (t_mod - 1)
-    elif sound_path == SoundPath.DISCONTINUOUS:
-        # Smoother square-like wave using tanh
-        t_mod = np.mod(omega * t, 2 * np.pi) / (2 * np.pi)
-        mod = phase_deviation * np.tanh(np.sin(2 * np.pi * t_mod) / 0.2)
-    elif sound_path == SoundPath.LINEAR:
-        # Triangular wave for linear path
-        t_mod = np.mod(omega * t, 2 * np.pi) / (2 * np.pi)
-        mod = phase_deviation * (2 * np.abs(2 * t_mod - 1) - 1)
+    # Create a time-dependent phase accumulation
+    if spatial_freq.size == 1:
+        # Simple case: constant frequency
+        omega = 2.0 * np.pi * spatial_freq
+        phase = omega * t
     else:
-        # Default to circular
-        mod = phase_deviation * np.sin(omega * t)
+        # More complex case: varying frequency
+        # We need to compute the phase by integrating the frequency over time
+        dt = t[1] - t[0] if len(t) > 1 else 1.0/44100.0
+        omega = 2.0 * np.pi * spatial_freq
+        phase = np.cumsum(omega * dt)
+        # Ensure phase starts at 0
+        phase = np.concatenate(([0], phase[:-1]))
     
-    # Add phase offset
+    # Generate the modulation based on sound path type with enhanced spatial effect
+    if sound_path == SoundPath.CIRCULAR:
+        # Enhanced with additional harmonics for richer spatial movement
+        mod = phase_deviation * (np.sin(phase) + 0.3 * np.sin(3 * phase))
+    elif sound_path == SoundPath.SEMI_CIRCULAR:
+        # Enhanced semi-circular effect
+        mod = phase_deviation * 0.8 * (np.sin(phase) + 0.5)
+    elif sound_path == SoundPath.OPEN:
+        # Enhanced open path with smoother transitions
+        t_mod = np.mod(phase, 2 * np.pi) / np.pi
+        mod = phase_deviation * 1.2 * (t_mod - 1)
+    elif sound_path == SoundPath.DISCONTINUOUS:
+        # More pronounced discontinuous effect
+        t_mod = np.mod(phase, 2 * np.pi) / (2 * np.pi)
+        mod = phase_deviation * 1.5 * np.tanh(np.sin(2 * np.pi * t_mod) / 0.15)
+    elif sound_path == SoundPath.LINEAR:
+        # Enhanced triangular wave for linear path
+        t_mod = np.mod(phase, 2 * np.pi) / (2 * np.pi)
+        mod = phase_deviation * 1.2 * (2 * np.abs(2 * t_mod - 1) - 1)
+    else:
+        # Default enhanced circular
+        mod = phase_deviation * (np.sin(phase) + 0.3 * np.sin(3 * phase))
+    
+    # Add phase offset (supports both scalar and array)
     return mod + phase_offset
-
 
 def apply_fade(signal, fade_samples=1000):
     """
@@ -254,6 +270,32 @@ def apply_fade(signal, fade_samples=1000):
     
     return result
 
+def enhance_stereo_width(left, right, width_factor=1.2):
+        """
+        Enhance the stereo width of a stereo audio signal.
+        
+        Args:
+            left: Left channel array
+            right: Right channel array
+            width_factor: Stereo enhancement factor (1.0 = no change, >1.0 = wider)
+            
+        Returns:
+            Tuple of (left_enhanced, right_enhanced)
+        """
+        # Create mid and side signals
+        mid = (left + right) / 2.0
+        side = (left - right) / 2.0
+        
+        # Apply width factor to side signal
+        side_enhanced = side * width_factor
+        
+        # Reconstruct left and right channels
+        left_enhanced = mid + side_enhanced
+        right_enhanced = mid - side_enhanced
+        
+        return left_enhanced, right_enhanced
+
+
 
 class ImprovedSAMVoice(Voice):
     """
@@ -265,8 +307,10 @@ class ImprovedSAMVoice(Voice):
         super().__init__(nodes, sample_rate)
         self.apply_fades = apply_fades
     
+    
+    # 5. Modified ImprovedSAMVoice.generate_samples to incorporate stereo enhancement
     def generate_samples(self):
-        """Generate high-quality SAM binaural audio samples."""
+        """Generate high-quality SAM binaural audio samples with enhanced stereo width."""
         # Get parameter arrays
         params = self._get_param_arrays()
         t_array, base_freq_array, beat_freq_array, vol_left_array, vol_right_array, \
@@ -311,22 +355,22 @@ class ImprovedSAMVoice(Voice):
             sound_path = self.sound_paths[current_node_idx]
             
             # Generate phase modulations with opposite phases for left/right
-            # For left channel, use the specified sound path
+            # For left channel, use the specified sound path with FULL ARRAYS
             left_mod = generate_spatial_modulator(
                 t_slice,
-                beat_freq_slice[0],  # Use first value for consistency within segment
-                phase_dev_slice[0],  # Use first value for consistency
+                beat_freq_slice,  # Use full array
+                phase_dev_slice,  # Use full array
                 sound_path,
-                left_offset_slice[0]
+                left_offset_slice[0]  # Offset can remain constant
             )
             
             # For right channel, use the same parameters but with π phase shift when appropriate
             if sound_path in [SoundPath.CIRCULAR, SoundPath.SEMI_CIRCULAR]:
-                # For circular patterns, we want opposite phase
+                # For circular patterns, we want opposite phase with increased phase offset
                 right_mod = generate_spatial_modulator(
                     t_slice,
-                    beat_freq_slice[0],
-                    phase_dev_slice[0],
+                    beat_freq_slice,  # Use full array
+                    phase_dev_slice,  # Use full array
                     sound_path,
                     right_offset_slice[0] + np.pi  # Add π for opposite phase
                 )
@@ -334,18 +378,21 @@ class ImprovedSAMVoice(Voice):
                 # For other patterns, use complementary modulation
                 right_mod = generate_spatial_modulator(
                     t_slice,
-                    beat_freq_slice[0],
-                    phase_dev_slice[0],
+                    beat_freq_slice,  # Use full array
+                    phase_dev_slice,  # Use full array
                     sound_path,
                     right_offset_slice[0]
                 )
-                # Invert the modulation for complementary effect
-                right_mod = -left_mod + 2 * right_offset_slice[0]
+                # Invert the modulation for complementary effect with stronger contrast
+                right_mod = -left_mod * 1.1 + 2 * right_offset_slice[0]  # Multiply by 1.1 for stronger contrast
             
             # Generate carrier waves with phase modulation
             carrier_phase = 2.0 * np.pi * base_freq_slice * t_slice
             left_wave = np.sin(carrier_phase + left_mod) * vol_left_slice
             right_wave = np.sin(carrier_phase + right_mod) * vol_right_slice
+            
+            # Apply stereo width enhancement
+            left_wave, right_wave = enhance_stereo_width(left_wave, right_wave, width_factor=1.3)
             
             # Apply fades to segment if needed to prevent clicks at node boundaries
             if self.apply_fades and segment_samples > 2000:
@@ -362,8 +409,6 @@ class ImprovedSAMVoice(Voice):
             i_start = i_end
         
         return audio.astype(np.float32)
-
-
 # -----------------------------------------------------------
 # Binaural Beats Voice
 # -----------------------------------------------------------
@@ -457,7 +502,7 @@ class MultiSAMVoice(ImprovedSAMVoice):
             # Primary source parameters
             p_base_freq = base_freq_array[slice_indices]
             p_spatial_freq = beat_freq_array[slice_indices]
-            p_phase_dev = phase_dev_array[slice_indices][0]
+            p_phase_dev = phase_dev_array[slice_indices]  # CHANGED: Use full array
             p_left_offset = left_phase_offset_array[slice_indices][0]
             p_right_offset = right_phase_offset_array[slice_indices][0]
             p_vol_left = vol_left_array[slice_indices]
@@ -466,7 +511,7 @@ class MultiSAMVoice(ImprovedSAMVoice):
             # Secondary source parameters
             s_base_freq = secondary_base_freq_array[slice_indices]
             s_spatial_freq = secondary_spatial_freq_array[slice_indices]
-            s_phase_dev = p_phase_dev * 0.8  # Slightly reduced deviation
+            s_phase_dev = p_phase_dev * 0.8  # Slightly reduced deviation, maintain array
             s_vol_left = secondary_vol_left_array[slice_indices]
             s_vol_right = secondary_vol_right_array[slice_indices]
             
@@ -481,11 +526,11 @@ class MultiSAMVoice(ImprovedSAMVoice):
             else:
                 secondary_path = SoundPath.SEMI_CIRCULAR
             
-            # Generate primary source modulations
+            # Generate primary source modulations with FULL ARRAYS
             p_left_mod = generate_spatial_modulator(
                 t_slice, 
-                p_spatial_freq[0],
-                p_phase_dev,
+                p_spatial_freq,  # CHANGED: Use full array
+                p_phase_dev,     # CHANGED: Use full array
                 primary_path,
                 p_left_offset
             )
@@ -493,8 +538,8 @@ class MultiSAMVoice(ImprovedSAMVoice):
             if primary_path in [SoundPath.CIRCULAR, SoundPath.SEMI_CIRCULAR]:
                 p_right_mod = generate_spatial_modulator(
                     t_slice,
-                    p_spatial_freq[0],
-                    p_phase_dev,
+                    p_spatial_freq,  # CHANGED: Use full array
+                    p_phase_dev,     # CHANGED: Use full array
                     primary_path,
                     p_right_offset + np.pi
                 )
@@ -504,8 +549,8 @@ class MultiSAMVoice(ImprovedSAMVoice):
             # Generate secondary source modulations with complementary movement
             s_left_mod = generate_spatial_modulator(
                 t_slice, 
-                s_spatial_freq[0],
-                s_phase_dev,
+                s_spatial_freq,  # CHANGED: Use full array
+                s_phase_dev,     # CHANGED: Use full array
                 secondary_path,
                 p_right_offset  # Swap offsets for more spatial richness
             )
@@ -513,8 +558,8 @@ class MultiSAMVoice(ImprovedSAMVoice):
             if secondary_path in [SoundPath.CIRCULAR, SoundPath.SEMI_CIRCULAR]:
                 s_right_mod = generate_spatial_modulator(
                     t_slice,
-                    s_spatial_freq[0],
-                    s_phase_dev,
+                    s_spatial_freq,  # CHANGED: Use full array
+                    s_phase_dev,     # CHANGED: Use full array
                     secondary_path,
                     p_left_offset + np.pi
                 )
@@ -557,7 +602,6 @@ class MultiSAMVoice(ImprovedSAMVoice):
             audio /= max_val
         
         return audio.astype(np.float32)
-
 
 # -----------------------------------------------------------
 # Isochronic Pulse Generator
