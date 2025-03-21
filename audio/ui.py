@@ -1357,7 +1357,7 @@ class MainWindow(QMainWindow):
             print(f"Creating SAM Binaural voice with {len(nodes)} nodes")
             try:
                 # Create the SAM voice with node-level parameters
-                sam_voice = audio_engine.SAMBinauralVoice(
+                sam_voice = audio_engine.ImprovedSAMVoice(
                     nodes,
                     sample_rate=self.track.sample_rate
                 )
@@ -1372,7 +1372,7 @@ class MainWindow(QMainWindow):
             try:
                 # Only use MultiSAMBinauralVoice if secondary source is enabled
                 if vdata.use_secondary_source:
-                    multi_sam_voice = audio_engine.MultiSAMBinauralVoice(
+                    multi_sam_voice = audio_engine.MultiSAMVoice(
                         nodes,
                         sample_rate=self.track.sample_rate,
                         secondary_freq_ratio=vdata.secondary_freq_ratio,
@@ -1382,7 +1382,7 @@ class MainWindow(QMainWindow):
                     return multi_sam_voice
                 else:
                     # Use regular SAMBinauralVoice if secondary is disabled
-                    return audio_engine.SAMBinauralVoice(nodes, self.track.sample_rate)
+                    return audio_engine.ImprovedSAMVoice(nodes, self.track.sample_rate)
             except Exception as e:
                 print(f"Error creating Multi-SAM voice: {e}")
                 traceback.print_exc()
