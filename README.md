@@ -33,8 +33,6 @@ Brainwave entrainment (BWE) involves using pulsing lights or audio tones at spec
 
 The system is intended for DIY research and experimentation and is **not** a medical device. Build and use at your own discretion and ensure appropriate safety measures, especially regarding light intensity and duration.
 
-**(Consider replacing old images with updated pictures showing the ESP32-C3 setup)**
-![ESP32-C3 SuperMini with Expansion Board](image_ba63b6.jpg) ---
 
 ## Features
 * **PyQt5-based GUI** (`sequence_editor.py`) for creating multi-step visual + audio sequences.
