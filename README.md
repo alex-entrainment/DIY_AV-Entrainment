@@ -104,8 +104,8 @@ The system is intended for DIY research and experimentation and is **not** a med
 7.  **USB-C Cable** (for ESP32 power and programming/serial)
 
 ## Circuit Diagram
-**(The previous diagram is outdated as it showed the PCA9685)**
-*A new diagram showing the ESP32 driving 6 MOSFET channels for the LEDs is needed.*
+![image](https://github.com/user-attachments/assets/0b68ca9d-772d-4373-b051-ef713e07f1ea)
+
 
 ---
 
