@@ -41,10 +41,6 @@ The system is intended for DIY research and experimentation and is **not** a med
 * **Multiple Oscillator Control Modes (in GUI):** Supports Combined, Split, and potentially other modes for defining how the 6 channels behave based on oscillator settings in the JSON.
 * **Multi-Step Sequencing:** Design complex sequences with varying parameters over time.
 * **Random Frequency Modulation (RFM):** Configurable in the GUI for slight variations in visual or audio frequencies. (Note: RFM logic needs implementation within the ESP32 C++ code if desired for visual output).
-* **Synchronized Host Audio Playback:**
-    * GUI can generate `.wav` files based on sequence audio settings.
-    * `controller.py` (running on host PC/Pi) automatically finds and plays the corresponding audio file (`.wav`, `.flac`, `.mp3`) when a `RUN:` command is sent to the ESP32.
-    * Supports multiple audio carriers, binaural/isochronic tones, and pink noise (handled by the audio generation/playback libraries used by `controller.py`).
 * **Linear Ramps:** Frequencies, duty cycles, and brightness/intensity can transition linearly over the duration of each step.
 * **JSON File Storage:** Save/load complete sequences (visual + audio parameters) using the GUI editor.
 * **Automated C++ Generation & Upload:** A Python script (`json_to_cpp_converter.py`) automatically:
