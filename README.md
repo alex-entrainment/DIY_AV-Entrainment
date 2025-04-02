@@ -104,7 +104,7 @@ The system is intended for DIY research and experimentation and is **not** a med
 7.  **USB-C Cable** (for ESP32 power and programming/serial)
 
 ## Circuit Diagram
-![image](https://github.com/user-attachments/assets/0b68ca9d-772d-4373-b051-ef713e07f1ea)
+![image](https://github.com/user-attachments/assets/7ce74ef8-d381-42e6-897d-2dc402ae3e40)
 
 
 ---
