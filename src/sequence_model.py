@@ -67,8 +67,8 @@ class Oscillator:
         pattern_freq: float = 1.0
     ):
         # Clamp frequency and duty cycle values
-        self.start_freq = max(0.1, min(200.0, start_freq))
-        self.end_freq   = max(0.1, min(200.0, end_freq))
+        self.start_freq = max(0.01, min(200.0, start_freq))
+        self.end_freq   = max(0.01, min(200.0, end_freq))
         self.waveform   = waveform
 
         self.start_duty = max(1,   min(99, start_duty))
@@ -176,7 +176,7 @@ class StrobeSet:
 #
 class Step:
     def __init__(self, duration: float, description: str, oscillators: list, strobe_sets: list, audio_settings: dict = {}):
-        self.duration = max(1, min(5400, duration))
+        self.duration = max(0.01, min(5400, duration))
         self.description = description
         self.oscillators = oscillators
         self.strobe_sets = strobe_sets
