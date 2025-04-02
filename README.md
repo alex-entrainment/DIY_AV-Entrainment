@@ -126,7 +126,6 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
 2.  **Host Software (Python - Runs on PC or Raspberry Pi):**
     * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding `.wav` audio files.
     * **`sequence_model.py`**: (Used by GUI) Data classes defining the structure of sequences stored in JSON.
-    * **`audio_generator.py`**: (Used by GUI) Functions to create audio waveforms based on sequence settings.
     * **`setup.py`**: (Run once per host machine) Configures environment-specific settings (serial port, paths for converter) and saves them to `config.ini`.
     * **`config.ini`**: Stores configuration settings read by the other Python scripts.
     * **`json_to_cpp_converter.py`**: (Runs on Dev PC)
@@ -213,23 +212,24 @@ This creates/updates the `config.ini` file which is read by the other scripts.
 
 ## GUI Overview
 
-(This section likely remains unchanged as it describes the PyQt5 editor)
-
 Below is a screenshot of the Sequence Editor GUI in "Split" mode (PyQt5):
-![image](https://github.com/user-attachments/assets/4cd68e9d-2334-479b-8db8-0e1d32ed64a7)
+![image](https://github.com/user-attachments/assets/c4a01589-500e-4807-8f6c-d217b09cefdf)
 
 *Left Panel:* List of steps...
+
 *Step Info:* Duration, description...
+
 *Oscillator Mode:* Combined, Split, Independent...
+
 *Oscillator Settings:* Waveform, freq, duty, RFM...
+
 *Strobe Intensities:* Brightness ramps...
-*Audio Tabs:* Carrier settings, Global settings...
 ---
 ## Resources
 
 (This section remains unchanged)
 
-* [Creating your own Light Sequences](...)
-* [List of proprietary programs from PandoraStar...](...)
-* [Gnaural binaural / isochronic tone creation software](...)
+* [Creating your own Light Sequences](https://support.pandorastar.co.uk/wp-content/uploads/sites/6/2021/01/Creating-your-own-sequences-on-PandoraStar-1.pdf)
+* [List of proprietary programs from PandoraStar](https://support.pandorastar.co.uk/wp-content/uploads/sites/6/2021/01/PS-Program-List-2020.pdf)
+* [Gnaural binaural / isochronic tone creation software](https://gnaural.sourceforge.net/)
 * [Research on photic entrainment / driving](...)
