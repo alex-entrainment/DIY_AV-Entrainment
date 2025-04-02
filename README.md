@@ -87,9 +87,12 @@ The system is intended for DIY research and experimentation and is **not** a med
     * **Crucially, connect the Ground (GND) of the ESP32 to the Ground of the MOSFET circuit and the Ground of the LED power supply.** All grounds must be common.
 * **Do NOT connect the LEDs directly to the ESP32 GPIO pins.**
 
-![device_front](https://github.com/user-attachments/assets/4f679d79-782d-4b73-9df4-498be1d95b15)
-![device_top](https://github.com/user-attachments/assets/ca4bce34-e4cb-4c1f-a5c2-b4d836f39ea3)
-![device_back](https://github.com/user-attachments/assets/d8a26706-98f5-496f-9425-491054970df4)
+![device_front](https://github.com/user-attachments/assets/afbdc4b5-5a0f-4d13-8dac-c4a8a1637cc8)
+
+![device_top](https://github.com/user-attachments/assets/61fd767d-c33e-4d92-b580-0ad7b5000d24)
+
+![device_front](https://github.com/user-attachments/assets/6845f83e-67bc-4779-a394-87a103a8d458)
+
 
 
 ---
