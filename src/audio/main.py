@@ -23,6 +23,10 @@ from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
 DEFAULT_SAMPLE_RATE = 44100
 DEFAULT_CROSSFADE = 1.0
 MAX_VOICES_PER_STEP = 16
+ENVELOPE_TYPE_NONE = "None"
+ENVELOPE_TYPE_LINEAR = "Linear Fade"
+# Add more envelope types here if needed in the future
+SUPPORTED_ENVELOPE_TYPES = [ENVELOPE_TYPE_NONE, ENVELOPE_TYPE_LINEAR]
 
 # --- Main Application Class ---
 class TrackEditorApp(QMainWindow):
@@ -37,7 +41,8 @@ class TrackEditorApp(QMainWindow):
 
         # Validators (reusable)
         self.int_validator_positive = QIntValidator(1, 999999, self) # Sample Rate > 0
-        self.double_validator_non_negative = QDoubleValidator(0.0, 999999.0, 6, self) # Crossfade >= 0, Duration > 0 (adjusted later)
+        self.double_validator_non_negative = QDoubleValidator(0.0, 999999.0, 6, self) # Crossfade >= 0, Duration > 0, Env Duration >=0
+        self.double_validator_zero_to_one = QDoubleValidator(0.0, 1.0, 6, self) # Amplitude (0-1 range typical)
         self.double_validator = QDoubleValidator(-999999.0, 999999.0, 6, self) # General float params
         self.int_validator = QIntValidator(-999999, 999999, self) # General int params
 
@@ -368,7 +373,7 @@ class TrackEditorApp(QMainWindow):
         self.voice_details_groupbox.setTitle("Selected Voice Details")
 
     def update_voice_details(self):
-        """Updates the details text area with selected voice parameters."""
+        """Updates the details text area with selected voice parameters and envelope."""
         self.clear_voice_details()
         selected_step_idx = self.get_selected_step_index()
         selected_voice_idx = self.get_selected_voice_index()
@@ -388,23 +393,32 @@ class TrackEditorApp(QMainWindow):
                     if isinstance(value, float): details += f"  {key}: {value:.4g}\n"
                     else: details += f"  {key}: {value}\n"
             else: details += "  (No parameters defined)\n"
+
+            # --- Display Envelope Details ---
             env_data = voice_data.get("volume_envelope")
             if env_data and isinstance(env_data, dict):
-                 details += f"\nEnvelope Type: {env_data.get('type', 'N/A')}\n"
-                 env_params = env_data.get('params', {})
-                 if env_params:
-                     details += "  Envelope Params:\n"
-                     for key, value in sorted(env_params.items()):
-                         if isinstance(value, float): details += f"    {key}: {value:.4g}\n"
-                         else: details += f"    {key}: {value}\n"
+                env_type = env_data.get('type', 'N/A')
+                details += f"\nEnvelope Type: {env_type}\n"
+                env_params = env_data.get('params', {})
+                if env_params:
+                    details += "  Envelope Params:\n"
+                    for key, value in sorted(env_params.items()):
+                        if isinstance(value, float): details += f"    {key}: {value:.4g}\n"
+                        else: details += f"    {key}: {value}\n"
+                else:
+                    details += "  (No envelope parameters defined)\n"
+            else:
+                details += "\nEnvelope Type: None\n"
+            # --- End Envelope Details ---
+
             self.voice_details_text.setPlainText(details)
         except (IndexError, KeyError) as e:
             print(f"Error accessing voice data for details view: Step {selected_step_idx}, Voice {selected_voice_idx}. Error: {e}")
             self.clear_voice_details()
         except Exception as e:
-             print(f"Unexpected error updating voice details: {e}")
-             traceback.print_exc()
-             self.clear_voice_details()
+            print(f"Unexpected error updating voice details: {e}")
+            traceback.print_exc()
+            self.clear_voice_details()
 
     # --- Event Handlers (Slots) ---
     @pyqtSlot()
@@ -432,11 +446,11 @@ class TrackEditorApp(QMainWindow):
                 self.refresh_steps_tree() # This will also refresh voices
                 QMessageBox.information(self, "Load Success", f"Track loaded from\n{filepath}")
             elif loaded_data is not None: # sound_creator returned something, but invalid structure
-                 QMessageBox.critical(self, "Load Error", "Invalid JSON structure.")
+                QMessageBox.critical(self, "Load Error", "Invalid JSON structure.")
             # If loaded_data is None, assume sound_creator already showed an error via printing/logging
         except Exception as e:
-             QMessageBox.critical(self, "Load Error", f"Failed to load or parse JSON file:\n{e}")
-             traceback.print_exc()
+            QMessageBox.critical(self, "Load Error", f"Failed to load or parse JSON file:\n{e}")
+            traceback.print_exc()
 
     @pyqtSlot()
     def save_json(self):
@@ -452,8 +466,8 @@ class TrackEditorApp(QMainWindow):
                 # else: # Optionally handle False return if sound_creator doesn't raise Exception
                 #     QMessageBox.warning(self, "Save Warning", f"Track data might not have been saved correctly to\n{self.current_json_path}")
             except Exception as e:
-                 QMessageBox.critical(self, "Save Error", f"Failed to save JSON file:\n{e}")
-                 traceback.print_exc()
+                QMessageBox.critical(self, "Save Error", f"Failed to save JSON file:\n{e}")
+                traceback.print_exc()
 
     @pyqtSlot()
     def save_json_as(self):
@@ -478,8 +492,8 @@ class TrackEditorApp(QMainWindow):
             # else: # Optional
             #     QMessageBox.warning(self, "Save Warning", f"Track data might not have been saved correctly to\n{filepath}")
         except Exception as e:
-             QMessageBox.critical(self, "Save Error", f"Failed to save JSON file as:\n{e}")
-             traceback.print_exc()
+            QMessageBox.critical(self, "Save Error", f"Failed to save JSON file as:\n{e}")
+            traceback.print_exc()
 
     @pyqtSlot()
     def browse_outfile(self):
@@ -520,10 +534,10 @@ class TrackEditorApp(QMainWindow):
                     del self.track_data["steps"][selected_index]
                     self.refresh_steps_tree() # Will refresh voices too
                 else:
-                     QMessageBox.critical(self, "Error", "Failed to remove step (index out of range).")
+                    QMessageBox.critical(self, "Error", "Failed to remove step (index out of range).")
             except Exception as e:
-                 QMessageBox.critical(self, "Error", f"Failed to remove step:\n{e}")
-                 traceback.print_exc()
+                QMessageBox.critical(self, "Error", f"Failed to remove step:\n{e}")
+                traceback.print_exc()
 
     @pyqtSlot()
     def edit_step_duration(self):
@@ -535,8 +549,8 @@ class TrackEditorApp(QMainWindow):
         try:
             current_duration = float(self.track_data["steps"][selected_index].get("duration", 0.0))
         except (IndexError, ValueError, TypeError) as e:
-             QMessageBox.critical(self, "Error", f"Failed to get current duration (index {selected_index}):\n{e}")
-             return
+            QMessageBox.critical(self, "Error", f"Failed to get current duration (index {selected_index}):\n{e}")
+            return
 
         new_duration, ok = QInputDialog.getDouble(self, f"Edit Step {selected_index + 1} Duration", "New Duration (s):", current_duration, 0.001, 99999.0, 3) # min, max, decimals
 
@@ -554,7 +568,7 @@ class TrackEditorApp(QMainWindow):
                      self.steps_tree.scrollToItem(edited_item, QTreeWidget.PositionAtCenter)
 
              except IndexError:
-                  QMessageBox.critical(self, "Error", "Failed to set duration (index out of range after edit).")
+                 QMessageBox.critical(self, "Error", "Failed to set duration (index out of range after edit).")
              except Exception as e:
                  QMessageBox.critical(self, "Error", f"Failed to set duration:\n{e}")
 
@@ -583,8 +597,8 @@ class TrackEditorApp(QMainWindow):
                 # refresh_steps_tree calls refresh_voices_tree
 
             except Exception as e:
-                 QMessageBox.critical(self, "Error", f"Failed to move step:\n{e}")
-                 traceback.print_exc()
+                QMessageBox.critical(self, "Error", f"Failed to move step:\n{e}")
+                traceback.print_exc()
 
     @pyqtSlot()
     def add_voice(self):
@@ -599,27 +613,27 @@ class TrackEditorApp(QMainWindow):
                 QMessageBox.warning(self, "Add Voice", f"Maximum voices per step ({MAX_VOICES_PER_STEP}) reached.")
                 return
         except IndexError:
-             QMessageBox.critical(self, "Error", "Cannot add voice (selected step index out of range).")
-             return
+            QMessageBox.critical(self, "Error", "Cannot add voice (selected step index out of range).")
+            return
         except Exception as e:
-             QMessageBox.critical(self, "Error", f"Error checking voice count:\n{e}")
-             return
+            QMessageBox.critical(self, "Error", f"Error checking voice count:\n{e}")
+            return
 
         dialog = VoiceEditorDialog(parent=self, app_ref=self, step_index=selected_step_index, voice_index=None)
         if dialog.exec_() == QDialog.Accepted: # Check if Save was clicked
              self.refresh_steps_tree() # Update step voice count
              # Select the parent step and the new voice
              if selected_step_index < self.steps_tree.topLevelItemCount():
-                  step_item = self.steps_tree.topLevelItem(selected_step_index)
-                  self.steps_tree.setCurrentItem(step_item) # Select step first (triggers voice refresh)
-                  self.refresh_voices_tree() # Explicit refresh might be needed depending on timing
-                  # Now select the last voice in the refreshed list
-                  voice_count = self.voices_tree.topLevelItemCount()
-                  if voice_count > 0:
-                      new_voice_item = self.voices_tree.topLevelItem(voice_count - 1)
-                      self.voices_tree.setCurrentItem(new_voice_item)
-                      self.voices_tree.scrollToItem(new_voice_item, QTreeWidget.PositionAtCenter)
-                      self.update_voice_details() # Update details view
+                 step_item = self.steps_tree.topLevelItem(selected_step_index)
+                 self.steps_tree.setCurrentItem(step_item) # Select step first (triggers voice refresh)
+                 self.refresh_voices_tree() # Explicit refresh might be needed depending on timing
+                 # Now select the last voice in the refreshed list
+                 voice_count = self.voices_tree.topLevelItemCount()
+                 if voice_count > 0:
+                     new_voice_item = self.voices_tree.topLevelItem(voice_count - 1)
+                     self.voices_tree.setCurrentItem(new_voice_item)
+                     self.voices_tree.scrollToItem(new_voice_item, QTreeWidget.PositionAtCenter)
+                     self.update_voice_details() # Update details view
 
     @pyqtSlot()
     def edit_voice(self):
@@ -630,7 +644,7 @@ class TrackEditorApp(QMainWindow):
             QMessageBox.warning(self, "Edit Voice", "Please select a step and a voice to edit.")
             return
 
-        dialog = VoiceEditorDialog(parent=self, app_ref=self, step_index=selected_step_index, voice_index=None)
+        dialog = VoiceEditorDialog(parent=self, app_ref=self, step_index=selected_step_index, voice_index=selected_voice_index)
         if dialog.exec_() == QDialog.Accepted:
             # Refresh trees and restore selection
             self.refresh_steps_tree() # Update step voice count potentially
@@ -657,26 +671,26 @@ class TrackEditorApp(QMainWindow):
         try:
             voices_list = self.track_data["steps"][selected_step_index].get("voices")
             if not voices_list or not (0 <= selected_voice_index < len(voices_list)):
-                 QMessageBox.critical(self, "Error", "Selected voice index is out of bounds.")
-                 return
+                QMessageBox.critical(self, "Error", "Selected voice index is out of bounds.")
+                return
 
             voice_name = voices_list[selected_voice_index].get("synth_function_name", "N/A")
             reply = QMessageBox.question(self, "Confirm Remove", f"Remove Voice {selected_voice_index + 1} ({voice_name}) from Step {selected_step_index + 1}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
             if reply == QMessageBox.Yes:
-                 del voices_list[selected_voice_index]
-                 # Refresh and maintain step selection
-                 self.refresh_steps_tree()
-                 if selected_step_index < self.steps_tree.topLevelItemCount():
-                     step_item = self.steps_tree.topLevelItem(selected_step_index)
-                     self.steps_tree.setCurrentItem(step_item)
-                     # refresh_steps_tree calls refresh_voices_tree, which clears voice selection
+                del voices_list[selected_voice_index]
+                # Refresh and maintain step selection
+                self.refresh_steps_tree()
+                if selected_step_index < self.steps_tree.topLevelItemCount():
+                    step_item = self.steps_tree.topLevelItem(selected_step_index)
+                    self.steps_tree.setCurrentItem(step_item)
+                    # refresh_steps_tree calls refresh_voices_tree, which clears voice selection
 
         except IndexError:
-             QMessageBox.critical(self, "Error", "Failed to remove voice (step index out of range).")
+            QMessageBox.critical(self, "Error", "Failed to remove voice (step index out of range).")
         except Exception as e:
-             QMessageBox.critical(self, "Error", f"Failed to remove voice:\n{e}")
-             traceback.print_exc()
+            QMessageBox.critical(self, "Error", f"Failed to remove voice:\n{e}")
+            traceback.print_exc()
 
     @pyqtSlot()
     def generate_wav_action(self):
@@ -696,7 +710,11 @@ class TrackEditorApp(QMainWindow):
         QApplication.processEvents() # Allow UI to update
 
         try:
-            # Assuming generate_wav handles its own internal errors and returns True/False
+            # *** Crossfade Handling Assumption ***
+            # It is assumed that the sound_creator.generate_wav function will internally
+            # use the 'crossfade_duration' value from track_data["global_settings"]
+            # to apply crossfades between the generated audio segments for each step.
+            # This UI code only ensures the setting is correctly passed.
             success = sound_creator.generate_wav(self.track_data, output_filename)
             if success:
                 QMessageBox.information(self, "Generation Complete", f"WAV file generated successfully:\n{output_filename}")
@@ -745,7 +763,7 @@ class TrackEditorApp(QMainWindow):
 # --- Voice Editor Dialog Class ---
 class VoiceEditorDialog(QDialog):
     DEFAULT_WIDTH = 900
-    DEFAULT_HEIGHT = 600
+    DEFAULT_HEIGHT = 650 # Increased height for envelope controls
 
     def __init__(self, parent, app_ref, step_index, voice_index=None):
         super().__init__(parent)
@@ -756,26 +774,33 @@ class VoiceEditorDialog(QDialog):
 
         # Validators (use from parent or create new)
         self.double_validator_non_negative = QDoubleValidator(0.0, 999999.0, 6, self)
+        self.double_validator_zero_to_one = QDoubleValidator(0.0, 1.0, 6, self) # For Amplitudes
         self.double_validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
         self.int_validator = QIntValidator(-999999, 999999, self)
 
         self.setWindowTitle(f"{'Add' if self.is_new_voice else 'Edit'} Voice for Step {step_index + 1}")
         self.resize(self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
-        self.setMinimumSize(700, 500)
+        self.setMinimumSize(700, 550) # Increased min height
         self.setModal(True) # Act like a modal dialog
 
+        # --- Widgets Storage ---
+        self.param_widgets = {} # For synth function parameters
+        self.envelope_param_widgets = {} # For envelope parameters
+
         # --- Data ---
-        self._load_initial_data()
+        self._load_initial_data() # Loads self.current_voice_data
 
         # --- Widgets ---
-        self._setup_ui()
-        self.populate_parameters()
-        self._populate_reference_details()
+        self._setup_ui() # Creates UI elements
+        self.populate_parameters() # Populates synth parameters based on loaded data
+        self._populate_envelope_controls() # Populate envelope controls based on loaded data
+        self._populate_reference_details() # Populate reference pane
 
         # Center dialog (optional, often handled by window manager)
         # self._center_window()
 
     def _load_initial_data(self):
+        """Loads or creates the initial voice data dictionary for the editor."""
         if self.is_new_voice:
             available_funcs = sorted(sound_creator.SYNTH_FUNCTIONS.keys())
             first_func_name = available_funcs[0] if available_funcs else ""
@@ -786,7 +811,7 @@ class VoiceEditorDialog(QDialog):
                 "synth_function_name": first_func_name,
                 "is_transition": is_trans,
                 "params": default_params,
-                "volume_envelope": None # Placeholder
+                "volume_envelope": None # Default to no envelope
             }
         else:
             try:
@@ -795,19 +820,26 @@ class VoiceEditorDialog(QDialog):
                 self.current_voice_data = copy.deepcopy(original_voice)
                 # Ensure essential keys exist
                 if "params" not in self.current_voice_data:
-                     self.current_voice_data["params"] = {}
+                    self.current_voice_data["params"] = {}
+                if "volume_envelope" not in self.current_voice_data:
+                     self.current_voice_data["volume_envelope"] = None # Ensure envelope key exists
                 # Add is_transition if missing, inferring from name
                 if "is_transition" not in self.current_voice_data:
                     self.current_voice_data["is_transition"] = self.current_voice_data.get("synth_function_name","").endswith("_transition")
 
             except (IndexError, KeyError) as e:
                 QMessageBox.critical(self.parent(), "Error", f"Could not load voice data for editing:\n{e}")
-                # Reject the dialog immediately if data loading fails
-                # Need to call reject later, after constructor finishes
-                self.reject() # Schedule reject after init finishes? Better to raise or handle gracefully.
                 # Let's make current_voice_data empty to prevent further errors in UI setup
-                self.current_voice_data = {"params": {}, "synth_function_name": "Error", "is_transition": False}
-                # Disable save button maybe? For now, it will likely fail on save anyway.
+                self.current_voice_data = {
+                    "params": {},
+                    "synth_function_name": "Error",
+                    "is_transition": False,
+                    "volume_envelope": None
+                }
+                # Schedule reject after init finishes? Better to handle gracefully.
+                # Using QTimer to call reject after the constructor finishes
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(0, self.reject)
 
 
     def _setup_ui(self):
@@ -838,7 +870,7 @@ class VoiceEditorDialog(QDialog):
         main_layout.addWidget(h_splitter, 1) # Stretch splitter
 
         # --- Parameter Editing Frame (Left) ---
-        self.params_groupbox = QGroupBox("Parameters (Editing)")
+        self.params_groupbox = QGroupBox("Synth Parameters (Editing)")
         params_groupbox_layout = QVBoxLayout(self.params_groupbox)
         self.params_scroll_area = QScrollArea()
         self.params_scroll_area.setWidgetResizable(True)
@@ -861,11 +893,29 @@ class VoiceEditorDialog(QDialog):
 
         h_splitter.setSizes([500, 350]) # Initial sizes
 
-        # --- Envelope Frame (Placeholder) ---
-        env_groupbox = QGroupBox("Volume Envelope (Optional - Not Implemented)")
-        env_layout = QVBoxLayout(env_groupbox)
-        env_layout.addWidget(QLabel("Envelope controls would go here."))
-        main_layout.addWidget(env_groupbox)
+        # --- Envelope Frame ---
+        self.env_groupbox = QGroupBox("Volume Envelope")
+        env_layout = QVBoxLayout(self.env_groupbox)
+
+        # Envelope Type Selection
+        env_type_layout = QHBoxLayout()
+        env_type_layout.addWidget(QLabel("Type:"))
+        self.env_type_combo = QComboBox()
+        self.env_type_combo.addItems(SUPPORTED_ENVELOPE_TYPES)
+        self.env_type_combo.currentIndexChanged.connect(self._on_envelope_type_change)
+        env_type_layout.addWidget(self.env_type_combo)
+        env_type_layout.addStretch(1)
+        env_layout.addLayout(env_type_layout)
+
+        # Envelope Parameter Area (Dynamically populated)
+        self.env_params_widget = QWidget() # Container for dynamic params
+        self.env_params_layout = QGridLayout(self.env_params_widget) # Use Grid for params
+        self.env_params_layout.setContentsMargins(10, 5, 5, 5) # Indent params slightly
+        self.env_params_layout.setAlignment(Qt.AlignTop)
+        env_layout.addWidget(self.env_params_widget)
+        env_layout.addStretch(1) # Push params to top if space allows
+
+        main_layout.addWidget(self.env_groupbox)
 
         # --- Button Frame ---
         button_frame = QWidget()
@@ -895,7 +945,7 @@ class VoiceEditorDialog(QDialog):
                         self._clear_layout(sub_layout)
 
     def populate_parameters(self):
-        """Populates parameter widgets based on the selected synth function."""
+        """Populates synth parameter widgets based on the selected synth function."""
         # Clear existing parameter widgets
         self._clear_layout(self.params_scroll_layout)
         self.param_widgets = {} # Reset storage
@@ -915,7 +965,10 @@ class VoiceEditorDialog(QDialog):
         current_saved_params = self.current_voice_data.get("params", {})
         # Use default_params as the base, update with currently saved values for this voice
         params_to_display = default_params.copy()
-        params_to_display.update(current_saved_params)
+        # Only update with keys that actually exist in the defaults for the *current* function/transition state
+        for key, value in current_saved_params.items():
+            if key in params_to_display:
+                 params_to_display[key] = value # Keep existing valid value
 
 
         processed_end_params = set()
@@ -932,23 +985,23 @@ class VoiceEditorDialog(QDialog):
                         transition_pairs[base_name] = {'start': name, 'end': end_name}
                         processed_end_params.add(end_name) # Mark end param as handled by its start pair
                 elif name.startswith('end'):
-                     # If start wasn't found first, ensure end param is marked if pair exists
-                     base_name = name[len('end'):]
-                     start_name = 'start' + base_name
-                     if start_name in default_params and base_name not in transition_pairs:
-                          processed_end_params.add(name)
+                    # If start wasn't found first, ensure end param is marked if pair exists
+                    base_name = name[len('end'):]
+                    start_name = 'start' + base_name
+                    if start_name in default_params and base_name not in transition_pairs:
+                         processed_end_params.add(name)
 
         # --- Create Widgets ---
         param_names_sorted = sorted(default_params.keys())
 
         for name in param_names_sorted:
             if name in processed_end_params:
-                print(f"      --> Skipping already processed end parameter: '{name}'")
+                print(f"       --> Skipping already processed end parameter: '{name}'")
                 continue
 
             default_value = default_params[name]
             current_value = params_to_display.get(name, default_value) # Value to display initially
-            print(f"      Processing parameter: '{name}' (Default: {default_value}, Current: {current_value})")
+            print(f"       Processing parameter: '{name}' (Default: {default_value}, Current: {current_value})")
 
             # Determine if this is the start of a transition pair
             base_name_for_pair = name[len('start'):] if is_transition and name.startswith('start') else None
@@ -965,19 +1018,19 @@ class VoiceEditorDialog(QDialog):
 
             # --- Infer Type Hint (similar to Tkinter version) ---
             if isinstance(default_value, bool): param_type_hint = 'bool'
-            elif isinstance(default_value, int): param_type_hint = 'int' # Use int validator, store as int
+            elif isinstance(default_value, int): param_type_hint = 'float' # Use int validator, store as int
             elif isinstance(default_value, float): param_type_hint = 'float' # Use double validator, store as float
             elif isinstance(default_value, str): param_type_hint = 'str'
             elif default_value is None:
-                 # Heuristics for None defaults
+                # Heuristics for None defaults
                 if 'bool' in name.lower(): param_type_hint = 'bool'
                 elif 'int' in name.lower() or 'Type' in name or 'factor' in name: param_type_hint = 'int'
-                elif any(s in name for s in ['Freq', 'Depth', 'Amount', 'Dur', 'Amp', 'Pan', 'Radius', 'RQ', 'width', 'Rate', 'Gain', 'Level', 'Deg']): param_type_hint = 'float'
+                elif any(s in name.lower() for s in ['freq', 'depth', 'amount', 'dur', 'amp', 'pan', 'radius', 'rq', 'width', 'rate', 'gain', 'level', 'deg']): param_type_hint = 'float'
 
 
             # --- Handle Transition Pair ---
             if is_pair_start:
-                print(f"          Processing as START of transition pair: '{name}'")
+                print(f"           Processing as START of transition pair: '{name}'")
                 start_name = name
                 end_name = transition_pairs[base_name_for_pair]['end']
                 end_val = params_to_display.get(end_name, default_params.get(end_name))
@@ -989,14 +1042,14 @@ class VoiceEditorDialog(QDialog):
                     validator = self.int_validator
                     param_storage_type = 'int'
                 elif param_type_hint == 'float':
-                     # Use locale independent validator for display/input
+                    # Use locale independent validator for display/input
                     validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
                     validator.setNotation(QDoubleValidator.StandardNotation)
                     param_storage_type = 'float'
                 else: # Default to float if type unclear for transitions? Or string? Let's assume float often makes sense.
-                     validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
-                     validator.setNotation(QDoubleValidator.StandardNotation)
-                     param_storage_type = 'float'
+                    validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
+                    validator.setNotation(QDoubleValidator.StandardNotation)
+                    param_storage_type = 'float'
 
 
                 hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
@@ -1025,7 +1078,7 @@ class VoiceEditorDialog(QDialog):
 
             # --- Handle Single Parameter ---
             else:
-                print(f"          Processing as single parameter: '{name}'")
+                print(f"           Processing as single parameter: '{name}'")
                 widget = None
                 param_var = None # PyQt doesn't use vars like Tkinter
 
@@ -1054,16 +1107,16 @@ class VoiceEditorDialog(QDialog):
                     hint_text = "(int, 1=W, 2=P, 3=B)"
 
                 elif name == 'pathShape' and param_type_hint == 'str' and hasattr(sound_creator, 'AUDIO_ENGINE_AVAILABLE') and sound_creator.AUDIO_ENGINE_AVAILABLE and hasattr(sound_creator, 'VALID_SAM_PATHS'):
-                     # Special Combobox for pathShape
-                     options = sound_creator.VALID_SAM_PATHS
-                     widget = QComboBox()
-                     widget.addItems(options)
-                     default_val_str = str(current_value) if current_value in options else (options[0] if options else 'circle')
-                     widget.setCurrentText(default_val_str)
-                     widget.setMinimumWidth(120)
-                     row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft) # Span Col 1-2
-                     param_storage_type = 'str'
-                     hint_text = f"({param_storage_type})"
+                    # Special Combobox for pathShape
+                    options = sound_creator.VALID_SAM_PATHS
+                    widget = QComboBox()
+                    widget.addItems(options)
+                    default_val_str = str(current_value) if current_value in options else (options[0] if options else 'circle')
+                    widget.setCurrentText(default_val_str)
+                    widget.setMinimumWidth(120)
+                    row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft) # Span Col 1-2
+                    param_storage_type = 'str'
+                    hint_text = f"({param_storage_type})"
 
                 else: # General QLineEdit
                     widget = QLineEdit(str(current_value) if current_value is not None else "")
@@ -1074,10 +1127,10 @@ class VoiceEditorDialog(QDialog):
                         param_storage_type = 'int'
                         entry_width = 80
                     elif param_type_hint == 'float':
-                         validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
-                         validator.setNotation(QDoubleValidator.StandardNotation)
-                         param_storage_type = 'float'
-                         entry_width = 80
+                        validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
+                        validator.setNotation(QDoubleValidator.StandardNotation)
+                        param_storage_type = 'float'
+                        entry_width = 80
                     else: # String or unknown
                         param_storage_type = 'str'
                         entry_width = 200
@@ -1095,7 +1148,7 @@ class VoiceEditorDialog(QDialog):
                 if widget is not None:
                     self.param_widgets[name] = {'widget': widget, 'type': param_storage_type}
                     widgets_created_count += 1
-                else: print(f"          --> Failed to create widget for single parameter: '{name}'")
+                else: print(f"           --> Failed to create widget for single parameter: '{name}'")
 
 
             self.params_scroll_layout.addWidget(frame) # Add the row widget to the scroll layout
@@ -1107,6 +1160,102 @@ class VoiceEditorDialog(QDialog):
 
         print(f"Parameter population complete. Widgets created: {widgets_created_count}")
         print(f"  -> self.param_widgets contains {len(self.param_widgets)} entries: {list(self.param_widgets.keys())}")
+
+
+    def _populate_envelope_controls(self):
+        """Sets the envelope type combo and triggers the parameter population."""
+        env_data = self.current_voice_data.get("volume_envelope")
+        env_type = ENVELOPE_TYPE_NONE
+        if isinstance(env_data, dict) and "type" in env_data:
+            env_type = env_data["type"]
+
+        # Block signals temporarily to avoid triggering change handler during setup
+        self.env_type_combo.blockSignals(True)
+        if env_type in SUPPORTED_ENVELOPE_TYPES:
+            self.env_type_combo.setCurrentText(env_type)
+        else:
+            print(f"Warning: Loaded envelope type '{env_type}' not recognized. Setting to None.")
+            self.env_type_combo.setCurrentText(ENVELOPE_TYPE_NONE)
+            # Optionally clear the stored invalid envelope data
+            self.current_voice_data["volume_envelope"] = None
+        self.env_type_combo.blockSignals(False)
+
+        # Manually trigger the parameter population for the initial state
+        self._on_envelope_type_change()
+
+
+    @pyqtSlot()
+    def _on_envelope_type_change(self):
+        """Populates the envelope parameter widgets based on the selected type."""
+        # Clear existing envelope parameter widgets and storage
+        self._clear_layout(self.env_params_layout)
+        self.envelope_param_widgets = {}
+
+        selected_type = self.env_type_combo.currentText()
+        env_data = self.current_voice_data.get("volume_envelope")
+        current_env_params = {}
+        if isinstance(env_data, dict) and env_data.get("type") == selected_type:
+             current_env_params = env_data.get("params", {})
+
+        print(f"Populating envelope parameters for type: {selected_type}")
+
+        row = 0 # Row counter for grid layout
+
+        if selected_type == ENVELOPE_TYPE_LINEAR:
+            # --- Linear Fade Parameters ---
+            # Fade Duration
+            fade_dur_label = QLabel("Fade Duration (s):")
+            fade_dur_entry = QLineEdit()
+            fade_dur_entry.setValidator(self.double_validator_non_negative)
+            fade_dur_entry.setToolTip("Duration of the fade-in or fade-out.")
+            fade_dur_entry.setText(str(current_env_params.get("fade_duration", 0.1))) # Default 0.1s
+            self.env_params_layout.addWidget(fade_dur_label, row, 0)
+            self.env_params_layout.addWidget(fade_dur_entry, row, 1)
+            self.envelope_param_widgets["fade_duration"] = {'widget': fade_dur_entry, 'type': 'float'}
+            row += 1
+
+            # Start Amplitude
+            start_amp_label = QLabel("Start Amplitude:")
+            start_amp_entry = QLineEdit()
+            start_amp_entry.setValidator(self.double_validator_zero_to_one)
+            start_amp_entry.setToolTip("Amplitude at the beginning of the fade (0.0 to 1.0). Use 0 for fade-in, 1 for fade-out.")
+            start_amp_entry.setText(str(current_env_params.get("start_amp", 0.0))) # Default 0.0
+            self.env_params_layout.addWidget(start_amp_label, row, 0)
+            self.env_params_layout.addWidget(start_amp_entry, row, 1)
+            self.envelope_param_widgets["start_amp"] = {'widget': start_amp_entry, 'type': 'float'}
+            row += 1
+
+            # End Amplitude
+            end_amp_label = QLabel("End Amplitude:")
+            end_amp_entry = QLineEdit()
+            end_amp_entry.setValidator(self.double_validator_zero_to_one)
+            end_amp_entry.setToolTip("Amplitude at the end of the fade (0.0 to 1.0). Use 1 for fade-in, 0 for fade-out.")
+            end_amp_entry.setText(str(current_env_params.get("end_amp", 1.0))) # Default 1.0
+            self.env_params_layout.addWidget(end_amp_label, row, 0)
+            self.env_params_layout.addWidget(end_amp_entry, row, 1)
+            self.envelope_param_widgets["end_amp"] = {'widget': end_amp_entry, 'type': 'float'}
+            row += 1
+
+            # Fade Type (Implicitly defined by start/end amp, but could add explicit control later if needed)
+            # fade_type_label = QLabel("Fade Type:")
+            # fade_type_combo = QComboBox()
+            # fade_type_combo.addItems(["in", "out"])
+            # ...
+
+            self.env_params_layout.setColumnStretch(1, 1) # Allow entry fields to expand
+
+        elif selected_type == ENVELOPE_TYPE_NONE:
+            # No parameters needed
+            pass
+        # Add elif blocks here for other envelope types (e.g., ADSR) in the future
+
+        # Add a spacer to push controls up if the layout is sparse
+        if row == 0: # Only add spacer if no controls were added
+            spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+            self.env_params_layout.addItem(spacer, row, 0, 1, 2) # Span across columns
+
+        self.env_params_widget.setVisible(selected_type != ENVELOPE_TYPE_NONE)
+
 
     def _populate_reference_details(self):
         """Populates the reference text area with details of the voice
@@ -1141,15 +1290,24 @@ class VoiceEditorDialog(QDialog):
                             if isinstance(value, float): details += f"  {key}: {value:.4g}\n"
                             else: details += f"  {key}: {value}\n"
                     else: details += "  (No parameters defined)\n"
+
+                    # --- Display Reference Envelope Details ---
                     env_data = voice_data.get("volume_envelope")
                     if env_data and isinstance(env_data, dict):
-                         details += f"\nEnvelope Type: {env_data.get('type', 'N/A')}\n"
-                         env_params = env_data.get('params', {})
-                         if env_params:
-                             details += "  Envelope Params:\n"
-                             for key, value in sorted(env_params.items()):
-                                 if isinstance(value, float): details += f"    {key}: {value:.4g}\n"
-                                 else: details += f"    {key}: {value}\n"
+                        env_type = env_data.get('type', 'N/A')
+                        details += f"\nEnvelope Type: {env_type}\n"
+                        env_params = env_data.get('params', {})
+                        if env_params:
+                            details += "  Envelope Params:\n"
+                            for key, value in sorted(env_params.items()):
+                                if isinstance(value, float): details += f"    {key}: {value:.4g}\n"
+                                else: details += f"    {key}: {value}\n"
+                        else:
+                            details += "  (No envelope parameters defined)\n"
+                    else:
+                        details += "\nEnvelope Type: None\n"
+                    # --- End Reference Envelope Details ---
+
                 except Exception as e:
                     details = f"Error loading reference details:\n{e}"
                     print(f"Error loading reference details: {e}")
@@ -1181,7 +1339,7 @@ class VoiceEditorDialog(QDialog):
         # Keep existing values only if the parameter still exists in the new function's defaults
         for key, value in existing_params.items():
             if key in new_defaults:
-                 merged_params[key] = value # Keep the old value
+                merged_params[key] = value # Keep the old value
         self.current_voice_data["params"] = merged_params
 
         self.populate_parameters() # Repopulate based on new function/defaults/merged params
@@ -1200,7 +1358,7 @@ class VoiceEditorDialog(QDialog):
         # Keep existing values only if the parameter still exists
         for key, value in existing_params.items():
             if key in new_defaults:
-                 merged_params[key] = value
+                merged_params[key] = value
         self.current_voice_data["params"] = merged_params
 
         self.populate_parameters() # Repopulate based on new transition state / defaults
@@ -1312,10 +1470,12 @@ class VoiceEditorDialog(QDialog):
     @pyqtSlot()
     def save_voice(self):
         """Gathers data from widgets, validates, updates app data, and accepts dialog."""
-        new_params = {}
+        new_synth_params = {}
+        new_envelope_data = None
         error_occurred = False
         validation_errors = []
 
+        # --- 1. Gather and Validate Synth Parameters ---
         try:
             for name, data in self.param_widgets.items():
                 widget = data['widget']
@@ -1336,7 +1496,7 @@ class VoiceEditorDialog(QDialog):
                     # Convert specific combobox values if necessary
                     if name == 'noiseType' and param_storage_type == 'int':
                         try: value = int(value)
-                        except ValueError: error_occurred = True; validation_errors.append(f"Invalid integer value '{value}' for {name}."); value=None
+                        except ValueError: error_occurred = True; validation_errors.append(f"Invalid integer value '{value}' for synth param {name}."); value=None
                     # pathShape is already string
                 elif isinstance(widget, QLineEdit):
                     value_str = widget.text().strip()
@@ -1359,38 +1519,100 @@ class VoiceEditorDialog(QDialog):
                             else: # String
                                 value = value_str
                         except ValueError:
-                            print(f"Validation Error: Cannot convert '{value_str}' to {param_storage_type} for '{name}'")
+                            print(f"Validation Error: Cannot convert '{value_str}' to {param_storage_type} for synth param '{name}'")
                             widget.setStyleSheet("border: 1px solid red;") # Highlight error
                             error_occurred = True
-                            validation_errors.append(f"Invalid {param_storage_type} value '{value_str}' for parameter '{name}'.")
+                            validation_errors.append(f"Invalid {param_storage_type} value '{value_str}' for synth parameter '{name}'.")
                             value = None # Ensure value is None on error
                 else:
-                    print(f"Warning: Unknown widget type for '{name}'. Skipping.")
+                    print(f"Warning: Unknown widget type for synth param '{name}'. Skipping.")
                     continue
 
                 # Only add non-None values, or handle defaults explicitly if needed
                 if value is not None:
-                     new_params[name] = value
+                    new_synth_params[name] = value
                 # else: # Decide if None should be stored or omitted
-                #    print(f"Parameter '{name}' resulted in None, omitting from save.")
-
-            if error_occurred:
-                error_msg = "Please correct the highlighted fields:\n\n" + "\n".join(validation_errors)
-                QMessageBox.critical(self, "Parameter Error", error_msg)
-                return
+                #     print(f"Synth Parameter '{name}' resulted in None, omitting from save.")
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error gathering parameters:\n{e}")
+            QMessageBox.critical(self, "Error", f"Error gathering synth parameters:\n{e}")
             traceback.print_exc()
-            return
+            return # Stop save process
 
-        # --- Update the main application's data ---
+        # --- 2. Gather and Validate Envelope Parameters ---
+        selected_env_type = self.env_type_combo.currentText()
+        if selected_env_type != ENVELOPE_TYPE_NONE:
+            new_env_params = {}
+            try:
+                for name, data in self.envelope_param_widgets.items():
+                    widget = data['widget']
+                    param_storage_type = data['type']
+                    value = None
+                    widget_value_str = ""
+
+                    if isinstance(widget, QLineEdit):
+                        widget.setStyleSheet("") # Clear style
+                        value_str = widget.text().strip()
+                        widget_value_str = value_str
+                        if value_str == "":
+                            # Envelope params usually need a value, maybe error instead of None?
+                            # For now, let's treat as error if required fields are empty
+                            error_occurred = True
+                            validation_errors.append(f"Envelope parameter '{name}' cannot be empty.")
+                            widget.setStyleSheet("border: 1px solid red;")
+                            value = None
+                        else:
+                            try:
+                                if param_storage_type == 'float':
+                                    value_str_safe = value_str.replace(',', '.')
+                                    value = float(value_str_safe)
+                                    # Add specific range checks if needed (e.g., amplitude 0-1)
+                                    if 'amp' in name.lower() and not (0.0 <= value <= 1.0):
+                                        print(f"Validation Warning: Envelope amplitude '{name}' ({value}) outside typical 0-1 range.")
+                                        # Decide if this should be a hard error or just a warning
+                                        # error_occurred = True
+                                        # validation_errors.append(f"Envelope amplitude '{name}' must be between 0.0 and 1.0.")
+                                        # widget.setStyleSheet("border: 1px solid red;")
+                                elif param_storage_type == 'int':
+                                     value = int(value_str)
+                                else: # String etc.
+                                     value = value_str
+                            except ValueError:
+                                print(f"Validation Error: Cannot convert '{value_str}' to {param_storage_type} for envelope param '{name}'")
+                                widget.setStyleSheet("border: 1px solid red;") # Highlight error
+                                error_occurred = True
+                                validation_errors.append(f"Invalid {param_storage_type} value '{value_str}' for envelope parameter '{name}'.")
+                                value = None
+                    # Add handling for other envelope widget types here if needed (e.g., QComboBox)
+
+                    if value is not None:
+                        new_env_params[name] = value
+
+                # If no errors occurred *within the envelope section*, construct the data dict
+                if not any(f"envelope parameter '{name}'" in err for err in validation_errors):
+                     new_envelope_data = {
+                         "type": selected_env_type,
+                         "params": new_env_params
+                     }
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error gathering envelope parameters:\n{e}")
+                traceback.print_exc()
+                return # Stop save process
+
+        # --- 3. Check for Errors and Finalize ---
+        if error_occurred:
+            error_msg = "Please correct the highlighted fields:\n\n" + "\n".join(validation_errors)
+            QMessageBox.critical(self, "Parameter Error", error_msg)
+            return # Don't save or close dialog
+
+        # --- 4. Update the main application's data ---
         # Create the final voice data dictionary to be saved
         final_voice_data = {
              "synth_function_name": self.synth_func_combo.currentText(),
              "is_transition": self.transition_check.isChecked(),
-             "params": new_params, # Contains only successfully parsed, non-None values
-             "volume_envelope": self.current_voice_data.get("volume_envelope") # Preserve envelope if exists
+             "params": new_synth_params, # Contains only successfully parsed, non-None synth values
+             "volume_envelope": new_envelope_data # Contains envelope dict or None
         }
 
 
@@ -1405,8 +1627,8 @@ class VoiceEditorDialog(QDialog):
                 if 0 <= self.voice_index < len(target_step_voices):
                     target_step_voices[self.voice_index] = final_voice_data
                 else:
-                     QMessageBox.critical(self.app, "Error", "Voice index out of bounds during save. Cannot save changes.")
-                     self.reject(); return # Reject dialog if index is bad
+                    QMessageBox.critical(self.app, "Error", "Voice index out of bounds during save. Cannot save changes.")
+                    self.reject(); return # Reject dialog if index is bad
 
             self.accept() # Close the dialog successfully
 
@@ -1423,10 +1645,10 @@ class VoiceEditorDialog(QDialog):
 if __name__ == "__main__":
     # Ensure sound_creator functions are loaded if needed globally
     if not hasattr(sound_creator, 'SYNTH_FUNCTIONS'):
-         print("Error: sound_creator module doesn't have SYNTH_FUNCTIONS.")
-         # Handle error appropriately - maybe exit or show message box
-         # For now, let it potentially fail later if used.
-         # sound_creator.initialize_audio_engine() # If needed
+        print("Error: sound_creator module doesn't have SYNTH_FUNCTIONS.")
+        # Handle error appropriately - maybe exit or show message box
+        # For now, let it potentially fail later if used.
+        # sound_creator.initialize_audio_engine() # If needed
 
     app = QApplication(sys.argv)
     # Apply a style if desired (optional)
