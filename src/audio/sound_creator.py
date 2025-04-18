@@ -1497,17 +1497,19 @@ print(f"Detected Synth Functions: {list(SYNTH_FUNCTIONS.keys())}")
 
 # Function to get parameters for a given synth function name
 def get_synth_params(func_name):
-    """Gets parameter names and default values for a synth function."""
+    """Gets parameter names, default values, and descriptions for a synth function."""
     if func_name not in SYNTH_FUNCTIONS:
         return {}
     func = SYNTH_FUNCTIONS[func_name]
     sig = inspect.signature(func)
     params = {}
     for name, param in sig.parameters.items():
-        # Skip duration, sample_rate, and **params catch-all
         if name in ['duration', 'sample_rate', 'params', 'kwargs']:
             continue
-        params[name] = param.default if param.default != inspect.Parameter.empty else None
+        params[name] = {
+            "default": param.default if param.default != inspect.Parameter.empty else None,
+            "description": param.annotation if param.annotation != inspect._empty else "No description available"
+        }
     return params
 
 
