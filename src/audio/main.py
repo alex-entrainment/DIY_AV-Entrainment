@@ -1,13 +1,13 @@
 import sys
 import json
 # Make sure sound_creator.py is accessible (in the same directory or Python path)
-import sound_creator # Import the refactored sound generation script
+import sound_creator
 import inspect
 import os
-import copy # For deep copying voice data
-import math # For default values like pi
-import traceback # For error reporting
-import re # For parsing source code
+import copy 
+import math 
+import traceback 
+import re
 import ast # For safely evaluating default values from source
 
 from PyQt5.QtWidgets import (
