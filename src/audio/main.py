@@ -1,13 +1,13 @@
 import sys
 import json
 # Make sure sound_creator.py is accessible (in the same directory or Python path)
-import sound_creator
+import sound_creator # Import the refactored sound generation script
 import inspect
 import os
-import copy 
-import math 
-import traceback 
-import re
+import copy # For deep copying voice data
+import math # For default values like pi
+import traceback # For error reporting
+import re # For parsing source code
 import ast # For safely evaluating default values from source
 
 from PyQt5.QtWidgets import (
@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QComboBox, QCheckBox, QGroupBox, QSplitter, QFileDialog, QMessageBox,
     QDialog, QScrollArea, QSizePolicy, QInputDialog, QSpacerItem
 )
-from PyQt5.QtCore import Qt, pyqtSlot, QSize
+from PyQt5.QtCore import Qt, pyqtSlot, QSize, QTimer # Added QTimer
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
 
 # --- Constants ---
@@ -24,7 +24,7 @@ DEFAULT_SAMPLE_RATE = 44100
 DEFAULT_CROSSFADE = 1.0
 MAX_VOICES_PER_STEP = 16
 ENVELOPE_TYPE_NONE = "None"
-ENVELOPE_TYPE_LINEAR = "Linear Fade"
+ENVELOPE_TYPE_LINEAR = "linear_fade"
 # Add more envelope types here if needed in the future
 SUPPORTED_ENVELOPE_TYPES = [ENVELOPE_TYPE_NONE, ENVELOPE_TYPE_LINEAR]
 
@@ -156,16 +156,22 @@ class TrackEditorApp(QMainWindow):
 
         steps_button_layout = QHBoxLayout()
         self.add_step_button = QPushButton("Add Step")
+        # --- NEW: Duplicate Step Button ---
+        self.duplicate_step_button = QPushButton("Duplicate Step")
         self.remove_step_button = QPushButton("Remove Step")
         self.edit_duration_button = QPushButton("Edit Duration")
         self.move_step_up_button = QPushButton("Move Up")
         self.move_step_down_button = QPushButton("Move Down")
         self.add_step_button.clicked.connect(self.add_step)
+        # --- NEW: Connect Duplicate Button ---
+        self.duplicate_step_button.clicked.connect(self.duplicate_step)
         self.remove_step_button.clicked.connect(self.remove_step)
         self.edit_duration_button.clicked.connect(self.edit_step_duration)
         self.move_step_up_button.clicked.connect(lambda: self.move_step(-1))
         self.move_step_down_button.clicked.connect(lambda: self.move_step(1))
         steps_button_layout.addWidget(self.add_step_button)
+        # --- NEW: Add Duplicate Button to Layout ---
+        steps_button_layout.addWidget(self.duplicate_step_button)
         steps_button_layout.addWidget(self.remove_step_button)
         steps_button_layout.addWidget(self.edit_duration_button)
         steps_button_layout.addWidget(self.move_step_up_button)
@@ -256,15 +262,15 @@ class TrackEditorApp(QMainWindow):
 
             if not outfile: raise ValueError("Output filename cannot be empty.")
             if any(c in outfile for c in '<>:"/\\|?*'):
-                 raise ValueError("Output filename contains invalid characters.")
+                raise ValueError("Output filename contains invalid characters.")
             self.track_data["global_settings"]["output_filename"] = outfile
 
         except ValueError as e:
             QMessageBox.critical(self, "Input Error", f"Invalid global settings:\n{e}")
             return False
         except Exception as e:
-             QMessageBox.critical(self, "Input Error", f"Unexpected error reading global settings:\n{e}")
-             return False
+            QMessageBox.critical(self, "Input Error", f"Unexpected error reading global settings:\n{e}")
+            return False
         return True
 
     def _update_ui_from_global_settings(self):
@@ -508,16 +514,48 @@ class TrackEditorApp(QMainWindow):
     @pyqtSlot()
     def add_step(self):
         new_step = {"duration": 10.0, "voices": []}
-        self.track_data["steps"].append(new_step)
+        # If a step is selected, insert after it, otherwise append
+        selected_index = self.get_selected_step_index()
+        insert_index = selected_index + 1 if selected_index is not None else len(self.track_data["steps"])
+
+        self.track_data["steps"].insert(insert_index, new_step)
         self.refresh_steps_tree()
         # Select the newly added step
-        new_index = len(self.track_data["steps"]) - 1
-        if new_index >= 0 and new_index < self.steps_tree.topLevelItemCount():
-           new_item = self.steps_tree.topLevelItem(new_index)
-           self.steps_tree.setCurrentItem(new_item)
-           self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+        if 0 <= insert_index < self.steps_tree.topLevelItemCount():
+            new_item = self.steps_tree.topLevelItem(insert_index)
+            self.steps_tree.setCurrentItem(new_item)
+            self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
         # refresh_steps_tree already calls refresh_voices_tree
 
+    # --- NEW: Duplicate Step Method ---
+    @pyqtSlot()
+    def duplicate_step(self):
+        """Duplicates the selected step and inserts it after the original."""
+        selected_index = self.get_selected_step_index()
+        if selected_index is None:
+            QMessageBox.warning(self, "Duplicate Step", "Please select a step to duplicate.")
+            return
+
+        try:
+            original_step_data = self.track_data["steps"][selected_index]
+            # Use deepcopy to ensure nested lists/dicts (like voices and params) are independent
+            duplicated_step_data = copy.deepcopy(original_step_data)
+            insert_index = selected_index + 1
+
+            self.track_data["steps"].insert(insert_index, duplicated_step_data)
+            self.refresh_steps_tree() # Refresh the tree
+
+            # Select the newly duplicated step
+            if 0 <= insert_index < self.steps_tree.topLevelItemCount():
+                new_item = self.steps_tree.topLevelItem(insert_index)
+                self.steps_tree.setCurrentItem(new_item)
+                self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+
+        except IndexError:
+             QMessageBox.critical(self, "Error", "Failed to duplicate step (index out of range).")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to duplicate step:\n{e}")
+            traceback.print_exc()
 
     @pyqtSlot()
     def remove_step(self):
@@ -653,10 +691,10 @@ class TrackEditorApp(QMainWindow):
                 self.steps_tree.setCurrentItem(step_item)
                 self.refresh_voices_tree() # Refresh voices for the selected step
                 if selected_voice_index < self.voices_tree.topLevelItemCount():
-                     voice_item = self.voices_tree.topLevelItem(selected_voice_index)
-                     self.voices_tree.setCurrentItem(voice_item)
-                     self.voices_tree.scrollToItem(voice_item, QTreeWidget.PositionAtCenter)
-                     self.update_voice_details()
+                    voice_item = self.voices_tree.topLevelItem(selected_voice_index)
+                    self.voices_tree.setCurrentItem(voice_item)
+                    self.voices_tree.scrollToItem(voice_item, QTreeWidget.PositionAtCenter)
+                    self.update_voice_details()
 
 
     @pyqtSlot()
@@ -751,8 +789,8 @@ class TrackEditorApp(QMainWindow):
     def closeEvent(self, event):
         # Optional: Add confirmation dialog before closing if needed
         # reply = QMessageBox.question(self, 'Confirm Exit',
-        #                              "Are you sure you want to exit?",
-        #                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        #                                 "Are you sure you want to exit?",
+        #                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         # if reply == QMessageBox.Yes:
         #     event.accept()
         # else:
@@ -763,7 +801,7 @@ class TrackEditorApp(QMainWindow):
 # --- Voice Editor Dialog Class ---
 class VoiceEditorDialog(QDialog):
     DEFAULT_WIDTH = 900
-    DEFAULT_HEIGHT = 650 # Increased height for envelope controls
+    DEFAULT_HEIGHT = 700 # Increased height slightly for reference controls
 
     def __init__(self, parent, app_ref, step_index, voice_index=None):
         super().__init__(parent)
@@ -780,7 +818,7 @@ class VoiceEditorDialog(QDialog):
 
         self.setWindowTitle(f"{'Add' if self.is_new_voice else 'Edit'} Voice for Step {step_index + 1}")
         self.resize(self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
-        self.setMinimumSize(700, 550) # Increased min height
+        self.setMinimumSize(700, 600) # Increased min height
         self.setModal(True) # Act like a modal dialog
 
         # --- Widgets Storage ---
@@ -794,10 +832,31 @@ class VoiceEditorDialog(QDialog):
         self._setup_ui() # Creates UI elements
         self.populate_parameters() # Populates synth parameters based on loaded data
         self._populate_envelope_controls() # Populate envelope controls based on loaded data
-        self._populate_reference_details() # Populate reference pane
 
-        # Center dialog (optional, often handled by window manager)
-        # self._center_window()
+        # --- NEW: Populate Reference Selector Combos ---
+        self._populate_reference_step_combo()
+        # Initial population of voice combo and details will be triggered by the step combo signal
+
+        # --- NEW: Set initial reference selection (optional, try matching main window) ---
+        initial_ref_step = self.app.get_selected_step_index()
+        initial_ref_voice = self.app.get_selected_voice_index()
+        if initial_ref_step is not None:
+             step_combo_index = self.reference_step_combo.findData(initial_ref_step)
+             if step_combo_index != -1:
+                 self.reference_step_combo.setCurrentIndex(step_combo_index)
+                 # The step combo's signal will populate the voice combo
+                 # Now try to select the voice
+                 # Need a slight delay for the voice combo to populate? Use QTimer.
+                 if initial_ref_voice is not None:
+                     QTimer.singleShot(50, lambda: self._select_initial_reference_voice(initial_ref_voice))
+             else:
+                 # Default to first step if main selection not found or invalid
+                 if self.reference_step_combo.count() > 0:
+                     self.reference_step_combo.setCurrentIndex(0)
+        elif self.reference_step_combo.count() > 0:
+             # Default to first step if nothing selected in main window
+             self.reference_step_combo.setCurrentIndex(0)
+
 
     def _load_initial_data(self):
         """Loads or creates the initial voice data dictionary for the editor."""
@@ -822,7 +881,7 @@ class VoiceEditorDialog(QDialog):
                 if "params" not in self.current_voice_data:
                     self.current_voice_data["params"] = {}
                 if "volume_envelope" not in self.current_voice_data:
-                     self.current_voice_data["volume_envelope"] = None # Ensure envelope key exists
+                    self.current_voice_data["volume_envelope"] = None # Ensure envelope key exists
                 # Add is_transition if missing, inferring from name
                 if "is_transition" not in self.current_voice_data:
                     self.current_voice_data["is_transition"] = self.current_voice_data.get("synth_function_name","").endswith("_transition")
@@ -838,7 +897,6 @@ class VoiceEditorDialog(QDialog):
                 }
                 # Schedule reject after init finishes? Better to handle gracefully.
                 # Using QTimer to call reject after the constructor finishes
-                from PyQt5.QtCore import QTimer
                 QTimer.singleShot(0, self.reject)
 
 
@@ -883,13 +941,34 @@ class VoiceEditorDialog(QDialog):
 
 
         # --- Reference Details Frame (Right) ---
-        reference_groupbox = QGroupBox("Reference (Selected Voice in Main Window)")
+        # --- MODIFIED: Reference Pane ---
+        reference_groupbox = QGroupBox("Select Voice for Reference") # New Title
         reference_layout = QVBoxLayout(reference_groupbox)
+
+        # --- NEW: Reference Selection Controls ---
+        ref_select_layout = QHBoxLayout()
+        ref_select_layout.addWidget(QLabel("Step:"))
+        self.reference_step_combo = QComboBox()
+        self.reference_step_combo.setMinimumWidth(100)
+        self.reference_step_combo.currentIndexChanged.connect(self._update_reference_voice_combo)
+        ref_select_layout.addWidget(self.reference_step_combo)
+
+        ref_select_layout.addWidget(QLabel("Voice:"))
+        self.reference_voice_combo = QComboBox()
+        self.reference_voice_combo.setMinimumWidth(150)
+        self.reference_voice_combo.currentIndexChanged.connect(self._update_reference_display) # Connect to update display
+        ref_select_layout.addWidget(self.reference_voice_combo, 1) # Stretch voice combo
+
+        reference_layout.addLayout(ref_select_layout) # Add selector layout first
+
+        # Reference Details Display
         self.reference_details_text = QTextEdit()
         self.reference_details_text.setReadOnly(True)
         self.reference_details_text.setFont(QFont("Consolas", 9))
-        reference_layout.addWidget(self.reference_details_text)
+        reference_layout.addWidget(self.reference_details_text, 1) # Give text area stretch factor
+
         h_splitter.addWidget(reference_groupbox)
+        # --- End Reference Pane Modifications ---
 
         h_splitter.setSizes([500, 350]) # Initial sizes
 
@@ -989,19 +1068,19 @@ class VoiceEditorDialog(QDialog):
                     base_name = name[len('end'):]
                     start_name = 'start' + base_name
                     if start_name in default_params and base_name not in transition_pairs:
-                         processed_end_params.add(name)
+                        processed_end_params.add(name)
 
         # --- Create Widgets ---
         param_names_sorted = sorted(default_params.keys())
 
         for name in param_names_sorted:
             if name in processed_end_params:
-                print(f"       --> Skipping already processed end parameter: '{name}'")
+                print(f"            --> Skipping already processed end parameter: '{name}'")
                 continue
 
             default_value = default_params[name]
             current_value = params_to_display.get(name, default_value) # Value to display initially
-            print(f"       Processing parameter: '{name}' (Default: {default_value}, Current: {current_value})")
+            print(f"            Processing parameter: '{name}' (Default: {default_value}, Current: {current_value})")
 
             # Determine if this is the start of a transition pair
             base_name_for_pair = name[len('start'):] if is_transition and name.startswith('start') else None
@@ -1018,7 +1097,7 @@ class VoiceEditorDialog(QDialog):
 
             # --- Infer Type Hint (similar to Tkinter version) ---
             if isinstance(default_value, bool): param_type_hint = 'bool'
-            elif isinstance(default_value, int): param_type_hint = 'float' # Use int validator, store as int
+            elif isinstance(default_value, int): param_type_hint = 'float' # DO NOT EVER!!!!!!!!! USE INT VALIDATOR ALWAYS USE FLOAT!!!!!!
             elif isinstance(default_value, float): param_type_hint = 'float' # Use double validator, store as float
             elif isinstance(default_value, str): param_type_hint = 'str'
             elif default_value is None:
@@ -1030,7 +1109,7 @@ class VoiceEditorDialog(QDialog):
 
             # --- Handle Transition Pair ---
             if is_pair_start:
-                print(f"           Processing as START of transition pair: '{name}'")
+                print(f"                Processing as START of transition pair: '{name}'")
                 start_name = name
                 end_name = transition_pairs[base_name_for_pair]['end']
                 end_val = params_to_display.get(end_name, default_params.get(end_name))
@@ -1078,7 +1157,7 @@ class VoiceEditorDialog(QDialog):
 
             # --- Handle Single Parameter ---
             else:
-                print(f"           Processing as single parameter: '{name}'")
+                print(f"                Processing as single parameter: '{name}'")
                 widget = None
                 param_var = None # PyQt doesn't use vars like Tkinter
 
@@ -1148,7 +1227,7 @@ class VoiceEditorDialog(QDialog):
                 if widget is not None:
                     self.param_widgets[name] = {'widget': widget, 'type': param_storage_type}
                     widgets_created_count += 1
-                else: print(f"           --> Failed to create widget for single parameter: '{name}'")
+                else: print(f"                --> Failed to create widget for single parameter: '{name}'")
 
 
             self.params_scroll_layout.addWidget(frame) # Add the row widget to the scroll layout
@@ -1257,24 +1336,88 @@ class VoiceEditorDialog(QDialog):
         self.env_params_widget.setVisible(selected_type != ENVELOPE_TYPE_NONE)
 
 
-    def _populate_reference_details(self):
+    # --- NEW/MODIFIED Reference Selection Methods ---
+
+    def _populate_reference_step_combo(self):
+        """Populates the reference step combo box."""
+        self.reference_step_combo.blockSignals(True) # Avoid triggering updates yet
+        self.reference_step_combo.clear()
+        steps = self.app.track_data.get("steps", [])
+        if not steps:
+            self.reference_step_combo.addItem("No Steps Available", -1) # Add placeholder
+            self.reference_step_combo.setEnabled(False)
+        else:
+            self.reference_step_combo.setEnabled(True)
+            for i, _ in enumerate(steps):
+                self.reference_step_combo.addItem(f"Step {i+1}", i) # Display 1-based, store 0-based index
+        self.reference_step_combo.blockSignals(False)
+
+    @pyqtSlot(int) # Triggered when step combo index changes
+    def _update_reference_voice_combo(self, _combo_idx=-1): # Parameter is combo index, we don't use it directly
+        """Populates the reference voice combo based on the selected reference step."""
+        self.reference_voice_combo.blockSignals(True) # Avoid triggering display update yet
+        self.reference_voice_combo.clear()
+
+        selected_step_index = self.reference_step_combo.currentData() # Get stored step index
+
+        if selected_step_index is None or selected_step_index < 0: # Handle "No Steps" or invalid data
+            self.reference_voice_combo.addItem("No Voices Available", -1)
+            self.reference_voice_combo.setEnabled(False)
+            self.reference_voice_combo.blockSignals(False)
+            self._update_reference_display() # Update display to show no voices
+            return
+
+        try:
+            step_data = self.app.track_data["steps"][selected_step_index]
+            voices = step_data.get("voices", [])
+            if not voices:
+                self.reference_voice_combo.addItem("No Voices in Step", -1)
+                self.reference_voice_combo.setEnabled(False)
+            else:
+                self.reference_voice_combo.setEnabled(True)
+                for i, voice in enumerate(voices):
+                    func_name = voice.get("synth_function_name", "N/A")
+                    self.reference_voice_combo.addItem(f"Voice {i+1} ({func_name})", i) # Display 1-based, store 0-based index
+
+        except IndexError:
+            print(f"Error: Reference step index {selected_step_index} out of range.")
+            self.reference_voice_combo.addItem("Error loading voices", -1)
+            self.reference_voice_combo.setEnabled(False)
+        except Exception as e:
+            print(f"Error populating reference voice combo: {e}")
+            traceback.print_exc()
+            self.reference_voice_combo.addItem("Error", -1)
+            self.reference_voice_combo.setEnabled(False)
+
+        self.reference_voice_combo.blockSignals(False)
+
+        # Automatically select the first voice if available and trigger display update
+        if self.reference_voice_combo.count() > 0 and self.reference_voice_combo.itemData(0) != -1:
+             self.reference_voice_combo.setCurrentIndex(0) # Select first valid voice
+        self._update_reference_display() # Trigger display update now
+
+
+    @pyqtSlot(int) # Triggered when voice combo index changes (or programmatically set)
+    def _update_reference_display(self, _combo_idx=-1):
         """Populates the reference text area with details of the voice
-           selected in the main application window."""
+           selected in the reference combo boxes."""
         self.reference_details_text.clear()
 
-        ref_step_idx = self.app.get_selected_step_index()
-        ref_voice_idx = self.app.get_selected_voice_index()
+        ref_step_idx = self.reference_step_combo.currentData()
+        ref_voice_idx = self.reference_voice_combo.currentData()
 
-        details = "No voice selected in main window." # Default text
+        details = "Select a Step and Voice for reference." # Default text
 
-        if ref_step_idx is not None and ref_voice_idx is not None:
+        if ref_step_idx is not None and ref_step_idx >= 0 and \
+           ref_voice_idx is not None and ref_voice_idx >= 0:
             # Check if the reference is the same as the one being edited
             is_editing_same = (not self.is_new_voice and
                                self.step_index == ref_step_idx and
                                self.voice_index == ref_voice_idx)
 
             if is_editing_same:
-                details = "Reference is the voice currently being edited."
+                details = ("Reference is the voice currently being edited.\n"
+                           "Details shown reflect saved state, not current edits.")
             else:
                 try:
                     voice_data = self.app.track_data["steps"][ref_step_idx]["voices"][ref_voice_idx]
@@ -1308,11 +1451,30 @@ class VoiceEditorDialog(QDialog):
                         details += "\nEnvelope Type: None\n"
                     # --- End Reference Envelope Details ---
 
+                except IndexError:
+                     details = "Error: Invalid Step or Voice index for reference."
+                     print(f"Error: Invalid Step ({ref_step_idx}) or Voice ({ref_voice_idx}) index for reference.")
                 except Exception as e:
                     details = f"Error loading reference details:\n{e}"
                     print(f"Error loading reference details: {e}")
+        elif ref_step_idx is not None and ref_step_idx >= 0:
+             details = "Select a Voice from the selected Step." # Step selected, but no voice or invalid voice
+        elif self.reference_step_combo.count() > 0 and self.reference_step_combo.itemData(0) == -1:
+             details = "No steps available in the track." # Track has no steps
 
         self.reference_details_text.setPlainText(details)
+
+    def _select_initial_reference_voice(self, voice_index_to_select):
+        """Attempts to select a specific voice index in the reference voice combo."""
+        voice_combo_index = self.reference_voice_combo.findData(voice_index_to_select)
+        if voice_combo_index != -1:
+            self.reference_voice_combo.setCurrentIndex(voice_combo_index)
+        elif self.reference_voice_combo.count() > 0 and self.reference_voice_combo.itemData(0) != -1:
+             # If specific voice not found, default to first available voice in the step
+             self.reference_voice_combo.setCurrentIndex(0)
+        # The signal from setCurrentIndex will call _update_reference_display
+
+    # --- End Reference Selection Methods ---
 
 
     @pyqtSlot()
@@ -1589,11 +1751,11 @@ class VoiceEditorDialog(QDialog):
                         new_env_params[name] = value
 
                 # If no errors occurred *within the envelope section*, construct the data dict
-                if not any(f"envelope parameter '{name}'" in err for err in validation_errors):
-                     new_envelope_data = {
+                if not any(f"envelope parameter '{name}'" in err for name in self.envelope_param_widgets for err in validation_errors):
+                    new_envelope_data = {
                          "type": selected_env_type,
                          "params": new_env_params
-                     }
+                    }
 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error gathering envelope parameters:\n{e}")

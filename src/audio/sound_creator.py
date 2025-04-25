@@ -1,5 +1,3 @@
-
-# sound_creator.py
 import numpy as np
 from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
@@ -24,20 +22,24 @@ except ImportError:
     class Node:
         def __init__(self, *args, **kwargs):
             # print("WARNING: Using dummy Node class. SAM functionality disabled.")
+            # Store args needed for generate_samples duration calculation
+            # Simplified: Just store duration if provided
+            self.duration = args[0] if args else kwargs.get('duration', 0)
             pass
     class SAMVoice:
-         def __init__(self, *args, **kwargs):
+        def __init__(self, *args, **kwargs):
             # print("WARNING: Using dummy SAMVoice class. SAM functionality disabled.")
             # Store args needed for generate_samples duration calculation
             self._nodes = kwargs.get('nodes', [])
             self._sample_rate = kwargs.get('sample_rate', 44100)
             pass
-         def generate_samples(self):
+        def generate_samples(self):
             print("WARNING: SAM generate_samples called on dummy class. Returning silence.")
             # Calculate duration from stored nodes
             duration = 0
             if hasattr(self, '_nodes'):
-                 duration = sum(node.duration for node in self._nodes if hasattr(node, 'duration'))
+                # Access duration attribute correctly from dummy Node
+                duration = sum(node.duration for node in self._nodes if hasattr(node, 'duration'))
             sample_rate = getattr(self, '_sample_rate', 44100)
             N = int(duration * sample_rate) if duration > 0 else int(1.0 * sample_rate) # Default 1 sec if no duration found
             return np.zeros((N, 2))
@@ -71,7 +73,10 @@ def sine_wave_varying(freq_array, t, sample_rate=44100):
     if len(t) <= 1:
         return np.zeros_like(t) # Handle edge case of single point or empty array
 
-    dt = np.diff(t, prepend=t[0])
+    # Calculate dt, ensuring it has the same length as t and freq_array
+    dt = np.diff(t, prepend=t[0]) # Use first element to calculate first dt assuming t[0] is start time
+    # Alternative if t doesn't start at 0: dt = np.diff(t, prepend=t[0] - (t[1]-t[0]) if len(t)>1 else 0)
+
     # Add an initial phase corresponding to integration from t=0 to t[0]
     initial_phase = 2 * np.pi * freq_array[0] * t[0] if len(t) > 0 else 0
     # Calculate phase using cumulative sum
@@ -396,7 +401,7 @@ def pink_noise(n):
         # Normalize to approx [-1, 1] range (optional, depends on desired amplitude)
         max_abs = np.max(np.abs(pink))
         if max_abs > 1e-9:
-            pink = pink / max_abs
+           pink = pink / max_abs
         return pink
     except ImportError:
         # print("WARNING: 'colorednoise' library not found. Using FFT filtering for pink noise.")
@@ -424,7 +429,7 @@ def pink_noise(n):
         # Normalize
         max_abs = np.max(np.abs(pink))
         if max_abs > 1e-9:
-            pink = pink / max_abs
+           pink = pink / max_abs
         return pink
 
 
@@ -481,6 +486,108 @@ def trapezoid_envelope_vectorized(t_in_cycle, cycle_len, ramp_percent, gap_perce
 
     return np.clip(env, 0.0, 1.0) # Ensure output is [0, 1]
 
+
+# --- NEW: Helper function for Flanger (adapted from flanger.py) ---
+
+def _flanger_effect_stereo_continuous(
+        x,
+        sr=44100,
+        max_delay_ms=15.0, # Adjusted default
+        min_delay_ms=1.0,  # Adjusted default
+        rate_hz=0.2,       # Adjusted default for noticeable continuous sweep
+        lfo_start_phase_rad=0.0, # New parameter
+        skip_below_freq=30.0,
+        lowest_freq_mode='notch',
+        dry_mix=0.5,
+        wet_mix=0.5
+    ):
+    """
+    Internal helper to apply a continuously modulating stereo flanger effect.
+    Uses a sine LFO based on rate_hz.
+    """
+    num_samples = x.shape[0]
+    duration_s = num_samples / sr
+
+    # Ensure input is float32 for processing consistency
+    x = x.astype(np.float32)
+
+    #----------------------------------------------------------
+    # (1) Figure out max allowed delay if skipping low comb freqs
+    if skip_below_freq is not None and skip_below_freq > 0:
+        if lowest_freq_mode.lower() == 'peak':
+            max_allowed_delay_s = 1.0 / skip_below_freq
+        else: # 'notch'
+            max_allowed_delay_s = 1.0 / (2.0 * skip_below_freq)
+        max_allowed_delay_ms = 1000.0 * max_allowed_delay_s
+        # Apply the limit: the actual max delay cannot exceed this calculated value
+        actual_max_delay_ms = min(max_delay_ms, max_allowed_delay_ms)
+    else:
+        actual_max_delay_ms = max_delay_ms
+
+    # Ensure min delay is not greater than max delay
+    min_delay_ms = min(min_delay_ms, actual_max_delay_ms)
+    # Prevent zero or negative range
+    actual_max_delay_ms = max(min_delay_ms, actual_max_delay_ms)
+
+
+    #----------------------------------------------------------
+    # (2) Create the continuous LFO PHASE array
+    t_abs = np.linspace(0, duration_s, num_samples, endpoint=False)
+    # Phase = 2 * pi * rate * time + start_phase
+    full_phase_array = 2 * np.pi * rate_hz * t_abs + lfo_start_phase_rad
+
+    #----------------------------------------------------------
+    # (3) Process sample-by-sample with FRACTIONAL DELAY interpolation
+    y = np.zeros_like(x, dtype=np.float32) # Ensure output is float32
+
+    # Pre-calculate delay range and constants
+    delay_range_ms = actual_max_delay_ms - min_delay_ms
+    delay_range_samples = (delay_range_ms / 1000.0) * sr
+    min_delay_samples = (min_delay_ms / 1000.0) * sr
+
+    for n in range(num_samples):
+        ph = full_phase_array[n]
+        # Convert sine wave [-1, 1] to fraction [0, 1] for delay modulation
+        # (sin(ph) + 1) / 2 maps phase to [0, 1] range
+        lfo_mod_signal = (np.sin(ph) + 1.0) * 0.5
+
+        # Calculate delay in samples using pre-calculated ranges
+        delay_in_samps = min_delay_samples + lfo_mod_signal * delay_range_samples
+
+        # Fractional "tap" position in the past
+        tap_float = n - delay_in_samps
+
+        if tap_float < 0:
+            # Not enough history at the start, use dry signal for the delayed part
+            delayed_sample = x[n] # Simplification: feed dry through wet path initially
+        else:
+            # Linear interpolation
+            i0 = int(np.floor(tap_float))
+            frac = tap_float - i0
+            i1 = i0 + 1
+
+            # Boundary check for i1 (ensure lookback doesn't exceed current sample 'n')
+            if i1 > n:
+                 # If i1 goes beyond current sample 'n', clamp to i0
+                 x0 = x[i0]
+                 x1 = x0 # Use x[i0] when i1 is out of bounds
+            else:
+                 # Ensure indices are within bounds of x
+                 i0 = max(0, i0)
+                 i1 = max(0, i1) # Should already be >= i0
+                 i1 = min(n, i1) # Clamp i1 to n as well
+                 x0 = x[i0]
+                 x1 = x[i1]
+
+
+            # Interpolate for both channels
+            delayed_sample = (1.0 - frac) * x0 + frac * x1
+
+        # Mix dry + wet
+        y[n] = dry_mix * x[n] + wet_mix * delayed_sample
+
+    return y
+
 # -----------------------------------------------------------------------------
 # Synth Def translations – Updated to accept duration, sr, and params dict
 # -----------------------------------------------------------------------------
@@ -509,13 +616,15 @@ def basic_am(duration, sample_rate=44100, **params):
     t_rel = np.linspace(0, duration, N, endpoint=False)
     t_abs = t_rel  # For constant params, relative == absolute for phase
 
-    env = adsr_envelope(t_rel)  # Use default ADSR
+    # Note: ADSR envelope is applied *within* generate_voice_audio if specified there.
+    # This function just generates the core sound.
     carrier = sine_wave(carrierFreq, t_abs)
     lfo = sine_wave(modFreq, t_abs)
     # Modulator maps LFO [-1, 1] to [1 - modDepth, 1]
-    # NO FIX NEEDED: modDepth is scalar here
-    modulator = np.interp(lfo, [-1, 1], [1 - modDepth, 1])
-    output_mono = carrier * modulator * env * amp
+    # Original: modulator = np.interp(lfo, [-1, 1], [1 - modDepth, 1])
+    # Correct element-wise approach:
+    modulator = 1.0 - modDepth * (1.0 - lfo) * 0.5
+    output_mono = carrier * modulator * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
 
 
@@ -550,9 +659,8 @@ def basic_am_transition(duration, sample_rate=44100, **params):
     modulator = 1.0 - currentModDepth * (1.0 - lfo) * 0.5
     # --------------------
 
-    # Use a simple linear fade in/out envelope for transitions
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)  # Short attack/release
-    output_mono = carrier * modulator * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    output_mono = carrier * modulator * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
 
 
@@ -561,7 +669,7 @@ def fsam_filter_bank(duration, sample_rate=44100, **params):
     amp = float(params.get('amp', 0.15))
     noiseType = int(params.get('noiseType', 1))  # 1=white, 2=pink, 3=brown
     filterCenterFreq = float(params.get('filterCenterFreq', 1000))
-    filterRQ = float(params.get('filterRQ', 0.5))
+    filterRQ = float(params.get('filterRQ', 0.5)) # Q = 1/RQ
     modFreq = float(params.get('modFreq', 4))
     modDepth = float(params.get('modDepth', 0.8))
     pan = float(params.get('pan', 0))
@@ -583,19 +691,19 @@ def fsam_filter_bank(duration, sample_rate=44100, **params):
 
     # Ensure filter params are valid
     filterCenterFreq = max(20.0, filterCenterFreq)  # Min center freq
-    filterRQ = max(0.01, filterRQ)  # Min Q to avoid extreme bandwidth
+    filterQ = 1.0 / max(0.01, filterRQ) if filterRQ > 0 else 100.0 # Calculate Q, avoid division by zero
 
-    bandSignal = bandpass_filter(source, filterCenterFreq, filterRQ, sample_rate)
-    restSignal = bandreject_filter(source, filterCenterFreq, filterRQ, sample_rate)
+    bandSignal = bandpass_filter(source, filterCenterFreq, filterQ, sample_rate)
+    restSignal = bandreject_filter(source, filterCenterFreq, filterQ, sample_rate)
 
     lfo = sine_wave(modFreq, t_abs)
-    # NO FIX NEEDED: modDepth is scalar here
-    modulator = np.interp(lfo, [-1, 1], [1 - modDepth, 1])
+    # Correct element-wise approach:
+    modulator = 1.0 - modDepth * (1.0 - lfo) * 0.5
     modulatedBand = bandSignal * modulator
     output_mono = modulatedBand + restSignal
 
-    env = adsr_envelope(t_rel, attack=0.05, decay=0.2, sustain_level=0.8, release=0.5)
-    output_mono = output_mono * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    output_mono = output_mono * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
 
 
@@ -635,24 +743,27 @@ def fsam_filter_bank_transition(duration, sample_rate=44100, **params):
     currentModFreq = np.linspace(startModFreq, endModFreq, N)
     currentModDepth = np.linspace(startModDepth, endModDepth, N)
 
-    # Filter with start parameters (simplification)
+    # --- Filtering with time-varying parameters is complex. ---
+    # --- Simplification: Filter with START parameters only. ---
+    # --- A more accurate approach would use time-varying filters (e.g., state-variable filter). ---
     startCenter = max(20.0, startFilterCenterFreq)
-    startRQ = max(0.01, startFilterRQ)
-    bandSignal = bandpass_filter(source, startCenter, startRQ, sample_rate)
-    restSignal = bandreject_filter(source, startCenter, startRQ, sample_rate)
+    startQ = 1.0 / max(0.01, startFilterRQ) if startFilterRQ > 0 else 100.0
+    print("Warning: fsam_filter_bank_transition uses filter parameters from the START of the transition only.")
+    bandSignal = bandpass_filter(source, startCenter, startQ, sample_rate)
+    restSignal = bandreject_filter(source, startCenter, startQ, sample_rate)
+    # --- End Simplification ---
 
     lfo = sine_wave_varying(currentModFreq, t_abs, sample_rate)
 
     # --- FIX APPLIED ---
-    # Original: modulator = np.interp(lfo, [-1, 1], [1 - currentModDepth, 1])
     modulator = 1.0 - currentModDepth * (1.0 - lfo) * 0.5
     # --------------------
 
     modulatedBand = bandSignal * modulator
     output_mono = modulatedBand + restSignal
 
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)
-    output_mono = output_mono * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    output_mono = output_mono * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
 
 
@@ -673,18 +784,19 @@ def rhythmic_waveshaping(duration, sample_rate=44100, **params):
 
     carrier = sine_wave(carrierFreq, t_abs)
     lfo = sine_wave(modFreq, t_abs)
-    # NO FIX NEEDED: modDepth is scalar here
-    shapeLFO = np.interp(lfo, [-1, 1], [1 - modDepth, 1])  # Modulates amplitude before shaping
+    # Correct element-wise approach:
+    shapeLFO = 1.0 - modDepth * (1.0 - lfo) * 0.5 # Modulates amplitude before shaping
     modulatedInput = carrier * shapeLFO
 
     # Apply waveshaping (tanh)
     shapeAmount = max(1e-6, shapeAmount)  # Avoid division by zero
     tanh_shape_amount = np.tanh(shapeAmount)
+    # Use np.divide for safe division
     shapedSignal = np.divide(np.tanh(modulatedInput * shapeAmount), tanh_shape_amount,
-                          out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
+                                 out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
 
-    env = adsr_envelope(t_rel)
-    output_mono = shapedSignal * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    output_mono = shapedSignal * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
 
 
@@ -717,7 +829,6 @@ def rhythmic_waveshaping_transition(duration, sample_rate=44100, **params):
     lfo = sine_wave_varying(currentModFreq, t_abs, sample_rate)
 
     # --- FIX APPLIED ---
-    # Original: shapeLFO = np.interp(lfo, [-1, 1], [1 - currentModDepth, 1])
     shapeLFO = 1.0 - currentModDepth * (1.0 - lfo) * 0.5
     # --------------------
 
@@ -726,102 +837,22 @@ def rhythmic_waveshaping_transition(duration, sample_rate=44100, **params):
     # Apply time-varying waveshaping
     currentShapeAmount = np.maximum(1e-6, currentShapeAmount)  # Avoid zero
     tanh_shape_amount = np.tanh(currentShapeAmount)
+    # Use np.divide for safe division
     shapedSignal = np.divide(np.tanh(modulatedInput * currentShapeAmount), tanh_shape_amount,
-                          out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
+                                 out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
 
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)
-    output_mono = shapedSignal * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    output_mono = shapedSignal * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
 
 
-def rhythmic_granular_rate(duration, sample_rate=44100, **params):
-    """Simplified rhythmic granular synthesis (placeholder)."""
-    print("WARNING: rhythmic_granular_rate not fully implemented for GUI yet.")
-    N = int(sample_rate * duration)
-    amp = float(params.get('amp', 0.5))
-    pan = float(params.get('pan', 0))
-    output_mono = np.zeros(N)
-    return pan2(output_mono * amp, pan=pan)  # Apply amp and pan to silence
+# Removed: rhythmic_granular_rate
 
 
-def additive_phase_mod(duration, sample_rate=44100, **params):
-    """Additive synthesis with phase modulation on a harmonic."""
-    amp = float(params.get('amp', 0.15))
-    fundFreq = float(params.get('fundFreq', 200))
-    modFreq = float(params.get('modFreq', 4))
-    modDepth = float(params.get('modDepth', 1.0))  # Scaled phase offset factor
-    h2Amp = float(params.get('h2Amp', 0.5))
-    pan = float(params.get('pan', 0))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    fundamental = sine_wave(fundFreq, t_abs)
-    lfo = sine_wave(modFreq, t_abs)
-    phaseModOffset = lfo * modDepth * np.pi
-
-    # Generate 2nd harmonic with phase modulation
-    harmonic2_freq = fundFreq * 2
-    harmonic2_phase = 2 * np.pi * harmonic2_freq * t_abs + phaseModOffset
-    harmonic2 = h2Amp * np.sin(harmonic2_phase)
-
-    env = adsr_envelope(t_rel)
-    output_mono = (fundamental + harmonic2) * env * amp
-    return pan2(output_mono, pan=pan)
+# Removed: additive_phase_mod
 
 
-def additive_phase_mod_transition(duration, sample_rate=44100, **params):
-    """Additive phase modulation with parameter transitions."""
-    amp = float(params.get('amp', 0.15))
-    startFundFreq = float(params.get('startFundFreq', 200))
-    endFundFreq = float(params.get('endFundFreq', 150))
-    startModFreq = float(params.get('startModFreq', 4))
-    endModFreq = float(params.get('endModFreq', 10))
-    startModDepth = float(params.get('startModDepth', 1.0))  # Scaled by Pi later
-    endModDepth = float(params.get('endModDepth', 3.0))
-    starth2Amp = float(params.get('starth2Amp', 0.5))
-    endh2Amp = float(params.get('endh2Amp', 0.5))  # Allow transition
-    pan = float(params.get('pan', 0))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    # Interpolate parameters
-    currentFundFreq = np.linspace(startFundFreq, endFundFreq, N)
-    currentModFreq = np.linspace(startModFreq, endModFreq, N)
-    currentModDepth = np.linspace(startModDepth, endModDepth, N)
-    currenth2Amp = np.linspace(starth2Amp, endh2Amp, N)
-
-    # Generate fundamental with varying frequency
-    fundamental = sine_wave_varying(currentFundFreq, t_abs, sample_rate)
-
-    # Generate LFO for phase mod
-    lfo = sine_wave_varying(currentModFreq, t_abs, sample_rate)
-    phaseModOffset = lfo * currentModDepth * np.pi
-
-    # Generate 2nd harmonic with varying freq and phase mod
-    harmonic2_freq = currentFundFreq * 2
-    if N > 1:
-        dt = np.diff(t_abs, prepend=t_abs[0])
-        harmonic2_inst_phase_change = 2 * np.pi * harmonic2_freq * dt
-        initial_phase = 2 * np.pi * harmonic2_freq[0] * t_abs[0] if N > 0 else 0
-        harmonic2_cumulative_phase = initial_phase + np.cumsum(harmonic2_inst_phase_change)
-    elif N == 1:
-        harmonic2_cumulative_phase = 2 * np.pi * harmonic2_freq[0] * t_abs[0]
-    else:  # N == 0
-        harmonic2_cumulative_phase = np.array([])
-
-    harmonic2 = currenth2Amp * np.sin(harmonic2_cumulative_phase + phaseModOffset)
-
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)
-    output_mono = (fundamental + harmonic2) * env * amp
-    return pan2(output_mono, pan=pan)
+# Removed: additive_phase_mod_transition
 
 
 def stereo_am_independent(duration, sample_rate=44100, **params):
@@ -850,15 +881,13 @@ def stereo_am_independent(duration, sample_rate=44100, **params):
     lfoL = sine_wave(modFreqL, t_abs, phase=modPhaseL)
     lfoR = sine_wave(modFreqR, t_abs, phase=modPhaseR)
 
-    # Modulators
-    # NO FIX NEEDED: modDepthL/R are scalars here
-    modulatorL = np.interp(lfoL, [-1, 1], [1 - modDepthL, 1])
-    modulatorR = np.interp(lfoR, [-1, 1], [1 - modDepthR, 1])
+    # Modulators (Correct element-wise approach)
+    modulatorL = 1.0 - modDepthL * (1.0 - lfoL) * 0.5
+    modulatorR = 1.0 - modDepthR * (1.0 - lfoR) * 0.5
 
-    env = adsr_envelope(t_rel)  # Apply envelope equally
-
-    outputL = carrierL * modulatorL * env * amp
-    outputR = carrierR * modulatorR * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    outputL = carrierL * modulatorL * amp # Apply base amp here
+    outputR = carrierR * modulatorR * amp
 
     return np.vstack([outputL, outputR]).T
 
@@ -899,129 +928,28 @@ def stereo_am_independent_transition(duration, sample_rate=44100, **params):
     carrierL = sine_wave_varying(currentCarrierFreq - currentStereoWidthHz / 2, t_abs, sample_rate)
     carrierR = sine_wave_varying(currentCarrierFreq + currentStereoWidthHz / 2, t_abs, sample_rate)
 
-    # Varying frequency LFOs
-    lfoL = sine_wave_varying(currentModFreqL, t_abs, sample_rate)
-    lfoR = sine_wave_varying(currentModFreqR, t_abs, sample_rate)
+    # Varying frequency LFOs (assuming constant phase during transition)
+    lfoL = sine_wave_varying(currentModFreqL, t_abs, sample_rate) # Phase ignored by sine_wave_varying
+    lfoR = sine_wave_varying(currentModFreqR, t_abs, sample_rate) # Phase ignored by sine_wave_varying
 
     # Modulators with varying depth
     # --- FIX APPLIED (L) ---
-    # Original: modulatorL = np.interp(lfoL, [-1, 1], [1 - currentModDepthL, 1])
     modulatorL = 1.0 - currentModDepthL * (1.0 - lfoL) * 0.5
     # -----------------------
     # --- FIX APPLIED (R) ---
-    # Original: modulatorR = np.interp(lfoR, [-1, 1], [1 - currentModDepthR, 1])
     modulatorR = 1.0 - currentModDepthR * (1.0 - lfoR) * 0.5
     # -----------------------
 
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)  # Transition envelope
-
-    outputL = carrierL * modulatorL * env * amp
-    outputR = carrierR * modulatorR * env * amp
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    outputL = carrierL * modulatorL * amp # Apply base amp here
+    outputR = carrierR * modulatorR * amp
 
     return np.vstack([outputL, outputR]).T
 
 
-def noise_am(duration, sample_rate=44100, **params):
-    """Amplitude modulation using filtered noise as the modulator."""
-    amp = float(params.get('amp', 0.25))
-    carrierFreq = float(params.get('carrierFreq', 200))
-    noiseType = int(params.get('noiseType', 1))  # 1=white, 2=pink, 3=brown
-    modFilterFreq = float(params.get('modFilterFreq', 2))  # Cutoff
-    modDepth = float(params.get('modDepth', 0.8))
-    pan = float(params.get('pan', 0))
+# Removed: noise_am
 
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    carrier = sine_wave(carrierFreq, t_abs)
-
-    # Generate noise modulator source
-    if noiseType == 1:
-        noise_mod_src = np.random.randn(N)
-    elif noiseType == 2:
-        noise_mod_src = pink_noise(N)
-    elif noiseType == 3:
-        noise_mod_src = brown_noise(N)
-    else:
-        noise_mod_src = np.random.randn(N)
-
-    # Filter the noise
-    modFilterFreq = max(0.1, modFilterFreq)  # Ensure positive cutoff
-    filteredMod = lowpass_filter(noise_mod_src, modFilterFreq, sample_rate)
-
-    # Scale filtered noise
-    min_fm, max_fm = np.min(filteredMod), np.max(filteredMod)
-    if max_fm - min_fm > 1e-6:  # Avoid division by zero
-        # NO FIX NEEDED: modDepth is scalar here, interpolation maps range of noise
-        scaledMod = np.interp(filteredMod, [min_fm, max_fm], [1 - modDepth, 1])
-    else:
-        scaledMod = np.ones(N)  # Constant modulator if noise is flat
-
-    env = adsr_envelope(t_rel)
-    output_mono = carrier * scaledMod * env * amp
-    return pan2(output_mono, pan=pan)
-
-def noise_am_transition(duration, sample_rate=44100, **params):
-    """Noise AM with parameter transitions."""
-    amp = float(params.get('amp', 0.25))
-    startCarrierFreq = float(params.get('startCarrierFreq', 200))
-    endCarrierFreq = float(params.get('endCarrierFreq', 300))
-    noiseType = int(params.get('noiseType', 1))
-    startModFilterFreq = float(params.get('startModFilterFreq', 2))
-    endModFilterFreq = float(params.get('endModFilterFreq', 0.5))
-    startModDepth = float(params.get('startModDepth', 0.8))
-    endModDepth = float(params.get('endModDepth', 0.3))
-    pan = float(params.get('pan', 0))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    # Interpolate parameters
-    currentCarrierFreq = np.linspace(startCarrierFreq, endCarrierFreq, N)
-    # currentModFilterFreq = np.linspace(startModFilterFreq, endModFilterFreq, N)  # Not used directly in filter
-    currentModDepth = np.linspace(startModDepth, endModDepth, N)
-
-    # Generate carrier
-    carrier = sine_wave_varying(currentCarrierFreq, t_abs, sample_rate)
-
-    # Generate noise source
-    if noiseType == 1:
-        noise_mod_src = np.random.randn(N)
-    elif noiseType == 2:
-        noise_mod_src = pink_noise(N)
-    elif noiseType == 3:
-        noise_mod_src = brown_noise(N)
-    else:
-        noise_mod_src = np.random.randn(N)
-
-    # Filter with start frequency (simplification)
-    startFiltFreq = max(0.1, startModFilterFreq)
-    filteredMod = lowpass_filter(noise_mod_src, startFiltFreq, sample_rate)
-
-    # --- FIX APPLIED (Different approach needed here) ---
-    # Original: scaledMod = np.interp(filteredMod, [min_fm, max_fm], [1 - currentModDepth, 1])
-    # This was incorrect as it tried to map a scalar range to an array range.
-    # Fix: Normalize noise, then scale by the time-varying depth.
-
-    min_fm, max_fm = np.min(filteredMod), np.max(filteredMod)
-    if max_fm - min_fm > 1e-6:
-        # Normalize filteredMod to [0, 1] range
-        normalized_mod_01 = (filteredMod - min_fm) / (max_fm - min_fm)
-        # Map normalized [0, 1] to target range [1 - currentModDepth, 1]
-        scaledMod = 1.0 - currentModDepth * (1.0 - normalized_mod_01) * 0.5
-    else:
-            scaledMod = np.ones(N)  # Constant modulator if noise is flat
-        # -----------------------------------------------------
-
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)
-    output_mono = carrier * scaledMod * env * amp
-    return pan2(output_mono, pan=pan)
+# Removed: noise_am_transition
 
 def wave_shape_stereo_am(duration, sample_rate=44100, **params):
     """Combines rhythmic waveshaping and stereo AM."""
@@ -1035,7 +963,8 @@ def wave_shape_stereo_am(duration, sample_rate=44100, **params):
     stereoModPhaseL = float(params.get('stereoModPhaseL', 0))
     stereoModFreqR = float(params.get('stereoModFreqR', 4.0))
     stereoModDepthR = float(params.get('stereoModDepthR', 0.8))
-    stereoModPhaseR = float(params.get('stereoModPhaseR', math.pi * 2))
+    stereoModPhaseR = float(params.get('stereoModPhaseR', math.pi * 2)) # Original had 2pi, likely meant pi/2 or pi? Using pi/2 for quadrature.
+    stereoModPhaseR = float(params.get('stereoModPhaseR', math.pi / 2)) # Changed default
 
     N = int(sample_rate * duration)
     if N <= 0:
@@ -1046,29 +975,28 @@ def wave_shape_stereo_am(duration, sample_rate=44100, **params):
     # Rhythmic waveshaping part (mono)
     carrier = sine_wave(carrierFreq, t_abs)
     shapeLFO_wave = sine_wave(shapeModFreq, t_abs)
-    # NO FIX NEEDED: shapeModDepth is scalar here
-    shapeLFO_amp = 1.0 - shapeModDepth * (1.0 - shapeLFO_wave) * 0.5  # Already correct element-wise
+    # Correct element-wise approach:
+    shapeLFO_amp = 1.0 - shapeModDepth * (1.0 - shapeLFO_wave) * 0.5
     modulatedInput = carrier * shapeLFO_amp
     shapeAmount = max(1e-6, shapeAmount)
     tanh_shape_amount = np.tanh(shapeAmount)
     shapedSignal = np.divide(np.tanh(modulatedInput * shapeAmount), tanh_shape_amount,
-                           out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
+                                 out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
 
     # Stereo AM part
     stereoLFO_L = sine_wave(stereoModFreqL, t_abs, phase=stereoModPhaseL)
     stereoLFO_R = sine_wave(stereoModFreqR, t_abs, phase=stereoModPhaseR)
-    # NO FIX NEEDED: stereoModDepthL/R are scalars here
-    modulatorL = np.interp(stereoLFO_L, [-1, 1], [1 - stereoModDepthL, 1])
-    modulatorR = np.interp(stereoLFO_R, [-1, 1], [1 - stereoModDepthR, 1])
+    # Correct element-wise approach:
+    modulatorL = 1.0 - stereoModDepthL * (1.0 - stereoLFO_L) * 0.5
+    modulatorR = 1.0 - stereoModDepthR * (1.0 - stereoLFO_R) * 0.5
 
     # Apply stereo modulators
     outputL = shapedSignal * modulatorL
     outputR = shapedSignal * modulatorR
 
-    # Apply overall envelope and amplitude
-    env = adsr_envelope(t_rel, attack=0.05, decay=0.2, sustain_level=0.8, release=0.5)
-    outputL = outputL * env * amp
-    outputR = outputR * env * amp
+    # Apply overall amplitude (envelope applied later)
+    outputL = outputL * amp
+    outputR = outputR * amp
 
     return np.vstack([outputL, outputR]).T
 
@@ -1093,7 +1021,7 @@ def wave_shape_stereo_am_transition(duration, sample_rate=44100, **params):
     endStereoModFreqR = float(params.get('endStereoModFreqR', 6.1))
     startStereoModDepthR = float(params.get('startStereoModDepthR', 0.9))
     endStereoModDepthR = float(params.get('endStereoModDepthR', 0.9))
-    startStereoModPhaseR = float(params.get('startStereoModPhaseR', math.pi * 2))  # Constant
+    startStereoModPhaseR = float(params.get('startStereoModPhaseR', math.pi / 2)) # Constant (using corrected default)
 
     N = int(sample_rate * duration)
     if N <= 0:
@@ -1114,22 +1042,22 @@ def wave_shape_stereo_am_transition(duration, sample_rate=44100, **params):
     # Rhythmic waveshaping part (mono)
     carrier = sine_wave_varying(currentCarrierFreq, t_abs, sample_rate)
     shapeLFO_wave = sine_wave_varying(currentShapeModFreq, t_abs, sample_rate)
-    # --- FIX APPLIED (shapeLFO) --- (Same as previous fix)
+    # --- FIX APPLIED (shapeLFO) ---
     shapeLFO_amp = 1.0 - currentShapeModDepth * (1.0 - shapeLFO_wave) * 0.5
     # -----------------------------
     modulatedInput = carrier * shapeLFO_amp
     currentShapeAmount = np.maximum(1e-6, currentShapeAmount)
     tanh_shape_amount = np.tanh(currentShapeAmount)
     shapedSignal = np.divide(np.tanh(modulatedInput * currentShapeAmount), tanh_shape_amount,
-                           out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
+                                 out=np.zeros_like(modulatedInput), where=tanh_shape_amount > 1e-6)
 
-    # Stereo AM part
+    # Stereo AM part (assuming constant phase)
     stereoLFO_L = sine_wave_varying(currentStereoModFreqL, t_abs, sample_rate)
     stereoLFO_R = sine_wave_varying(currentStereoModFreqR, t_abs, sample_rate)
-    # --- FIX APPLIED (modulatorL) --- (Same as previous fix)
+    # --- FIX APPLIED (modulatorL) ---
     modulatorL = 1.0 - currentStereoModDepthL * (1.0 - stereoLFO_L) * 0.5
     # --------------------------------
-    # --- FIX APPLIED (modulatorR) --- (Same as previous fix)
+    # --- FIX APPLIED (modulatorR) ---
     modulatorR = 1.0 - currentStereoModDepthR * (1.0 - stereoLFO_R) * 0.5
     # --------------------------------
 
@@ -1137,16 +1065,218 @@ def wave_shape_stereo_am_transition(duration, sample_rate=44100, **params):
     outputL = shapedSignal * modulatorL
     outputR = shapedSignal * modulatorR
 
-    # Apply overall envelope
-    env = linen_envelope(t_rel, attack=0.01, release=0.01)
-    outputL = outputL * env * amp
-    outputR = outputR * env * amp
+    # Apply overall amplitude (envelope applied later)
+    outputL = outputL * amp
+    outputR = outputR * amp
 
     return np.vstack([outputL, outputR]).T
 
+# --- NEW: Flanged Voice Synth Definition ---
+def flanged_voice(duration, sample_rate=44100, **params):
+    """
+    Generates a continuously modulating flanging effect on a noise source.
+    Uses a sine LFO based on rate_hz.
+    """
+    # Extract parameters
+    amp = float(params.get('amp', 0.5)) # Overall amplitude
+    noiseType = int(params.get('noiseType', 2))  # 1=white, 2=pink, 3=brown
+    max_delay_ms = float(params.get('max_delay_ms', 15.0)) # Max LFO delay
+    min_delay_ms = float(params.get('min_delay_ms', 1.0))  # Min LFO delay
+    rate_hz = float(params.get('rate_hz', 0.2)) # Flanger LFO rate (speed)
+    lfo_start_phase_rad = float(params.get('lfo_start_phase_rad', 0.0)) # Starting phase of LFO
+    skip_below_freq = float(params.get('skip_below_freq', 30.0)) # Skip comb frequencies below this
+    lowest_freq_mode = str(params.get('lowest_freq_mode', 'notch')) # 'notch' or 'peak'
+    dry_mix = float(params.get('dry_mix', 0.5)) # Mix level of original signal
+    wet_mix = float(params.get('wet_mix', 0.5)) # Mix level of flanged signal
 
-# --- Rest of the functions (spatial_angle_modulation, binaural, isochronic, helpers)
-# do not contain the problematic np.interp usage pattern based on the provided code.
+    N = int(sample_rate * duration)
+    if N <= 0:
+        return np.zeros((0, 2))
+
+    # Generate noise source (mono)
+    if noiseType == 1:
+        source_mono = np.random.randn(N)
+    elif noiseType == 2:
+        source_mono = pink_noise(N)
+    elif noiseType == 3:
+        source_mono = brown_noise(N)
+    else:
+        print(f"Warning: Unknown noiseType {noiseType}. Defaulting to pink noise.")
+        source_mono = pink_noise(N) # Default to pink
+
+    # Ensure source is not completely silent
+    if np.max(np.abs(source_mono)) < 1e-9:
+         print("Warning: Generated noise source is silent for flanger.")
+         return np.zeros((N, 2))
+
+    # Convert mono noise to stereo for the flanger effect input
+    source_stereo = np.vstack([source_mono, source_mono]).T
+
+    # Apply the flanger effect using the internal helper
+    try:
+        flanged_output = _flanger_effect_stereo_continuous(
+            x=source_stereo,
+            sr=sample_rate,
+            max_delay_ms=max_delay_ms,
+            min_delay_ms=min_delay_ms,
+            rate_hz=rate_hz,
+            lfo_start_phase_rad=lfo_start_phase_rad,
+            skip_below_freq=skip_below_freq,
+            lowest_freq_mode=lowest_freq_mode,
+            dry_mix=dry_mix,
+            wet_mix=wet_mix
+        )
+    except Exception as e:
+        print(f"Error during continuous flanger effect processing:")
+        traceback.print_exc()
+        return np.zeros((N, 2)) # Return silence on error
+
+    # Apply overall amplitude AFTER the effect
+    output_stereo = flanged_output * amp
+
+    # Note: Volume envelope (like ADSR/Linen) is applied later in generate_voice_audio.
+    return output_stereo.astype(np.float32) # Ensure final output is float32
+
+
+# --- NEW: Flanged Voice Transition Synth Definition ---
+def flanged_voice_transition(duration, sample_rate=44100, **params):
+    """
+    Generates a flanging effect with linearly transitioning parameters.
+    Uses a continuously modulating sine LFO where rate can also transition.
+    """
+    # Extract start/end parameters
+    startAmp = float(params.get('startAmp', 0.5))
+    endAmp = float(params.get('endAmp', startAmp)) # Default end to start if not provided
+
+    startNoiseType = int(params.get('startNoiseType', 2)) # Use start value only
+
+    startMaxDelayMs = float(params.get('startMaxDelayMs', 15.0))
+    endMaxDelayMs = float(params.get('endMaxDelayMs', startMaxDelayMs))
+    startMinDelayMs = float(params.get('startMinDelayMs', 1.0))
+    endMinDelayMs = float(params.get('endMinDelayMs', startMinDelayMs))
+
+    startRateHz = float(params.get('startRateHz', 0.2))
+    endRateHz = float(params.get('endRateHz', startRateHz))
+
+    startLfoPhaseRad = float(params.get('startLfoPhaseRad', 0.0)) # Use start value only
+
+    startSkipBelowFreq = float(params.get('startSkipBelowFreq', 30.0))
+    endSkipBelowFreq = float(params.get('endSkipBelowFreq', startSkipBelowFreq))
+    startLowestFreqMode = str(params.get('startLowestFreqMode', 'notch')) # Use start value only
+
+    startDryMix = float(params.get('startDryMix', 0.5))
+    endDryMix = float(params.get('endDryMix', startDryMix))
+    startWetMix = float(params.get('startWetMix', 0.5))
+    endWetMix = float(params.get('endWetMix', startWetMix))
+
+    N = int(sample_rate * duration)
+    if N <= 0:
+        return np.zeros((0, 2))
+
+    # --- Generate Noise Source (based on start type) ---
+    if startNoiseType == 1:
+        source_mono = np.random.randn(N)
+    elif startNoiseType == 2:
+        source_mono = pink_noise(N)
+    elif startNoiseType == 3:
+        source_mono = brown_noise(N)
+    else:
+        print(f"Warning: Unknown startNoiseType {startNoiseType}. Defaulting to pink noise.")
+        source_mono = pink_noise(N)
+
+    if np.max(np.abs(source_mono)) < 1e-9:
+        print("Warning: Generated noise source is silent for flanger transition.")
+        return np.zeros((N, 2))
+
+    source_stereo = np.vstack([source_mono, source_mono]).T.astype(np.float32)
+
+    # --- Interpolate Parameters ---
+    currentAmp = np.linspace(startAmp, endAmp, N)
+    currentMaxDelayMs = np.linspace(startMaxDelayMs, endMaxDelayMs, N)
+    currentMinDelayMs = np.linspace(startMinDelayMs, endMinDelayMs, N)
+    currentRateHz = np.linspace(startRateHz, endRateHz, N)
+    currentSkipBelowFreq = np.linspace(startSkipBelowFreq, endSkipBelowFreq, N)
+    currentDryMix = np.linspace(startDryMix, endDryMix, N)
+    currentWetMix = np.linspace(startWetMix, endWetMix, N)
+
+    # Ensure min_delay <= max_delay and handle skip_freq limit dynamically
+    # Vectorize calculations for efficiency
+    currentMinDelayMs = np.minimum(currentMinDelayMs, currentMaxDelayMs)
+    currentMaxDelayMs = np.maximum(currentMinDelayMs, currentMaxDelayMs) # Ensure max >= min after potential adjustments
+
+    max_allowed_delay_ms = np.full(N, np.inf) # Initialize with no limit
+    valid_skip_mask = currentSkipBelowFreq > 0
+    if np.any(valid_skip_mask):
+        if startLowestFreqMode.lower() == 'peak':
+             max_allowed_delay_ms[valid_skip_mask] = 1000.0 / currentSkipBelowFreq[valid_skip_mask]
+        else: # 'notch'
+             max_allowed_delay_ms[valid_skip_mask] = 1000.0 / (2.0 * currentSkipBelowFreq[valid_skip_mask])
+
+    actualMaxDelayMs = np.minimum(currentMaxDelayMs, max_allowed_delay_ms)
+    # Re-ensure min <= max after applying skip limit
+    actualMinDelayMs = np.minimum(currentMinDelayMs, actualMaxDelayMs)
+    actualMaxDelayMs = np.maximum(actualMinDelayMs, actualMaxDelayMs)
+
+
+    # --- Calculate Time-Varying LFO Phase ---
+    # Phase is integral of angular frequency (2*pi*rate)
+    # Use cumsum for discrete integration: phase[n] = start_phase + sum(2*pi*rate[i]*dt for i=0 to n-1)
+    dt = 1.0 / sample_rate
+    inst_angular_freq = 2 * np.pi * currentRateHz
+    phase_increment = inst_angular_freq * dt
+    # Add start phase to the first element, then cumsum includes it
+    phase_lfo = np.cumsum(phase_increment) + startLfoPhaseRad - phase_increment[0] # Adjust start phase offset for cumsum
+
+
+    # --- Sample-by-Sample Processing (Inlined & Adapted) ---
+    y = np.zeros_like(source_stereo, dtype=np.float32)
+
+    # Pre-calculate delay ranges in samples (now arrays)
+    delay_range_samples = (actualMaxDelayMs - actualMinDelayMs) / 1000.0 * sample_rate
+    min_delay_samples = actualMinDelayMs / 1000.0 * sample_rate
+
+    # Ensure non-negative ranges
+    delay_range_samples = np.maximum(0, delay_range_samples)
+    min_delay_samples = np.maximum(0, min_delay_samples)
+
+
+    for n in range(N):
+        ph = phase_lfo[n]
+        lfo_mod_signal = (np.sin(ph) + 1.0) * 0.5
+
+        # Calculate delay in samples for this time step n
+        delay_in_samps = min_delay_samples[n] + lfo_mod_signal * delay_range_samples[n]
+
+        # Fractional "tap" position in the past
+        tap_float = n - delay_in_samps
+
+        if tap_float < 0:
+            delayed_sample = source_stereo[n] # Use dry signal when history is insufficient
+        else:
+            # Linear interpolation
+            i0 = int(np.floor(tap_float))
+            frac = tap_float - i0
+            i1 = i0 + 1
+
+            if i1 > n:
+                x0 = source_stereo[max(0, i0)] # Ensure index >= 0
+                x1 = x0
+            else:
+                i0 = max(0, i0)
+                i1 = max(0, i1)
+                x0 = source_stereo[i0]
+                x1 = source_stereo[i1]
+
+            delayed_sample = (1.0 - frac) * x0 + frac * x1
+
+        # Mix dry + wet using interpolated values for this time step
+        y[n] = currentDryMix[n] * source_stereo[n] + currentWetMix[n] * delayed_sample
+
+    # Apply overall interpolated amplitude
+    output_stereo = y * currentAmp[:, np.newaxis] # Apply amp using broadcasting
+
+    # Note: Volume envelope is applied later in generate_voice_audio.
+    return output_stereo.astype(np.float32)
 
 def spatial_angle_modulation(duration, sample_rate=44100, **params):
     """Spatial Angle Modulation using external audio_engine module."""
@@ -1154,7 +1284,7 @@ def spatial_angle_modulation(duration, sample_rate=44100, **params):
         print("Error: SAM function called, but audio_engine module is missing.")
         N = int(sample_rate * duration)
         return np.zeros((N, 2))
-    
+
     amp = float(params.get('amp', 0.7))
     carrierFreq = float(params.get('carrierFreq', 440.0))
     beatFreq = float(params.get('beatFreq', 4.0))
@@ -1164,34 +1294,35 @@ def spatial_angle_modulation(duration, sample_rate=44100, **params):
     arcEndDeg = float(params.get('arcEndDeg', 360.0))
     frame_dur_ms = float(params.get('frame_dur_ms', 46.4))
     overlap_factor = int(params.get('overlap_factor', 8))
-    
+
     if pathShape not in VALID_SAM_PATHS:
         print(f"Warning: Invalid pathShape '{pathShape}'. Defaulting to 'circle'. Valid: {VALID_SAM_PATHS}")
         pathShape = 'circle'
-    
+
     try:
-        node = Node(duration, carrierFreq, beatFreq, 1.0, 1.0)
+        node = Node(duration, carrierFreq, beatFreq, 1.0, 1.0) # Using real Node now
     except Exception as e:
         print(f"Error creating Node for SAM: {e}")
         N = int(sample_rate * duration)
         return np.zeros((N, 2))
-    
+
     sam_params_dict = {
         'path_shape': pathShape,
         'path_radius': pathRadius,
         'arc_start_deg': arcStartDeg,
         'arc_end_deg': arcEndDeg
     }
-    
+
     try:
-        voice = SAMVoice(
+        voice = SAMVoice( # Using real SAMVoice now
             nodes=[node],
             sample_rate=sample_rate,
             frame_dur_ms=frame_dur_ms,
             overlap_factor=overlap_factor,
-            source_amp=amp,
+            source_amp=amp, # Apply amp within SAMVoice
             sam_node_params=[sam_params_dict]
         )
+        # Note: Envelope is applied *within* generate_voice_audio if specified there.
         return voice.generate_samples()
     except Exception as e:
         print(f"Error during SAMVoice generation: {e}")
@@ -1206,7 +1337,7 @@ def spatial_angle_modulation_transition(duration, sample_rate=44100, **params):
         print("Error: SAM transition function called, but audio_engine module is missing.")
         N = int(sample_rate * duration)
         return np.zeros((N, 2))
-    
+
     amp = float(params.get('amp', 0.7))
     startCarrierFreq = float(params.get('startCarrierFreq', 440.0))
     endCarrierFreq = float(params.get('endCarrierFreq', 440.0))
@@ -1222,46 +1353,48 @@ def spatial_angle_modulation_transition(duration, sample_rate=44100, **params):
     endArcEndDeg = float(params.get('endArcEndDeg', 360.0))
     frame_dur_ms = float(params.get('frame_dur_ms', 46.4))
     overlap_factor = int(params.get('overlap_factor', 8))
-    
+
     if startPathShape not in VALID_SAM_PATHS:
         print(f"Warning: Invalid startPathShape '{startPathShape}'. Defaulting to 'circle'.")
         startPathShape = 'circle'
     if endPathShape not in VALID_SAM_PATHS:
         print(f"Warning: Invalid endPathShape '{endPathShape}'. Defaulting to 'circle'.")
         endPathShape = 'circle'
-    
+
     try:
+        # Define start and end nodes for transition
         node_start = Node(duration, startCarrierFreq, startBeatFreq, 1.0, 1.0)
-        node_end = Node(0.0, endCarrierFreq, endBeatFreq, 1.0, 1.0)
+        node_end = Node(0.0, endCarrierFreq, endBeatFreq, 1.0, 1.0) # End node has 0 duration
     except Exception as e:
         print(f"Error creating Nodes for SAM transition: {e}")
         N = int(sample_rate * duration)
         return np.zeros((N, 2))
-    
+
     sam_params_list = [
-        {
+        { # Parameters for the start node
             'path_shape': startPathShape,
             'path_radius': startPathRadius,
             'arc_start_deg': startArcStartDeg,
             'arc_end_deg': startArcEndDeg
         },
-        {
+        { # Parameters for the (conceptual) end node
             'path_shape': endPathShape,
             'path_radius': endPathRadius,
             'arc_start_deg': endArcStartDeg,
             'arc_end_deg': endArcEndDeg
         }
     ]
-    
+
     try:
-        voice = SAMVoice(
-            nodes=[node_start, node_end],
+        voice = SAMVoice( # Using real SAMVoice
+            nodes=[node_start, node_end], # Pass both nodes for transition
             sample_rate=sample_rate,
             frame_dur_ms=frame_dur_ms,
             overlap_factor=overlap_factor,
-            source_amp=amp,
-            sam_node_params=sam_params_list
+            source_amp=amp, # Apply amp within SAMVoice
+            sam_node_params=sam_params_list # Pass list of params
         )
+        # Note: Envelope is applied *within* generate_voice_audio if specified there.
         return voice.generate_samples()
     except Exception as e:
         print(f"Error during SAMVoice transition generation: {e}")
@@ -1274,33 +1407,34 @@ def binaural_beat(duration, sample_rate=44100, **params):
     amp = float(params.get('amp', 0.5))
     baseFreq = float(params.get('baseFreq', 200.0))
     beatFreq = float(params.get('beatFreq', 4.0))
-    
+
     N = int(sample_rate * duration)
     if N <= 0:
         return np.zeros((0, 2))
-    
+
     t_abs = np.linspace(0, duration, N, endpoint=False)
     half_beat_freq = beatFreq / 2.0
     left_freq = np.maximum(0.0, baseFreq - half_beat_freq)
     right_freq = np.maximum(0.0, baseFreq + half_beat_freq)
     left_freq_array = np.full(N, left_freq)
     right_freq_array = np.full(N, right_freq)
-    
+
     if N > 1:
         dt = np.diff(t_abs, prepend=t_abs[0])
     elif N == 1:
         dt = np.array([duration])
     else:
         dt = np.array([])
-    
+
     phase_left = np.cumsum(2 * np.pi * left_freq_array * dt)
     phase_right = np.cumsum(2 * np.pi * right_freq_array * dt)
-    s_left = np.sin(phase_left) * amp
+    s_left = np.sin(phase_left) * amp # Apply base amp here
     s_right = np.sin(phase_right) * amp
     audio = np.column_stack((s_left, s_right)).astype(np.float32)
-    env = linen_envelope(t_abs, attack=0.01, release=0.01)
-    audio = audio * env[:, np.newaxis]
-    
+
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    # A default short fade is applied there if no envelope is specified.
+
     return audio
 
 
@@ -1310,33 +1444,34 @@ def binaural_beat_transition(duration, sample_rate=44100, **params):
     endBaseFreq = float(params.get('endBaseFreq', 180.0))
     startBeatFreq = float(params.get('startBeatFreq', 4.0))
     endBeatFreq = float(params.get('endBeatFreq', 8.0))
-    
+
     N = int(sample_rate * duration)
     if N <= 0:
         return np.zeros((0, 2))
-    
+
     t_abs = np.linspace(0, duration, N, endpoint=False)
     base_freq_array = np.linspace(startBaseFreq, endBaseFreq, N)
     beat_freq_array = np.linspace(startBeatFreq, endBeatFreq, N)
     half_beat_freq_array = beat_freq_array / 2.0
     left_freq_array = np.maximum(0.0, base_freq_array - half_beat_freq_array)
     right_freq_array = np.maximum(0.0, base_freq_array + half_beat_freq_array)
-    
+
     if N > 1:
         dt = np.diff(t_abs, prepend=t_abs[0])
     elif N == 1:
         dt = np.array([duration])
     else:
         dt = np.array([])
-    
+
     phase_left = np.cumsum(2 * np.pi * left_freq_array * dt)
     phase_right = np.cumsum(2 * np.pi * right_freq_array * dt)
-    s_left = np.sin(phase_left) * amp
+    s_left = np.sin(phase_left) * amp # Apply base amp here
     s_right = np.sin(phase_right) * amp
     audio = np.column_stack((s_left, s_right)).astype(np.float32)
-    env = linen_envelope(t_abs, attack=0.01, release=0.01)
-    audio = audio * env[:, np.newaxis]
-    
+
+    # Note: Envelope is applied *within* generate_voice_audio if specified there.
+    # A default short fade is applied there if no envelope is specified.
+
     return audio
 
 
@@ -1347,42 +1482,43 @@ def isochronic_tone(duration, sample_rate=44100, **params):
     rampPercent = float(params.get('rampPercent', 0.2))
     gapPercent = float(params.get('gapPercent', 0.15))
     pan = float(params.get('pan', 0.0))
-    
+
     N = int(sample_rate * duration)
     if N <= 0:
         return np.zeros((0, 2))
-    
+
     t_abs = np.linspace(0, duration, N, endpoint=False)
     instantaneous_carrier_freq = np.maximum(0.0, baseFreq)
     carrier_freq_array = np.full(N, instantaneous_carrier_freq)
-    
+
     if N > 1:
         dt = np.diff(t_abs, prepend=t_abs[0])
     elif N == 1:
         dt = np.array([duration])
     else:
         dt = np.array([])
-    
+
     carrier_phase = np.cumsum(2 * np.pi * carrier_freq_array * dt)
     carrier = np.sin(carrier_phase)
     instantaneous_beat_freq = np.maximum(0.0, beatFreq)
     beat_freq_array = np.full(N, instantaneous_beat_freq)
     cycle_len_array = np.zeros_like(beat_freq_array)
     valid_beat_mask = beat_freq_array > 1e-9
-    
+
     with np.errstate(divide='ignore'):
         cycle_len_array[valid_beat_mask] = 1.0 / beat_freq_array[valid_beat_mask]
-    
+
     beat_phase_cycles = np.cumsum(beat_freq_array * dt)
     t_in_cycle = np.mod(beat_phase_cycles, 1.0) * cycle_len_array
     t_in_cycle[~valid_beat_mask] = 0.0
-    env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
-    mono_signal = carrier * env
-    output_mono = mono_signal * amp
+    iso_env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
+    mono_signal = carrier * iso_env
+    output_mono = mono_signal * amp # Apply base amp here
     audio = pan2(output_mono, pan=pan)
-    fade_env = linen_envelope(t_abs, attack=0.01, release=0.01)
-    audio = audio * fade_env[:, np.newaxis]
-    
+
+    # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
+    # The trapezoid envelope is inherent to the isochronic tone generation itself.
+
     return audio.astype(np.float32)
 
 
@@ -1395,43 +1531,46 @@ def isochronic_tone_transition(duration, sample_rate=44100, **params):
     rampPercent = float(params.get('rampPercent', 0.2))
     gapPercent = float(params.get('gapPercent', 0.15))
     pan = float(params.get('pan', 0.0))
-    
+
     N = int(sample_rate * duration)
     if N <= 0:
         return np.zeros((0, 2))
-    
+
     t_abs = np.linspace(0, duration, N, endpoint=False)
     base_freq_array = np.linspace(startBaseFreq, endBaseFreq, N)
     beat_freq_array = np.linspace(startBeatFreq, endBeatFreq, N)
     instantaneous_carrier_freq_array = np.maximum(0.0, base_freq_array)
-    
+
     if N > 1:
         dt = np.diff(t_abs, prepend=t_abs[0])
     elif N == 1:
         dt = np.array([duration])
     else:
         dt = np.array([])
-    
+
     carrier_phase = np.cumsum(2 * np.pi * instantaneous_carrier_freq_array * dt)
     carrier = np.sin(carrier_phase)
     instantaneous_beat_freq_array = np.maximum(0.0, beat_freq_array)
     cycle_len_array = np.zeros_like(instantaneous_beat_freq_array)
     valid_beat_mask = instantaneous_beat_freq_array > 1e-9
-    
+
     with np.errstate(divide='ignore'):
         cycle_len_array[valid_beat_mask] = 1.0 / instantaneous_beat_freq_array[valid_beat_mask]
-    
+
     beat_phase_cycles = np.cumsum(instantaneous_beat_freq_array * dt)
     t_in_cycle = np.mod(beat_phase_cycles, 1.0) * cycle_len_array
     t_in_cycle[~valid_beat_mask] = 0.0
-    env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
-    mono_signal = carrier * env
-    output_mono = mono_signal * amp
+    iso_env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
+    mono_signal = carrier * iso_env
+    output_mono = mono_signal * amp # Apply base amp here
     audio = pan2(output_mono, pan=pan)
-    fade_env = linen_envelope(t_abs, attack=0.01, release=0.01)
-    audio = audio * fade_env[:, np.newaxis]
-    
-    return audio.astype(np.float32)# -----------------------------------------------------------------------------
+
+    # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
+    # The trapezoid envelope is inherent to the isochronic tone generation itself.
+
+    return audio.astype(np.float32)
+
+# -----------------------------------------------------------------------------
 # Safety Limiter
 # -----------------------------------------------------------------------------
 def safety_limiter(signal, threshold=0.9):
@@ -1481,6 +1620,7 @@ def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration):
 
 # Dictionary mapping function names (strings) to actual functions
 # --- UPDATED SYNTH_FUNCTIONS DICTIONARY ---
+
 SYNTH_FUNCTIONS = {name: obj for name, obj in inspect.getmembers(__import__(__name__)) if inspect.isfunction(obj) and name not in [
     # Exclude helper/internal functions explicitly
     'validate_float', 'validate_int', 'butter_bandpass', 'bandpass_filter',
@@ -1489,27 +1629,59 @@ SYNTH_FUNCTIONS = {name: obj for name, obj in inspect.getmembers(__import__(__na
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
     'load_track_from_json', 'save_track_to_json', 'generate_wav', 'get_synth_params',
-    'trapezoid_envelope_vectorized', 'butter', 'lfilter', 'write', 'additive_phase_mod', 'additive_phase_mod_transition', 'noise_am', 'noise_am_transition'
-    # Exclude the new helper
+    'trapezoid_envelope_vectorized',
+    '_flanger_effect_stereo_continuous', # <<< UPDATED FLANGER HELPER EXCLUSION
+    'butter', 'lfilter', 'write',
+    'NumpyEncoder', # Exclude class
+    # Exclude standard library functions that might be imported
+    'json', 'inspect', 'os', 'traceback', 'math'
 ]}
+# Filter out built-in functions just in case
+SYNTH_FUNCTIONS = {k: v for k, v in SYNTH_FUNCTIONS.items() if not k.startswith('_') and not inspect.isbuiltin(v)}
+
 print(f"Detected Synth Functions: {list(SYNTH_FUNCTIONS.keys())}")
 
 
-# Function to get parameters for a given synth function name
+# --- UPDATED: Parameter Inspection (handles new transition function naming) ---
 def get_synth_params(func_name):
-    """Gets parameter names, default values, and descriptions for a synth function."""
+    """Gets parameter names and default values for a synth function."""
     if func_name not in SYNTH_FUNCTIONS:
+        print(f"Warning: Function '{func_name}' not found in SYNTH_FUNCTIONS.")
         return {}
+
     func = SYNTH_FUNCTIONS[func_name]
     sig = inspect.signature(func)
     params = {}
+
+    # Check if it's likely a transition function based on name convention
+    is_likely_transition = func_name.endswith('_transition')
+
+    # Iterate through parameters defined in the function signature
     for name, param in sig.parameters.items():
-        if name in ['duration', 'sample_rate', 'params', 'kwargs']:
+        # Skip standard args and the catch-all kwargs
+        if name in ['duration', 'sample_rate'] or param.kind == inspect.Parameter.VAR_KEYWORD:
             continue
-        params[name] = {
-            "default": param.default if param.default != inspect.Parameter.empty else None,
-            "description": param.annotation if param.annotation != inspect._empty else "No description available"
-        }
+
+        # Store the default value if it exists, otherwise store None
+        default_value = param.default if param.default != inspect.Parameter.empty else None
+        params[name] = default_value
+
+        # For transition functions, try to find the corresponding 'end' parameter default
+        # (assuming end defaults to start if not explicitly set)
+        if is_likely_transition and name.startswith('start'):
+            end_param_name = 'end' + name[len('start'):]
+            # Check if an explicit end parameter exists in the signature
+            if end_param_name not in sig.parameters:
+                 # If no explicit end param, GUI might assume end defaults to start
+                 # We represent this lack of explicit default here
+                 params[end_param_name] = None # Or perhaps params[name] to signal default? None is safer.
+            # If end_param_name *is* in sig.parameters, it will be handled normally by the loop
+
+    # Filter out potential 'end' params that were added implicitly if they conflict with actual signature
+    # (This is a bit complex - the GUI logic might be better suited to pair start/end params)
+    # For simplicity, we'll just return params found directly in the signature.
+    # The GUI will need to infer start/end pairs based on naming conventions.
+
     return params
 
 
@@ -1529,7 +1701,8 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
             else:
                 print(f"Warning: Transition checked, but '{transition_func_name}' not found for base '{func_name}'. Using static version '{func_name}'.")
                 actual_func_name = func_name
-    else:
+    else: # Not a transition step
+        # If user selected a transition function by mistake, use the base version
         if func_name.endswith("_transition"):
             base_func_name = func_name.replace("_transition", "")
             if base_func_name in SYNTH_FUNCTIONS:
@@ -1561,20 +1734,20 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
         return np.zeros((N, 2))
 
     if audio is None: # Check if synth function failed silently
-         print(f"Error: Synth function '{actual_func_name}' returned None.")
-         N = int(duration * sample_rate)
-         return np.zeros((N, 2))
+        print(f"Error: Synth function '{actual_func_name}' returned None.")
+        N = int(duration * sample_rate)
+        return np.zeros((N, 2))
 
     # --- Apply volume envelope if defined ---
     envelope_data = voice_data.get("volume_envelope")
+    N_audio = audio.shape[0]
+    t_rel = np.linspace(0, duration, N_audio, endpoint=False) # Use audio length for time vector
+    env = np.ones(N_audio) # Default flat envelope
+
     if envelope_data and isinstance(envelope_data, dict):
         env_type = envelope_data.get("type")
         env_params = envelope_data.get("params", {})
         cleaned_env_params = {k: v for k, v in env_params.items() if v is not None}
-
-        N_audio = audio.shape[0]
-        t_rel = np.linspace(0, duration, N_audio, endpoint=False) # Use audio length for time vector
-        env = np.ones(N_audio) # Default envelope
 
         try:
             if env_type == "adsr":
@@ -1582,43 +1755,58 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
             elif env_type == "linen":
                  env = linen_envelope(t_rel, **cleaned_env_params)
             elif env_type == "linear_fade":
-                 required = ['fade_duration', 'start_amp', 'end_amp', 'fade_type']
+                 required = ['fade_duration', 'start_amp', 'end_amp']
                  if all(p in cleaned_env_params for p in required):
                      # Pass actual duration for envelope calculation, not just t_rel length
                      env = create_linear_fade_envelope(duration, sample_rate, **cleaned_env_params)
                      # Resample envelope if its length doesn't match audio (e.g., due to rounding)
                      if len(env) != N_audio:
                           print(f"Warning: Resampling '{env_type}' envelope from {len(env)} to {N_audio} samples.")
-                          env = np.interp(np.linspace(0, 1, N_audio), np.linspace(0, 1, len(env)), env)
+                          if len(env) > 0: # Avoid error if env is empty
+                              env = np.interp(np.linspace(0, 1, N_audio), np.linspace(0, 1, len(env)), env)
+                          else:
+                              env = np.ones(N_audio) # Fallback if original env was empty
                  else:
                      print(f"Warning: Missing parameters for 'linear_fade' envelope. Using flat envelope. Got: {cleaned_env_params}")
             else:
                 print(f"Warning: Unknown envelope type '{env_type}'. Using flat envelope.")
 
-            # Apply envelope
-            if audio.ndim == 2 and audio.shape[1] == 2:
-                 if len(env) == audio.shape[0]:
-                      audio = audio * env[:, np.newaxis]
-                 else:
-                      print(f"Error: Envelope length ({len(env)}) mismatch with audio length ({audio.shape[0]}). Skipping envelope.")
-            elif audio.ndim == 1:
-                 if len(env) == len(audio):
-                      audio = audio * env
-                 else:
-                      print(f"Error: Envelope length ({len(env)}) mismatch with mono audio length ({len(audio)}). Skipping envelope.")
-            else:
-                 print(f"Warning: Audio shape ({audio.shape}) not suitable for envelope application.")
-
         except Exception as e:
-            print(f"Error applying envelope type '{env_type}':")
+            print(f"Error creating envelope type '{env_type}':")
             traceback.print_exc()
+            env = np.ones(N_audio) # Fallback to flat envelope on error
+
+    # Apply the calculated envelope (even if it's the default flat one)
+    try:
+        if audio.ndim == 2 and audio.shape[1] == 2:
+            if len(env) == audio.shape[0]:
+                 audio = audio * env[:, np.newaxis]
+            else:
+                 print(f"Error: Envelope length ({len(env)}) mismatch with audio length ({audio.shape[0]}). Skipping envelope application.")
+        elif audio.ndim == 1: # Should have been panned already, but handle just in case
+            if len(env) == len(audio):
+                 audio = audio * env
+                 # Pan again after envelope
+                 audio = pan2(audio, cleaned_params.get('pan', 0))
+            else:
+                 print(f"Error: Envelope length ({len(env)}) mismatch with mono audio length ({len(audio)}). Skipping envelope application.")
+                 # Ensure it's stereo anyway
+                 audio = pan2(audio, cleaned_params.get('pan', 0))
+        else:
+             print(f"Warning: Audio shape ({audio.shape}) not suitable for envelope application.")
+
+    except Exception as e:
+        print(f"Error applying envelope to audio:")
+        traceback.print_exc()
+
 
     # --- Ensure output is stereo ---
+    # This check should ideally happen after panning within the synth func or after applying mono envelope
     if audio.ndim == 1:
-        print(f"Note: Synth function '{actual_func_name}' returned mono audio. Panning.")
+        print(f"Note: Synth function '{actual_func_name}' resulted in mono audio after potential envelope. Panning.")
         audio = pan2(audio, cleaned_params.get('pan', 0))
     elif audio.ndim == 2 and audio.shape[1] == 1:
-        print(f"Note: Synth function '{actual_func_name}' returned mono audio (N, 1). Panning.")
+        print(f"Note: Synth function '{actual_func_name}' resulted in mono audio (N, 1) after potential envelope. Panning.")
         audio = pan2(audio[:,0], cleaned_params.get('pan', 0))
 
     # Final check for shape (N, 2)
@@ -1626,6 +1814,16 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
          print(f"Error: Final audio shape for voice is incorrect ({audio.shape}). Returning silence.")
          N = int(duration * sample_rate)
          return np.zeros((N, 2))
+
+    # Add a small default fade if no specific envelope was requested, to prevent clicks
+    if not envelope_data:
+        fade_len = min(N_audio, int(0.01 * sample_rate)) # 10ms fade or audio length
+        if fade_len > 1:
+             fade_in = np.linspace(0, 1, fade_len)
+             fade_out = np.linspace(1, 0, fade_len)
+             audio[:fade_len] *= fade_in[:, np.newaxis]
+             audio[-fade_len:] *= fade_out[:, np.newaxis]
+
 
     return audio
 
@@ -1681,27 +1879,23 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
         voices_data = step_data.get("voices", [])
 
         if not voices_data:
-            print(f"     Warning: Step {i+1} has no voices.")
+            print(f"         Warning: Step {i+1} has no voices.")
         else:
             for j, voice_data in enumerate(voices_data):
                 func_name_short = voice_data.get('synth_function_name', 'UnknownFunc')
-                print(f"        Generating Voice {j+1}: {func_name_short}")
+                print(f"               Generating Voice {j+1}: {func_name_short}")
                 # Pass absolute start time for potential phase coherence needs? Or step's own start time?
                 # Let's pass the step's intended start time in the final track.
                 voice_audio = generate_voice_audio(voice_data, step_duration, sample_rate, current_time)
 
-                # Apply envelope if defined in voice_data
-                # This should ideally happen inside generate_voice_audio or just after
-                envelope_data = voice_data.get("volume_envelope")
-                if envelope_data and voice_audio is not None:
-                     voice_audio = apply_envelope(voice_audio, envelope_data, sample_rate)
-
+                # --- REMOVED INCORRECT apply_envelope CALL ---
+                # The envelope is now correctly applied *inside* generate_voice_audio
 
                 # Add generated audio if valid
                 if voice_audio is not None and voice_audio.shape[0] == N_step and voice_audio.ndim == 2 and voice_audio.shape[1] == 2:
-                    step_audio_mix += voice_audio
+                     step_audio_mix += voice_audio
                 elif voice_audio is not None:
-                    print(f"        Error: Voice {j+1} ({func_name_short}) generated audio shape mismatch ({voice_audio.shape} vs {(N_step, 2)}). Skipping voice.")
+                     print(f"                 Error: Voice {j+1} ({func_name_short}) generated audio shape mismatch ({voice_audio.shape} vs {(N_step, 2)}). Skipping voice.")
                 # else: generate_voice_audio might have printed error
 
         # --- Placement and Crossfading ---
@@ -1711,7 +1905,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
         segment_len_in_track = safe_place_end - safe_place_start # How many samples this step occupies in the track
 
         if segment_len_in_track <= 0:
-            print(f"     Skipping Step {i+1} placement (no valid range in track buffer).")
+            print(f"         Skipping Step {i+1} placement (no valid range in track buffer).")
             # Update current_time even if skipped? Or not? Let's not advance time if skipped.
             continue # Skip if no valid placement range
 
@@ -1721,7 +1915,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
 
         # Double check length (should normally match due to clipping logic)
         if audio_to_use.shape[0] != segment_len_in_track:
-            print(f"     Warning: Step {i+1} audio length adjustment needed ({audio_to_use.shape[0]} vs {segment_len_in_track}). Padding/Truncating.")
+            print(f"         Warning: Step {i+1} audio length adjustment needed ({audio_to_use.shape[0]} vs {segment_len_in_track}). Padding/Truncating.")
             # Pad if too short, truncate if too long
             if audio_to_use.shape[0] < segment_len_in_track:
                  audio_to_use = np.pad(audio_to_use, ((0, segment_len_in_track - audio_to_use.shape[0]), (0,0)), 'constant')
@@ -1743,7 +1937,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
         if can_crossfade:
             # Limit crossfade to the actual overlap or the requested duration, whichever is smaller
             actual_crossfade_samples = min(overlap_samples, crossfade_samples)
-            print(f"     Crossfading Step {i+1} with previous. Overlap: {overlap_samples / sample_rate:.3f}s, Actual CF: {actual_crossfade_samples / sample_rate:.3f}s")
+            print(f"         Crossfading Step {i+1} with previous. Overlap: {overlap_samples / sample_rate:.3f}s, Actual CF: {actual_crossfade_samples / sample_rate:.3f}s")
 
             if actual_crossfade_samples > 0:
                 # Get segments for crossfading
@@ -1767,19 +1961,19 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
                     num_remaining_samples_to_add = remaining_end_index_in_track - remaining_start_index_in_track
                     # Ensure we have enough remaining audio from the step generation
                     if remaining_start_index_in_step_audio < audio_to_use.shape[0]:
-                         remaining_audio_from_step = audio_to_use[remaining_start_index_in_step_audio : remaining_start_index_in_step_audio + num_remaining_samples_to_add]
-                         # Add the remaining part
-                         track[remaining_start_index_in_track : remaining_start_index_in_track + remaining_audio_from_step.shape[0]] += remaining_audio_from_step
+                        remaining_audio_from_step = audio_to_use[remaining_start_index_in_step_audio : remaining_start_index_in_step_audio + num_remaining_samples_to_add]
+                        # Add the remaining part
+                        track[remaining_start_index_in_track : remaining_start_index_in_track + remaining_audio_from_step.shape[0]] += remaining_audio_from_step
                     # else: No remaining audio needed or available from step gen, track already has silence
 
             else: # Overlap existed but calculated crossfade samples was zero (edge case)
-                 print(f"     Placing Step {i+1} without crossfade (actual_crossfade_samples=0).")
+                 print(f"         Placing Step {i+1} without crossfade (actual_crossfade_samples=0).")
                  track[safe_place_start:safe_place_end] += audio_to_use
 
 
         else:
             # No crossfade (first step or no overlap), just add the audio
-            print(f"     Placing Step {i+1} without crossfade.")
+            print(f"         Placing Step {i+1} without crossfade.")
             track[safe_place_start:safe_place_end] += audio_to_use
 
         # --- Update Markers for Next Loop ---
@@ -1797,8 +1991,8 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
     # Trim the track buffer to the actual length used
     final_track_samples = last_step_end_sample_in_track
     if final_track_samples <= 0:
-         print("Warning: Final track assembly resulted in zero length.")
-         return np.zeros((sample_rate, 2)) # Return 1s silence
+        print("Warning: Final track assembly resulted in zero length.")
+        return np.zeros((sample_rate, 2)) # Return 1s silence
 
     if final_track_samples < track.shape[0]:
         track = track[:final_track_samples]
@@ -1865,9 +2059,9 @@ def save_track_to_json(track_data, filepath):
         print(f"Error writing file to {filepath}: {e}")
         return False
     except TypeError as e:
-         print(f"Error serializing track data to JSON: {e}")
-         traceback.print_exc()
-         return False
+        print(f"Error serializing track data to JSON: {e}")
+        traceback.print_exc()
+        return False
     except Exception as e:
         print(f"An unexpected error occurred saving to {filepath}:")
         traceback.print_exc()
@@ -1949,30 +2143,39 @@ if __name__ == '__main__':
     print("Run track_editor_gui.py to use the graphical interface.")
 
     # Example: Create and save a default JSON if it doesn't exist
-    default_json_file = 'default_track.json'
+    default_json_file = 'default_track_with_flanger.json' # New name for testing
     if not os.path.exists(default_json_file):
-         print(f"Creating a simple default JSON file: {default_json_file}")
-         default_data = {
-             "global_settings": {
+        print(f"Creating a simple default JSON file: {default_json_file}")
+        default_data = {
+            "global_settings": {
                  "sample_rate": 44100,
-                 "crossfade_duration": 0.5,
-                 "output_filename": "test_output.wav"
-             },
-             "steps": [
+                 "crossfade_duration": 1.0, # Longer crossfade for smoother flanger test
+                 "output_filename": "test_flanger_output.wav"
+            },
+            "steps": [
                  {
-                     "duration": 5.0,
+                     "duration": 10.0, # Longer duration to hear flanger sweep
                      "voices": [
                          {
-                             "synth_function_name": "binaural_beat", # Test new func
+                             "synth_function_name": "flanged_voice", # Test new flanger
                              "is_transition": False,
-                             "params": {"amp": 0.4, "baseFreq": 150, "beatFreq": 5},
-                             "volume_envelope": None
-                         },
-                         {
-                             "synth_function_name": "isochronic_tone", # Test new func
-                             "is_transition": False,
-                             "params": {"amp": 0.6, "baseFreq": 300, "beatFreq": 7, "rampPercent": 0.1, "gapPercent": 0.2, "pan": 0.5},
-                             "volume_envelope": {"type": "linen", "params": {"attack": 0.5, "release": 1.0}}
+                             "params": {
+                                 "amp": 0.6,
+                                 "noiseType": 2, # Pink noise
+                                 "max_delay_ms": 15.0, # Shorter max delay
+                                 "min_delay_ms": 0.5,
+                                 "rate_hz": 0.1, # Faster LFO for testing
+                                 "start_frac": 0.25, # Peak
+                                 "end_frac": 0.75, # Trough
+                                 "begin_hold_time_s": 1.0, # Hold at start
+                                 "end_hold_time_s": 1.0, # Hold at end
+                                 "skip_below_freq": 30.0,
+                                 "lowest_freq_mode": 'notch',
+                                 "dry_mix": 0.6,
+                                 "wet_mix": 0.4,
+                                 "reverse": False
+                             },
+                             "volume_envelope": {"type": "linen", "params": {"attack": 1.0, "release": 1.0}}
                          }
                      ]
                  },
@@ -1980,28 +2183,28 @@ if __name__ == '__main__':
                      "duration": 5.0,
                      "voices": [
                          {
-                             "synth_function_name": "binaural_beat", # Test transition
-                             "is_transition": True,
-                             "params": {
-                                 "amp": 0.5, "startBaseFreq": 150, "endBaseFreq": 140,
-                                 "startBeatFreq": 5, "endBeatFreq": 10
-                             },
+                             "synth_function_name": "binaural_beat",
+                             "is_transition": False,
+                             "params": {"amp": 0.4, "baseFreq": 100, "beatFreq": 3},
                              "volume_envelope": None
                          }
                      ]
                  }
-             ]
-         }
-         save_track_to_json(default_data, default_json_file)
-         print(f"Default file created. Run track_editor_gui.py to load and generate.")
+            ]
+        }
+        if save_track_to_json(default_data, default_json_file):
+             print("\nAttempting to load and generate the test track...")
+             track_definition = load_track_from_json(default_json_file)
+             if track_definition:
+                  generate_wav(track_definition)
+             else:
+                  print("Failed to load track definition after saving.")
     else:
-         print(f"Default file '{default_json_file}' already exists.")
-         # Optionally load and generate here for testing
-         # print("\nAttempting to load and generate default track...")
-         # track_definition = load_track_from_json(default_json_file)
-         # if track_definition:
-         #     generate_wav(track_definition)
-         # else:
-         #     print("Could not load default track definition.")
-
-
+        print(f"Default file '{default_json_file}' already exists.")
+        # Optionally load and generate here for testing
+        print("\nAttempting to load and generate existing test track...")
+        track_definition = load_track_from_json(default_json_file)
+        if track_definition:
+           generate_wav(track_definition)
+        else:
+           print("Failed to load existing track definition.")
