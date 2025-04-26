@@ -243,4 +243,3 @@ Voices support optional **volume envelopes**:
 
 ---
 
-Enjoy crafting deeply immersive, customized brainwave entrainment tracks with **unprecedented flexibility**!
