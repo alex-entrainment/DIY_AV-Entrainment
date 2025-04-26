@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QLineEdit, QTreeWidget, QTreeWidgetItem, QTextEdit,
     QComboBox, QCheckBox, QGroupBox, QSplitter, QFileDialog, QMessageBox,
-    QDialog, QScrollArea, QSizePolicy, QInputDialog, QSpacerItem
+    QDialog, QScrollArea, QSizePolicy, QInputDialog, QSpacerItem, QHeaderView,
 )
 from PyQt5.QtCore import Qt, pyqtSlot, QSize, QTimer # Added QTimer
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
@@ -60,7 +60,6 @@ class TrackEditorApp(QMainWindow):
             },
             "steps": []
         }
-
     def _setup_ui(self):
         # Central Widget and Main Layout
         central_widget = QWidget()
@@ -145,35 +144,37 @@ class TrackEditorApp(QMainWindow):
         steps_outer_layout.addWidget(steps_groupbox)
 
         self.steps_tree = QTreeWidget()
-        self.steps_tree.setColumnCount(2)
-        self.steps_tree.setHeaderLabels(["Duration (s)", "# Voices"])
-        self.steps_tree.setColumnWidth(0, 100)
-        self.steps_tree.setColumnWidth(1, 80)
-        self.steps_tree.header().setStretchLastSection(True)
+        self.steps_tree.setColumnCount(3) # Changed to 3 columns
+        self.steps_tree.setHeaderLabels(["Duration (s)", "Description", "# Voices"]) # Added Description
+        self.steps_tree.setColumnWidth(0, 80) # Adjusted width
+        self.steps_tree.setColumnWidth(1, 150) # Width for Description
+        self.steps_tree.setColumnWidth(2, 60) # Adjusted width
+        self.steps_tree.header().setSectionResizeMode(1, QHeaderView.Stretch) # Stretch Description column
         self.steps_tree.setSelectionMode(QTreeWidget.SingleSelection)
         self.steps_tree.itemSelectionChanged.connect(self.on_step_select)
+        self.steps_tree.itemDoubleClicked.connect(self.edit_step_description) # Double-click to edit description
         steps_groupbox_layout.addWidget(self.steps_tree, 1)
 
         steps_button_layout = QHBoxLayout()
         self.add_step_button = QPushButton("Add Step")
-        # --- NEW: Duplicate Step Button ---
         self.duplicate_step_button = QPushButton("Duplicate Step")
         self.remove_step_button = QPushButton("Remove Step")
         self.edit_duration_button = QPushButton("Edit Duration")
+        self.edit_description_button = QPushButton("Edit Description") # New button
         self.move_step_up_button = QPushButton("Move Up")
         self.move_step_down_button = QPushButton("Move Down")
         self.add_step_button.clicked.connect(self.add_step)
-        # --- NEW: Connect Duplicate Button ---
         self.duplicate_step_button.clicked.connect(self.duplicate_step)
         self.remove_step_button.clicked.connect(self.remove_step)
         self.edit_duration_button.clicked.connect(self.edit_step_duration)
+        self.edit_description_button.clicked.connect(self.edit_step_description) # Connect new button
         self.move_step_up_button.clicked.connect(lambda: self.move_step(-1))
         self.move_step_down_button.clicked.connect(lambda: self.move_step(1))
         steps_button_layout.addWidget(self.add_step_button)
-        # --- NEW: Add Duplicate Button to Layout ---
         steps_button_layout.addWidget(self.duplicate_step_button)
         steps_button_layout.addWidget(self.remove_step_button)
         steps_button_layout.addWidget(self.edit_duration_button)
+        steps_button_layout.addWidget(self.edit_description_button) # Add new button to layout
         steps_button_layout.addWidget(self.move_step_up_button)
         steps_button_layout.addWidget(self.move_step_down_button)
         steps_button_layout.addStretch(1)
@@ -199,8 +200,6 @@ class TrackEditorApp(QMainWindow):
         self.voices_tree.setColumnWidth(0, 220)
         self.voices_tree.setColumnWidth(1, 100)
         self.voices_tree.setColumnWidth(2, 80)
-        # self.voices_tree.header().setStretchLastSection(False) # Prevent last column stretch
-        # self.voices_tree.header().setSectionResizeMode(0, QHeaderView.Stretch) # Stretch first column instead
         self.voices_tree.header().setStretchLastSection(True) # Stretch last column
         self.voices_tree.setSelectionMode(QTreeWidget.SingleSelection)
         self.voices_tree.itemSelectionChanged.connect(self.on_voice_select)
@@ -237,9 +236,8 @@ class TrackEditorApp(QMainWindow):
         voice_details_groupbox_layout.addWidget(self.voice_details_text)
 
         # Set Splitter Sizes (initial proportions)
-        main_splitter.setSizes([300, 700]) # Adjust as needed
+        main_splitter.setSizes([350, 650]) # Adjusted for wider steps tree
         right_splitter.setSizes([500, 200]) # Adjust as needed
-
     # --- Internal Data Handling ---
     def _update_global_settings_from_ui(self):
         """Reads global settings from UI elements and updates self.track_data."""
@@ -289,10 +287,12 @@ class TrackEditorApp(QMainWindow):
         self.steps_tree.clear()
         for i, step in enumerate(self.track_data.get("steps", [])):
             duration = step.get("duration", 0.0)
+            description = step.get("description", "") # Get description, default to empty string
             num_voices = len(step.get("voices", []))
             item = QTreeWidgetItem(self.steps_tree)
             item.setText(0, f"{duration:.2f}")
-            item.setText(1, str(num_voices))
+            item.setText(1, description) # Set description text in column 1
+            item.setText(2, str(num_voices)) # Set voice count text in column 2
             item.setData(0, Qt.UserRole, i) # Store original index
 
         if current_index != -1 and current_index < self.steps_tree.topLevelItemCount():
@@ -513,7 +513,7 @@ class TrackEditorApp(QMainWindow):
 
     @pyqtSlot()
     def add_step(self):
-        new_step = {"duration": 10.0, "voices": []}
+        new_step = {"duration": 10.0, "description": "", "voices": []} # Added description field
         # If a step is selected, insert after it, otherwise append
         selected_index = self.get_selected_step_index()
         insert_index = selected_index + 1 if selected_index is not None else len(self.track_data["steps"])
@@ -524,8 +524,7 @@ class TrackEditorApp(QMainWindow):
         if 0 <= insert_index < self.steps_tree.topLevelItemCount():
             new_item = self.steps_tree.topLevelItem(insert_index)
             self.steps_tree.setCurrentItem(new_item)
-            self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
-        # refresh_steps_tree already calls refresh_voices_tree
+            self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)        # refresh_steps_tree already calls refresh_voices_tree
 
     # --- NEW: Duplicate Step Method ---
     @pyqtSlot()
@@ -609,7 +608,36 @@ class TrackEditorApp(QMainWindow):
                  QMessageBox.critical(self, "Error", "Failed to set duration (index out of range after edit).")
              except Exception as e:
                  QMessageBox.critical(self, "Error", f"Failed to set duration:\n{e}")
+    @pyqtSlot()
+    def edit_step_description(self):
+        """Opens a dialog to edit the description of the selected step."""
+        selected_index = self.get_selected_step_index()
+        if selected_index is None:
+            QMessageBox.warning(self, "Edit Description", "Please select a step to edit.")
+            return
 
+        try:
+            current_description = str(self.track_data["steps"][selected_index].get("description", ""))
+        except IndexError as e:
+            QMessageBox.critical(self, "Error", f"Failed to get current description (index {selected_index}):\n{e}")
+            return
+
+        new_description, ok = QInputDialog.getText(self, f"Edit Step {selected_index + 1} Description", "Description:", QLineEdit.Normal, current_description)
+
+        if ok and new_description is not None: # User clicked OK, new_description can be empty string
+             try:
+                 self.track_data["steps"][selected_index]["description"] = new_description.strip() # Store stripped description
+                 self.refresh_steps_tree()
+                 # Re-select the edited item
+                 if selected_index < self.steps_tree.topLevelItemCount():
+                     edited_item = self.steps_tree.topLevelItem(selected_index)
+                     self.steps_tree.setCurrentItem(edited_item)
+                     self.steps_tree.scrollToItem(edited_item, QTreeWidget.PositionAtCenter)
+
+             except IndexError:
+                 QMessageBox.critical(self, "Error", "Failed to set description (index out of range after edit).")
+             except Exception as e:
+                 QMessageBox.critical(self, "Error", f"Failed to set description:\n{e}")
 
     @pyqtSlot()
     def move_step(self, direction):
