@@ -140,6 +140,8 @@ Combines rhythmic waveshaping **and** stereo AM with independent LFOs.
 | `stereoModPhaseR` | π/2 rad      | Phase offset (default quadrature) for right.                                                   |
 | **Transition-only**: all of the above have `start…`/`end…` counterparts for linear interpolation .
 
+I recommend keeping the waveshape modulation depth and amount fairly low. Otherwise, the distortion will be too extreme. 
+
 ---
 
 ### 5. `stereo_am_independent` / `stereo_am_independent_transition`
@@ -196,6 +198,8 @@ Noise-based continuous flanging.
 | `lfo_start_phase_rad` | 0 | Starting phase of the flanger LFO.                                                     |
 | `dry_mix`/`wet_mix` | 0.5 | Blend of original vs. delayed signal.                                                  |
 
+*WORK IN PROGRESS, EXPERIMENTAL*
+
 ---
 
 ### 9. **Spatial Angle Modulation** (`spatial_angle_modulation` / `spatial_angle_modulation_transition`)
@@ -212,6 +216,8 @@ Advanced 2D path-based SAM via external `audio_engine.py`.
 | `frame_dur_ms`  | 46.4 ms     | SAM processing frame length.                                                                    |
 | `overlap_factor`| 8           | How frames overlap for smooth motion.                                                           |
 | **Transition-only**: each of the above has `start…`/`end…` variants .
+
+_NOTE:_ _This voice requires heavy calculation to produce and will take a very long time and potentially a lot of memory for long-duration steps. It is highly experimental_
 
 ---
 
@@ -232,6 +238,8 @@ Voices support optional **volume envelopes**:
 - **Crossfade** (global) overlaps adjacent steps to smooth transitions.
 - **Panning** is equal-power sine/cosine for a natural stereo image.
 - For **SAM voices**, include `audio_engine.py` to enable real spatial-angle behavior; otherwise, placeholders produce silence .
+- **KEEP AMPLITUDES LOW WHEN USING MORE THAN 2 VOICES. < 0.1 IS RECOMMENDED. OTHERWISE THERE WILL BE CLIPPING YOU WILL HAVE TO POST-PROCESS OUT**
+   - This will be adjusted to a more reasonable state. Normalization process needs adjustment. 
 
 ---
 
