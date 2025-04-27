@@ -237,9 +237,6 @@ Voices support optional **volume envelopes**:
 - **Transitions** interpolate parameters **linearly** over the step.
 - **Crossfade** (global) overlaps adjacent steps to smooth transitions.
 - **Panning** is equal-power sine/cosine for a natural stereo image.
-- For **SAM voices**, include `audio_engine.py` to enable real spatial-angle behavior; otherwise, placeholders produce silence .
-- **KEEP AMPLITUDES LOW WHEN USING MORE THAN 2 VOICES. < 0.1 IS RECOMMENDED. OTHERWISE THERE WILL BE CLIPPING YOU WILL HAVE TO POST-PROCESS OUT**
-   - This will be adjusted to a more reasonable state. Normalization process needs adjustment. 
 
 ---
 
