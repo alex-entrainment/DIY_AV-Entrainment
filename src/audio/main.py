@@ -325,30 +325,50 @@ class TrackEditorApp(QMainWindow):
                 func_name = voice.get("synth_function_name", "N/A")
                 params = voice.get("params", {})
                 is_transition = voice.get("is_transition", False)
+
+                carrier_freq = 'N/A' # Initialize default
                 carrier_freq_str = 'N/A'
 
-                # Heuristic to find primary frequency (same logic as Tkinter version)
-                carrier_freq = 'N/A'
-                if is_transition:
-                    freq_keys = [k for k in params if k.startswith('start') and ('Freq' in k or 'Frequency' in k)]
-                    if freq_keys: carrier_freq = params.get(freq_keys[0])
-                    else:
-                        freq_keys = [k for k in params if ('Freq' in k or 'Frequency' in k) and not k.startswith('end')]
-                        carrier_freq = params.get(freq_keys[0]) if freq_keys else 'N/A'
+                # --- Determine the Frequency to Display ---
+                # Priority 1: Check for 'baseFreq' directly (used by binaural_beat_voice etc.)
+                if 'baseFreq' in params:
+                    carrier_freq = params['baseFreq']
                 else:
-                    freq_keys = [k for k in params if ('Freq' in k or 'Frequency' in k) and not k.startswith(('start','end'))]
-                    carrier_freq = params.get(freq_keys[0]) if freq_keys else 'N/A'
+                    # Priority 2: Fallback to original heuristic if 'baseFreq' not found
+                    if is_transition:
+                        # For transitions, prefer 'start...Freq'
+                        freq_keys = [k for k in params if k.startswith('start') and ('Freq' in k or 'Frequency' in k)]
+                        if freq_keys:
+                            carrier_freq = params.get(freq_keys[0])
+                        else:
+                            # Fallback for transitions: Check non-end 'Freq' (less common)
+                            freq_keys = [k for k in params if ('Freq' in k or 'Frequency' in k) and not k.startswith('end')]
+                            if freq_keys:
+                                 carrier_freq = params.get(freq_keys[0])
+                            # else: carrier_freq remains 'N/A'
+                    else: # Not a transition
+                        # Look for 'Freq' without 'start' or 'end' prefixes
+                        freq_keys = [k for k in params if ('Freq' in k or 'Frequency' in k) and not k.startswith(('start','end'))]
+                        if freq_keys:
+                            carrier_freq = params.get(freq_keys[0])
+                        # else: carrier_freq remains 'N/A'
 
-                # Format frequency
+                # --- Format the frequency for display ---
                 try:
-                    if carrier_freq is not None and carrier_freq != 'N/A': carrier_freq_str = f"{float(carrier_freq):.2f}"
-                    else: carrier_freq_str = 'N/A'
-                except (ValueError, TypeError): carrier_freq_str = str(carrier_freq)
+                    # Check explicitly for None *and* the string 'N/A' before formatting
+                    if carrier_freq is not None and carrier_freq != 'N/A':
+                        carrier_freq_str = f"{float(carrier_freq):.2f}"
+                    else:
+                        carrier_freq_str = 'N/A' # Ensure it remains 'N/A'
+                except (ValueError, TypeError):
+                    # If formatting fails (e.g., value is a string like "variable"), display as is
+                    carrier_freq_str = str(carrier_freq)
 
+                # --- Update Tree Item ---
                 transition_str = "Yes" if is_transition else "No"
                 item = QTreeWidgetItem(self.voices_tree)
                 item.setText(0, func_name)
-                item.setText(1, carrier_freq_str)
+                item.setText(1, carrier_freq_str) # Set the determined frequency string
                 item.setText(2, transition_str)
                 item.setData(0, Qt.UserRole, i) # Store original index
 
