@@ -40,7 +40,7 @@ The system is intended for DIY research and experimentation and is **not** a med
 * **Brightness/Intensity Control:** Per-step start and end intensity values allow for brightness ramps and modulation.
 * **Multiple Oscillator Control Modes (in GUI):** Supports Combined, Split, and potentially other modes for defining how the 6 channels behave based on oscillator settings in the JSON.
 * **Multi-Step Sequencing:** Design complex sequences with varying parameters over time.
-* **Integrated Audio Generation:** The GUI can leverage `sound_creator.py` to generate complex audio tracks (.wav) based on parameters defined within each sequence step (see [Audio Generation Details](#audio-setup)).
+* **Integrated Audio Generation:** The GUI can leverage `sound_creator.py` to generate complex audio tracks (.wav) based on parameters defined within each sequence step (see [Audio Generation Details](#audio)).
 * **Random Frequency Modulation (RFM):** Configurable in the GUI for slight variations in visual or audio frequencies. (Note: Visual RFM logic needs ESP32 implementation if desired).
 * **Linear Ramps:** Frequencies, duty cycles, and brightness/intensity can transition linearly over the duration of each step. Audio parameters can also ramp using dedicated `_transition` synth functions.
 * **JSON File Storage:** Save/load complete sequences (visual + audio parameters) using the GUI editor.
