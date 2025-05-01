@@ -3,13 +3,10 @@ from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
 import math
 import json
-import inspect # Needed to inspect function parameters for GUI
-import os # Needed for path checks in main example
-import traceback # For detailed error printing
+import inspect
+import os 
+import traceback
 
-# Placeholder for the missing audio_engine module
-# If you have the 'audio_engine.py' file, place it in the same directory.
-# Otherwise, the SAM functions will not work.
 try:
     # Attempt to import the real audio_engine if available
     from audio_engine import Node, SAMVoice, VALID_SAM_PATHS
@@ -2284,7 +2281,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
 # JSON Loading/Saving
 # -----------------------------------------------------------------------------
 
-# Custom JSON encoder to handle numpy types (if needed)
+# Custom JSON encoder to handle numpy types
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer): return int(obj)
