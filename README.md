@@ -11,22 +11,21 @@ Approximate Device Cost (excluding host PC/Pi): ~$50-75 (depending on LEDs, powe
 ---
 
 ## Table of Contents
-1.  [Overview](#overview)
-2.  [Features](#features)
-3.  [Hardware Components](#hardware-components)
-4.  [Tools Required](#tools-required)
-5.  [System Architecture](#system-architecture)
-6.  [Workflow](#workflow)
-7.  [Installation](#installation)
-8.  [Configuration](#configuration)
-9.  [Usage](#usage)
-10. [GUI Overview](#gui-overview)
-11. [Audio Generation Details](#audio-generation-details)
-12. [Resources](#resources)
+
+1. [Overview](#overview)
+2. [Features](#features)
+3. [Visual setup](#visuals)
+4. [Audio setup](#audio)
+5. [Installation](#installation)
+6. [Configuration](#configuration)
+7. [Usage](#usage)
+8. [GUI Overview](#gui-overview)
+9. [Resources](#resources)
 
 ---
 
 ## Overview
+
 Brainwave entrainment (BWE) involves using pulsing lights or audio tones at specific frequencies to potentially influence brain states. This project provides a flexible platform for experimenting with various stimulation patterns:
 
 * **Visual:** 6 LED channels driven by the ESP32-C3's high-frequency LEDC PWM. Allows adjustable waveforms (sine/square via calculation), duty cycles, frequency ramps, and brightness/intensity control per step.
@@ -34,141 +33,39 @@ Brainwave entrainment (BWE) involves using pulsing lights or audio tones at spec
 
 The system is intended for DIY research and experimentation and is **not** a medical device. Build and use at your own discretion and ensure appropriate safety measures, especially regarding light intensity and duration.
 
-
 ## Features
+
 * **PyQt5-based GUI** (`sequence_editor.py`) for creating multi-step visual + audio sequences.
 * **ESP32-C3 Native PWM:** Utilizes the microcontroller's efficient LEDC peripheral for precise, high-frequency PWM control of 6 LED channels, eliminating the need for an external PCA9685 board and reducing potential timing jitter.
 * **Brightness/Intensity Control:** Per-step start and end intensity values allow for brightness ramps and modulation.
 * **Multiple Oscillator Control Modes (in GUI):** Supports Combined, Split, and potentially other modes for defining how the 6 channels behave based on oscillator settings in the JSON.
 * **Multi-Step Sequencing:** Design complex sequences with varying parameters over time.
-* **Integrated Audio Generation:** The GUI can leverage `sound_creator.py` to generate complex audio tracks (.wav) based on parameters defined within each sequence step (see [Audio Generation Details](#audio-generation-details)).
+* **Integrated Audio Generation:** The GUI can leverage `sound_creator.py` to generate complex audio tracks (.wav) based on parameters defined within each sequence step (see [Audio Generation Details](#audio-setup)).
 * **Random Frequency Modulation (RFM):** Configurable in the GUI for slight variations in visual or audio frequencies. (Note: Visual RFM logic needs ESP32 implementation if desired).
 * **Linear Ramps:** Frequencies, duty cycles, and brightness/intensity can transition linearly over the duration of each step. Audio parameters can also ramp using dedicated `_transition` synth functions.
 * **JSON File Storage:** Save/load complete sequences (visual + audio parameters) using the GUI editor.
 * **Automated C++ Generation & Upload:** A Python script (`json_to_cpp_converter.py`) automatically:
-    * Converts `.json` sequence files into C++ functions.
-    * Updates the necessary ESP32 firmware files (`sequences.cpp`, `sequences.hpp`, `main.cpp`).
-    * Updates the `controller.py` script with the new sequence name.
-    * Compiles and uploads the updated firmware to the ESP32 via PlatformIO.
+  * Converts `.json` sequence files into C++ functions.
+  * Updates the necessary ESP32 firmware files (`sequences.cpp`, `sequences.hpp`, `main.cpp`).
+  * Updates the `controller.py` script with the new sequence name.
+  * Compiles and uploads the updated firmware to the ESP32 via PlatformIO.
 * **Cross-Platform Configuration:** `setup.py` script simplifies configuration (serial ports, paths) for use on both Windows (development) and Raspberry Pi (mobile control).
 
----
+## Visuals
 
-## Hardware Components
-*(Ensure component choices are compatible with 3.3V logic level output from ESP32)*
+See the [Visual README](./README_VISUAL.md) for documentation on the visual portion of this project. This contains detailed information on the hardware and its setup.
 
-1.  **Microcontroller:**
-    * [ESP32-C3 SuperMini](https://www.amazon.com/ESP32-C3-SuperMini-Development-Board-Processor/dp/B0B512W55Q) (or similar ESP32-C3 board)
-    * Compatible Expansion/Breakout Board (like the one pictured) for easy access to pins.
-2.  **LED Driving Circuitry (Essential - Build Separately):**
-    * **6x Logic-Level N-Channel MOSFETs:** E.g., IRLB8721, IRLZ44N (verify gate threshold voltage is suitable for 3.3V drive), or similar. Choose based on LED current requirements.
-    * **6x Gate Resistors:** ~100-220Ω (connects ESP32 GPIO to MOSFET Gate). Protects GPIO.
-    * **6x Gate Pull-Down Resistors:** ~10kΩ (connects MOSFET Gate to Ground). Ensures MOSFET stays off when ESP32 pin is floating (e.g., during boot).
-3.  **LEDs:**
-    * 3x High-power (~0.3A+) cool white LEDs
-    * 3x High-power (~0.3A+) warm white LEDs (Adjust types/colors as desired)
-4.  **LED Current Limiting Resistors:**
-    * **6x Power Resistors:** Value depends on your specific LEDs (forward voltage, current rating) and the voltage of your separate LED power supply (e.g., 5V). Must be rated for the power they will dissipate (P = I²R). Example: For a 3.3V Vf LED at 300mA from a 5V supply, R = (5V - 3.3V) / 0.3A = 1.7V / 0.3A ≈ 5.6Ω. Power = 0.3A * 1.7V = 0.51W (Use a 1W or 2W resistor). **Calculate carefully for your specific components!**
-5.  **Power Supply:**
-    * Separate Power Supply for LEDs (e.g., 5V, 12V) capable of handling the total current of all LEDs at max brightness (e.g., 6 * 0.3A = 1.8A minimum, recommend 2A+).
-    * Power Supply for ESP32: Via USB-C port on the SuperMini.
-6.  **Wiring:** Jumper wires, hookup wire (appropriate gauge for LED current).
-7.  **Device Stand/Enclosure:** Optional, as needed.
+## Audio
 
-### Connections (Conceptual)
-* **ESP32 -> MOSFETs:** Choose 6 GPIO pins on the ESP32 (defined in `main.cpp`'s `ledcPinMap`). Connect each chosen GPIO pin through a ~220Ω resistor to the Gate pin of a corresponding MOSFET.
-* **MOSFET Gates -> GND:** Connect each MOSFET Gate pin through a ~10kΩ resistor to the common Ground.
-* **MOSFET Sources -> GND:** Connect all MOSFET Source pins to the common Ground.
-* **LED Power Supply -> LEDs -> Resistors -> MOSFETs:** Connect the positive terminal of the LED power supply to the anode (+) of each LED (or LED string). Connect the cathode (-) of each LED to one end of its calculated power resistor. Connect the other end of the power resistor to the Drain pin of the corresponding MOSFET.
-* **Power & Ground:**
-    * Power the ESP32 via its USB-C port.
-    * **Crucially, connect the Ground (GND) of the ESP32 to the Ground of the MOSFET circuit and the Ground of the LED power supply.** All grounds must be common.
-* **Do NOT connect the LEDs directly to the ESP32 GPIO pins.**
-
-![device_front](https://github.com/user-attachments/assets/afbdc4b5-5a0f-4d13-8dac-c4a8a1637cc8)
-
-![device_top](https://github.com/user-attachments/assets/61fd767d-c33e-4d92-b580-0ad7b5000d24)
-
-![device_front](https://github.com/user-attachments/assets/6845f83e-67bc-4779-a394-87a103a8d458)
-
-
-
----
-
-## Tools Required
-1.  **Soldering iron + solder + flux** (for assembling driver circuits)
-2.  **Wire strippers/cutters**
-3.  **Multimeter** (highly recommended for verifying connections, voltages, resistances)
-4.  **Breadboard** (optional for prototyping driver circuit)
-5.  **Computer (Windows Recommended for Dev):** For running GUI, converter script, PlatformIO.
-6.  **Computer (Raspberry Pi Optional for Mobile):** For running `controller.py`.
-7.  **USB-C Cable** (for ESP32 power and programming/serial)
-
-## Circuit Diagram
-![image](https://github.com/user-attachments/assets/53827ceb-c08c-43f5-a1c4-34f3ca5408e9)
-
-
----
-
-## System Architecture
-
-The system now consists of two main parts: the ESP32 firmware and the host control software.
-
-1.  **ESP32 Firmware (C++ / PlatformIO):**
-    * Runs directly on the ESP32-C3 SuperMini.
-    * **`main.cpp`**: Initializes hardware (LEDC PWM), handles USB Serial communication (receiving `RUN:`/`STOP:` commands), manages the main state (`isSequenceRunning`), calls sequence functions, and contains core helper functions (`runSmoothSequence`, `applyGroupSmooth`, etc.).
-    * **`sequences.hpp`**: Header file defining the `SequenceStep` struct and declaring all available sequence functions and necessary shared variables/functions (`extern`).
-    * **`sequences.cpp`**: Source file containing the implementations of specific light sequences (e.g., `h_gamma_3`, `rampTestSequence`, and functions auto-generated from JSON files).
-    * Uses the ESP32's native **LEDC peripheral** for precise PWM generation on 6 GPIO pins.
-
-2.  **Host Software (Python - Runs on PC or Raspberry Pi):**
-    * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding `.wav` audio files using the `sound_creator.py` engine.
-    * **`sequence_model.py`**: (Used by GUI) Data classes defining the structure of sequences stored in JSON.
-    * **`setup.py`**: (Run once per host machine) Configures environment-specific settings (serial port, paths for converter) and saves them to `config.ini`.
-    * **`config.ini`**: Stores configuration settings read by the other Python scripts.
-    * **`sound_creator.py`**: (Used by GUI) The audio generation engine. Contains various synthesis functions and helpers to create complex audio waveforms based on parameters defined in the GUI. See [Audio Generation Details](#audio-generation-details) below.
-    * **`json_to_cpp_converter.py`**: (Runs on Dev PC)
-        * Reads a `.json` sequence file (or all `.json` files in its directory).
-        * Generates corresponding C++ function code for the *visual* sequence.
-        * Automatically appends code to `sequences.cpp` and declarations to `sequences.hpp`.
-        * Automatically updates `main.cpp` to add the sequence to the `setup()` list and the `loop()` command dispatch.
-        * Automatically updates `controller.py` to list the new sequence name.
-        * Triggers PlatformIO to compile and upload the updated firmware to the ESP32.
-    * **`controller.py`**: (Runs on Dev PC or Pi)
-        * Connects to the ESP32 via USB Serial (port configured via `config.ini`).
-        * Provides a command-line interface to send `RUN:<sequence_name>` and `STOP` commands.
-        * When a `RUN` command is issued:
-            * Sends the command to the ESP32 to start the light sequence.
-            * Automatically searches for a matching audio file (`<sequence_name>.wav`, `.flac`, or `.mp3`) in its directory.
-            * If found, uses the `AudioPlayer` class (leveraging PyAudio/ffplay) to play the audio file, synchronized with the start command sent to the ESP32.
-
----
-
-## Workflow
-
-1.  **Design Sequence:** Use the `sequence_editor.py` GUI on your development PC to create a sequence. Configure visual parameters (frequencies, brightness ramps, waveforms) and **audio parameters** using the built-in voice editor. Save the sequence as a `.json` file (e.g., `my_sequence.json`). Optionally generate the corresponding `.wav` file using the "Generate WAV" button in the GUI (which utilizes `sound_creator.py`).
-2.  **Prepare Files:** Place the saved `.json` file and the generated `.wav` (or other matching audio file - `.flac`, `.mp3`) into the same directory as the `json_to_cpp_converter.py` and `controller.py` scripts.
-3.  **Convert & Upload (on Dev PC):** Run the `json_to_cpp_converter.py` script. It will automatically:
-    * Find `my_sequence.json` (and any other `.json` files).
-    * Generate C++ code (`void my_sequence() { ... }`) for the **visual** part.
-    * Append the code/declaration to `sequences.cpp`/`.hpp`.
-    * Update `main.cpp` and `controller.py`.
-    * Compile and upload the firmware to the connected ESP32 via PlatformIO.
-    *(Ensure `setup.py` has been run previously to configure paths).*
-4.  **Run Sequence (on Dev PC or Pi):**
-    * Ensure the ESP32 is connected via USB.
-    * Run the `controller.py` script.
-    * At the `>` prompt, type `RUN:my_sequence` and press Enter.
-    * The script sends the command to the ESP32 (starting the lights) and simultaneously starts playing `my_sequence.wav` (or `.flac`/`.mp3` if found).
-    * Type `STOP` to tell the ESP32 to stop the light sequence (audio playback on the host will need separate handling or stop when the script exits/is interrupted). Type `EXIT` to close the controller script.
-
----
+See the [Audio README](./README_Audio.md) for documention on the visual portion of this project. This contains detailed information on the capabilities of the audio generation software created here.  
+See the [GUI overview](#gui-overview) below for more details on generating audio.
 
 ## Installation
 
-1.  **Clone/Download:** Get the project files onto your development PC (Windows) and optionally onto your Raspberry Pi.
-2.  **Install Python:** Ensure Python 3.8+ is installed on both machines.
-3.  **Install Python Packages:** Open a terminal or command prompt (use a virtual environment recommended) and install:
+1. **Clone/Download:** Get the project files onto your development PC (Windows) and optionally onto your Raspberry Pi.
+2. **Install Python:** Ensure Python 3.8+ is installed on both machines.
+3. **Install Python Packages:** Open a terminal or command prompt (use a virtual environment recommended) and install:
+
     ```bash
     # Core dependencies for GUI, Serial, Audio Generation, Playback
     pip install pyserial numpy soundfile pyaudio PyQt5 configparser scipy
@@ -176,15 +73,16 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
     # scipy is needed by sound_creator for filtering
     # configparser is standard lib >3.2 but listed for clarity
     ```
-    *(Note: `pyaudio` installation might require system dependencies - see below).*
-4.  **Install PlatformIO:** On your development PC (Windows), install PlatformIO IDE, typically via the VS Code extension. This handles the C++ toolchain (compiler, etc.).
-5.  **Install External Dependencies:**
+
+    > *(Note: `pyaudio` installation might require system dependencies - see below).*
+4. **Install PlatformIO:** On your development PC (Windows), install PlatformIO IDE, typically via the VS Code extension. This handles the C++ toolchain (compiler, etc.).
+5. **Install External Dependencies:**
     * **Audio Playback (`controller.py`):**
         * **PortAudio:** Required by `pyaudio`. Install system-wide (e.g., `sudo apt-get install portaudio19-dev` on Debian/Pi, or download installers/binaries for Windows/macOS if needed).
         * **libsndfile:** Required by `soundfile`. Install system-wide (e.g., `sudo apt-get install libsndfile1` on Debian/Pi, or download installers/binaries for Windows/macOS).
         * **ffmpeg / ffplay:** Required by `controller.py`'s `AudioPlayer` for MP3 conversion and FLAC playback. Download from ffmpeg.org and ensure `ffmpeg.exe` and `ffplay.exe` are in your system's PATH environment variable on the machine running `controller.py` (Windows and/or Pi).
-6.  **Hardware Setup:** Connect the ESP32, build/connect your MOSFET driver circuits and LEDs according to the description in [Hardware Components](#hardware-components).
-7.  **Initial Firmware Upload:** Use PlatformIO (e.g., in VS Code) on your development PC to compile and upload the initial ESP32 firmware project (`main.cpp`, `sequences.cpp`, etc.) to the ESP32-C3 board via USB.
+6. **Hardware Setup:** Connect the ESP32, build/connect your MOSFET driver circuits and LEDs according to the description in [Hardware Components](./README_Visual#hardware-components).
+7. **Initial Firmware Upload:** Use PlatformIO (e.g., in VS Code) on your development PC to compile and upload the initial ESP32 firmware project (`main.cpp`, `sequences.cpp`, etc.) to the ESP32-C3 board via USB.
 
 ---
 
@@ -192,9 +90,9 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
 
 Before running the converter or controller scripts, run the setup script once on each machine:
 
-1.  Navigate to the directory containing the scripts in your terminal.
-2.  Run: `python setup.py` (or `python3 setup.py` on Pi).
-3.  Follow the prompts to enter:
+1. Navigate to the directory containing the scripts in your terminal.
+2. Run: `python setup.py` (or `python3 setup.py` on Pi).
+3. Follow the prompts to enter:
     * The correct **Serial Port** for the ESP32 (e.g., `COM3` on Windows, `/dev/ttyACM0` on Pi).
     * (On Windows Only) Paths to your PlatformIO project, `controller.py`, `platformio.exe`, and the PlatformIO environment name.
 
@@ -204,9 +102,9 @@ This creates/updates the `config.ini` file which is read by the other scripts.
 
 ## Usage
 
-1.  **Create/Save Sequence:** Use `sequence_editor.py` -> `my_sequence.json`. Place it (and optional audio file `my_sequence.wav/flac/mp3`) in the script directory.
-2.  **Convert/Upload:** Run `python json_to_cpp_converter.py` on Windows. It handles updating C++ files and uploading to ESP32.
-3.  **Control:** Run `python controller.py` on Windows or Pi.
+1. **Create/Save Sequence:** Use `sequence_editor.py` -> `my_sequence.json`. Place it (and optional audio file `my_sequence.wav/flac/mp3`) in the script directory.
+2. **Convert/Upload:** Run `python json_to_cpp_converter.py` on Windows. It handles updating C++ files and uploading to ESP32.
+3. **Control:** Run `python controller.py` on Windows or Pi.
     * Use `RUN:<sequence_name>` (e.g., `RUN:my_sequence`) to start lights and audio.
     * Use `STOP` to stop the lights on the ESP32.
     * Use `EXIT` to quit the controller script.
@@ -218,68 +116,23 @@ This creates/updates the `config.ini` file which is read by the other scripts.
 The GUI (`sequence_editor.py`) allows defining sequences step-by-step. Each step has a duration and contains settings for both visual output (oscillators, intensity) and audio output (voices).
 
 ![Sequence Editor GUI with Voice Editor Dialog](https://github.com/user-attachments/assets/f39bcc5c-3505-4803-b201-8d2f05d44d3c)
-)
 
 * **Steps Panel (Left):** Add, remove, reorder steps, and set duration.
 * **Voices Panel (Top Right):** Manage audio voices for the selected step. Add, edit, remove voices. Up to 16 voices can be mixed per step.
 * **Voice Details Panel (Bottom Right):** Shows parameters of the selected voice for reference.
 * **Voice Editor Dialog (Popup, shown in image):** Opens when adding/editing a voice.
-    * Select the **Synth Function** (e.g., `binaural_beat`, `basic_am`).
-    * Check **"Is Transition?"** to use the corresponding `_transition` version of the function, enabling parameter ramps (e.g., `startFreq` to `endFreq`).
-    * Edit parameters specific to the chosen function. Hints and validation are provided.
-    * Use the **Reference Panel** within the dialog to compare with another voice selected in the main window.
+  * Select the **Synth Function** (e.g., `binaural_beat`, `basic_am`).
+  * Check **"Is Transition?"** to use the corresponding `_transition` version of the function, enabling parameter ramps (e.g., `startFreq` to `endFreq`).
+  * Edit parameters specific to the chosen function. Hints and validation are provided.
+  * Use the **Reference Panel** within the dialog to compare with another voice selected in the main window.
 * **Global Settings (Top Bar):** Set sample rate, crossfade time between steps, and default output filename.
 * **Generate WAV (Top Bar):** Click to generate the complete audio track for the entire sequence as a `.wav` file using `sound_creator.py`.
 
 ---
 
-## Audio Generation Details
-
-The `sound_creator.py` script provides the engine for generating audio tracks defined in the GUI. It offers a modular system for combining different synthesis techniques.
-
-* **Framework:** The GUI dynamically discovers available synth functions from `sound_creator.SYNTH_FUNCTIONS`. Each function generates a segment of stereo audio based on parameters passed from the GUI (`duration`, `sample_rate`, `params` dictionary).
-* **Parameter Parsing:** Default values for synth functions are automatically parsed from comments within the `sound_creator.py` source code using `inspect` and `ast`, simplifying the addition of new synths.
-* **Transitions:** Most synth functions include a `_transition` variant (e.g., `basic_am_transition`). When selected in the GUI via the "Is Transition?" checkbox, these functions smoothly interpolate key parameters (like frequency, modulation depth, etc.) from a `startValue` to an `endValue` over the duration of the step.
-* **Track Assembly:** The `generate_wav` function orchestrates the process:
-    1.  Iterates through each step defined in the sequence.
-    2.  For each step, iterates through all defined voices.
-    3.  Calls the appropriate synth function (standard or transition) for each voice with its parameters.
-    4.  Mixes the audio generated by all voices within that step.
-    5.  Concatenates the audio from each step, applying a linear crossfade (duration set in Global Settings) between steps to ensure smooth transitions.
-    6.  Applies a safety limiter to the final mixed track.
-    7.  Normalizes the audio to maximum amplitude.
-    8.  Saves the result as a 16-bit stereo WAV file.
-
-* **Available Synth Functions:**
-    * `binaural_beat`: Generates classic binaural beats by presenting slightly different frequencies to the left and right channels (`baseFreq`, `beatFreq`). Pan is ignored.
-    * `isochronic_tone`: Creates a pulsing tone (carrier at `baseFreq`) that turns on and off at the `beatFreq`, using a configurable trapezoidal envelope (`rampPercent`, `gapPercent`). Can be panned (`pan`).
-    * `basic_am`: Simple Amplitude Modulation where a carrier sine wave (`carrierFreq`) is modulated by an LFO (`modFreq`, `modDepth`).
-    * `fsam_filter_bank`: Frequency-Selective Amplitude Modulation. Filters a noise source (white, pink, or brown) into a specific band (`filterCenterFreq`, `filterRQ`) and modulates only that band with an LFO (`modFreq`, `modDepth`), mixing it back with the rest of the noise.
-    * `rhythmic_waveshaping`: Modulates the amplitude of a carrier (`carrierFreq`) with an LFO (`modFreq`, `modDepth`) before applying tanh waveshaping (`shapeAmount`).
-    * `additive_phase_mod`: Two sine waves (fundamental `fundFreq`, 2nd harmonic `h2Amp`). The phase of the second harmonic is modulated by an LFO (`modFreq`, `modDepth`).
-    * `stereo_am_independent`: Independent AM for left/right channels. Uses slightly detuned carriers (`carrierFreq`, `stereo_width_hz`) and independent LFOs (`modFreqL/R`, `modDepthL/R`, `modPhaseL/R`).
-    * `noise_am`: Modulates a carrier sine wave (`carrierFreq`) using filtered noise (white/pink/brown, low-pass filtered at `modFilterFreq`) as the modulator source (`modDepth`).
-    * `wave_shape_stereo_am`: Combines rhythmic waveshaping and stereo AM into one complex voice.
-    * `spatial_angle_modulation` (*Requires external `audio_engine` module*): Uses Spatial Angle Modulation techniques to simulate a moving sound source. Parameters include `pathShape`, `pathRadius`, `arcStartDeg`, `arcEndDeg`.
-    * `rhythmic_granular_rate`: Currently a placeholder, does not generate sound.
-
-* **Core Utilities:** `sound_creator.py` also includes essential DSP building blocks:
-    * Sine wave generation (constant and varying frequency via phase accumulation).
-    * Noise generation (white, pink via filtering/colorednoise lib, brown via integration).
-    * Butterworth filters (bandpass, band-reject, lowpass).
-    * Envelope generators (ADSR, Linen, Linear Fade).
-    * Stereo Panning (`pan2` using equal power law).
-    * Safety Limiter (hard clipping).
-
----
-
 ## Resources
-
-(This section remains unchanged)
 
 * [Creating your own Light Sequences](https://support.pandorastar.co.uk/wp-content/uploads/sites/6/2021/01/Creating-your-own-sequences-on-PandoraStar-1.pdf)
 * [List of proprietary programs from PandoraStar](https://support.pandorastar.co.uk/wp-content/uploads/sites/6/2021/01/PS-Program-List-2020.pdf)
 * [Gnaural binaural / isochronic tone creation software](https://gnaural.sourceforge.net/)
 * [Research on photic entrainment / driving](...)
-
-
