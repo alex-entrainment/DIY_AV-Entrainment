@@ -115,7 +115,7 @@ This creates/updates the `config.ini` file which is read by the other scripts.
 
 The GUI (`sequence_editor.py`) allows defining sequences step-by-step. Each step has a duration and contains settings for both visual output (oscillators, intensity) and audio output (voices).
 
-![Sequence Editor GUI with Voice Editor Dialog](https://github.com/user-attachments/assets/f39bcc5c-3505-4803-b201-8d2f05d44d3c)
+
 
 * **Steps Panel (Left):** Add, remove, reorder steps, and set duration.
 * **Voices Panel (Top Right):** Manage audio voices for the selected step. Add, edit, remove voices. Up to 16 voices can be mixed per step.
