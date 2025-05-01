@@ -55,3 +55,6 @@ Available Synth Functions:
 * Envelope generators (ADSR, Linen, Linear Fade).
 * Stereo Panning (`pan2` using equal power law).
 * Safety Limiter (hard clipping).
+
+## GUI Overview
+![Sequence Editor GUI with Voice Editor Dialog](https://github.com/user-attachments/assets/f39bcc5c-3505-4803-b201-8d2f05d44d3c)
