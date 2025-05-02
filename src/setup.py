@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # setup.py
 import configparser
 import platform
@@ -433,4 +433,3 @@ def main():
 
 if __name__ == "__main__":
     main()
->>>>>>> 9508c2106b9b17514c84c7886334ed1dad1eaaa9
