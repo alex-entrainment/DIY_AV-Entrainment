@@ -19,14 +19,13 @@ A Python-based tool for building customized brainwave entrainment audio files. C
 
 1. **Clone** this repository:
    ```bash
-   git clone <repo_url>
-   cd <repo_folder>
+   git clone https://github.com/alex-entrainment/DIY_AV-Entrainment.git
+   cd DIY_AV-Entrainment/
    ```
 2. **Install dependencies**:
    ```bash
    pip install numpy scipy pyqt5 colorednoise
    ```
-3. (Optional) **Enable SAM voices** by placing `audio_engine.py` next to `sound_creator.py`.
 
 ---
 
