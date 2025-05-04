@@ -91,6 +91,8 @@ write_track_to_wav(audio, "output.wav", sample_rate=44100)
 
 Below are the built‑in synth voices and their key parameters. All **frequency** values are in Hz (cycles per second), and **depth**, **pan**, and **amp** range between 0 and 1.
 
+NOTE - NOT ALL DEFAULTS ARE CURRENTLY UP TO DATE*
+
 ### 1. `basic_am`
 A carrier tone whose amplitude is modulated by a low-frequency oscillator (LFO).
 
