@@ -3,10 +3,13 @@ from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
 import math
 import json
-import inspect
-import os 
-import traceback
+import inspect # Needed to inspect function parameters for GUI
+import os # Needed for path checks in main example
+import traceback # For detailed error printing
 
+# Placeholder for the missing audio_engine module
+# If you have the 'audio_engine.py' file, place it in the same directory.
+# Otherwise, the SAM functions will not work.
 try:
     # Attempt to import the real audio_engine if available
     from audio_engine import Node, SAMVoice, VALID_SAM_PATHS
@@ -1402,8 +1405,8 @@ def spatial_angle_modulation_transition(duration, sample_rate=44100, **params):
 
 def binaural_beat(duration, sample_rate=44100, **params):
     """
-    Generates a binaural beat signal with optional phase and independent L/R
-    base amplitude and amplitude modulation.
+    Generates a binaural beat signal with optional phase, independent L/R
+    base amplitude, amplitude modulation, and frequency oscillation.
 
     Args:
         duration (float): Duration of the signal in seconds.
@@ -1411,8 +1414,8 @@ def binaural_beat(duration, sample_rate=44100, **params):
         **params: Dictionary of parameters:
             ampL (float): Base amplitude for LEFT channel (0 to 1). Default: 0.5.
             ampR (float): Base amplitude for RIGHT channel (0 to 1). Default: 0.5.
-            baseFreq (float): Base frequency in Hz. Default: 200.0.
-            beatFreq (float): Beat frequency in Hz. Default: 4.0.
+            baseFreq (float): Center frequency in Hz before beat/oscillation. Default: 200.0.
+            beatFreq (float): Beat frequency in Hz (difference between L/R mean freqs). Default: 4.0.
             startPhaseL (float): Starting phase for the left channel in radians. Default: 0.0.
             startPhaseR (float): Starting phase for the right channel in radians. Default: 0.0.
             phaseOscFreq (float): Frequency of phase offset oscillation in Hz. Default: 0.0.
@@ -1421,6 +1424,11 @@ def binaural_beat(duration, sample_rate=44100, **params):
             ampOscFreqL (float): Frequency of LEFT amplitude modulation in Hz. Default: 0.0.
             ampOscDepthR (float): Depth of RIGHT amplitude modulation (0 to 1). Default: 0.0.
             ampOscFreqR (float): Frequency of RIGHT amplitude modulation in Hz. Default: 0.0.
+            freqOscRangeL (float): Range of LEFT frequency oscillation in Hz. Default: 0.0.
+            freqOscFreqL (float): Frequency of LEFT frequency oscillation in Hz. Default: 0.0.
+            freqOscRangeR (float): Range of RIGHT frequency oscillation in Hz. Default: 0.0.
+            freqOscFreqR (float): Frequency of RIGHT frequency oscillation in Hz. Default: 0.0.
+
 
     Returns:
         np.ndarray: Stereo audio signal as a numpy array (N, 2).
@@ -1438,39 +1446,63 @@ def binaural_beat(duration, sample_rate=44100, **params):
     ampOscFreqL = float(params.get('ampOscFreqL', 0.0))
     ampOscDepthR = float(params.get('ampOscDepthR', 0.0))
     ampOscFreqR = float(params.get('ampOscFreqR', 0.0))
+    # New frequency oscillation parameters
+    freqOscRangeL = float(params.get('freqOscRangeL', 0.0))
+    freqOscFreqL = float(params.get('freqOscFreqL', 0.0))
+    freqOscRangeR = float(params.get('freqOscRangeR', 0.0))
+    freqOscFreqR = float(params.get('freqOscFreqR', 0.0))
 
     # --- Basic Setup ---
     N = int(sample_rate * duration)
     if N <= 0: return np.zeros((0, 2))
     t_abs = np.linspace(0, duration, N, endpoint=False)
 
-    # --- Frequency Calculation ---
+    # --- Frequency Calculation (Now includes Oscillation) ---
     half_beat_freq = beatFreq / 2.0
-    left_freq = np.maximum(0.0, baseFreq - half_beat_freq)
-    right_freq = np.maximum(0.0, baseFreq + half_beat_freq)
-    left_freq_array = np.full(N, left_freq)
-    right_freq_array = np.full(N, right_freq)
+    # Calculate base frequencies for each channel
+    baseFreqL = baseFreq - half_beat_freq
+    baseFreqR = baseFreq + half_beat_freq
 
-    # --- Phase Calculation ---
-    if N > 1: dt = np.diff(t_abs, prepend=t_abs[0])
+    # Calculate frequency oscillation terms (LFOs for frequency)
+    # Oscillation is centered around 0, range is peak-to-peak
+    freq_osc_term_l = (freqOscRangeL / 2.0) * np.sin(2 * np.pi * freqOscFreqL * t_abs)
+    freq_osc_term_r = (freqOscRangeR / 2.0) * np.sin(2 * np.pi * freqOscFreqR * t_abs)
+
+    # Calculate instantaneous frequency arrays for each channel
+    # Add the oscillation term to the base frequency for each channel
+    # Ensure frequency doesn't go below zero
+    left_freq_array = np.maximum(0.0, baseFreqL + freq_osc_term_l)
+    right_freq_array = np.maximum(0.0, baseFreqR + freq_osc_term_r)
+
+    # --- Phase Calculation (Integrates the instantaneous frequency) ---
+    # Calculate time delta between samples for integration
+    if N > 1: dt = np.diff(t_abs, prepend=t_abs[0]) # More robust dt calculation
     elif N == 1: dt = np.array([duration])
     else: dt = np.array([])
-    # Use cumulative sum for phase integration
-    phase_left_base = np.cumsum(2 * np.pi * left_freq_array * dt)
-    phase_right_base = np.cumsum(2 * np.pi * right_freq_array * dt)
+
+    if N > 0:
+      # Use cumulative sum for phase integration: phase = integral(2*pi*frequency(t) dt)
+      phase_left_base = np.cumsum(2 * np.pi * left_freq_array * dt)
+      phase_right_base = np.cumsum(2 * np.pi * right_freq_array * dt)
+    else:
+      phase_left_base = np.array([])
+      phase_right_base = np.array([])
+
+    # Add starting phase and phase offset oscillation (if any)
     phase_osc_term = (phaseOscRange_rad / 2.0) * np.sin(2 * np.pi * phaseOscFreq * t_abs)
     phase_left_total = phase_left_base + startPhaseL_rad - phase_osc_term
     phase_right_total = phase_right_base + startPhaseR_rad + phase_osc_term
 
     # --- Independent Amplitude Modulation (Tremolo) ---
-    # Corrected LFO calculation: (1 + sin)/2 gives range [0, 1]
-    # Modulation term = depth * (0.5 * (1 + np.sin(...)))
-    # Modulated amplitude = base_amp * (1.0 - modulation_term) -- this seems wrong
-    # Let's try: Modulated amplitude = base_amp * (1.0 - depth * (0.5 * (1 + sin))) -> Range [base*(1-depth), base]
-    # Or: Modulated amplitude = base_amp * (1.0 - depth/2 + (depth/2)*sin) -> Range [base*(1-depth), base]
-    # Let's use the second form as it's simpler:
-    amp_mod_l = (1.0 - ampOscDepthL / 2.0) + (ampOscDepthL / 2.0) * np.sin(2 * np.pi * ampOscFreqL * t_abs)
-    amp_mod_r = (1.0 - ampOscDepthR / 2.0) + (ampOscDepthR / 2.0) * np.sin(2 * np.pi * ampOscFreqR * t_abs)
+    # Amplitude LFOs: vary between (1 - depth) and 1 ? No, previous was better
+    # Corrected LFO: (1.0 - depth / 2.0) + (depth / 2.0) * sin -> range [1-depth, 1] Seems wrong
+    # Let's try Amplitude * (1 + depth * sin): Range [Amp*(1-depth), Amp*(1+depth)] centered at Amp. Needs clipping/scaling.
+    # Let's stick to the previous formula: multiplies base signal by a value in [1-depth, 1]
+    # Correct calculation: Modulator varies from 0 to 1: (1 + sin)/2
+    # Modulated Amplitude = BaseAmp * (1 - Depth * Modulator) = BaseAmp * (1 - Depth * (1+sin)/2 )
+    # This ranges from BaseAmp*(1-Depth) to BaseAmp*(1 - Depth*0) = BaseAmp
+    amp_mod_l = (1.0 - ampOscDepthL * (0.5 * (1 + np.sin(2 * np.pi * ampOscFreqL * t_abs))))
+    amp_mod_r = (1.0 - ampOscDepthR * (0.5 * (1 + np.sin(2 * np.pi * ampOscFreqR * t_abs))))
 
     # --- Signal Generation ---
     s_left_base = np.sin(phase_left_total)
@@ -1484,80 +1516,122 @@ def binaural_beat(duration, sample_rate=44100, **params):
     audio = np.column_stack((s_left, s_right)).astype(np.float32)
     return audio
 
-
-def monaural_beat(duration, sample_rate=44100, **params):
+def monaural_beat_stereo_amps(duration, sample_rate=44100, **params):
     """
-    Generates a monaural beat signal (two tones summed and sent to both ears)
-    with optional phase and *single* base amplitude and amplitude modulation
-    applied *after summing*.
+    Generates a potentially stereo beat signal by summing two tones with
+    independent amplitude control for each tone in each channel.
+
+    This allows for creating variations beyond a strict monaural beat
+    (where L and R channels are identical). Amplitude modulation (tremolo)
+    can still be applied to the resulting signal in each channel.
 
     Args:
         duration (float): Duration of the signal in seconds.
         sample_rate (int): Sampling rate in Hz.
         **params: Dictionary of parameters:
-            amp (float): Base amplitude (0 to 1) applied AFTER summing. Default: 0.5.
+            amp_lower_L (float): Amplitude (0 to 1) for the lower frequency tone
+                                 (baseFreq - beatFreq/2) in the Left channel. Default: 0.5.
+            amp_upper_L (float): Amplitude (0 to 1) for the upper frequency tone
+                                 (baseFreq + beatFreq/2) in the Left channel. Default: 0.5.
+            amp_lower_R (float): Amplitude (0 to 1) for the lower frequency tone
+                                 (baseFreq - beatFreq/2) in the Right channel. Default: 0.5.
+            amp_upper_R (float): Amplitude (0 to 1) for the upper frequency tone
+                                 (baseFreq + beatFreq/2) in the Right channel. Default: 0.5.
             baseFreq (float): Center frequency in Hz. Default: 200.0.
-            beatFreq (float): Beat frequency in Hz. Default: 4.0.
-            startPhaseL (float): Starting phase for tone 1 in radians. Default: 0.0.
-            startPhaseR (float): Starting phase for tone 2 in radians. Default: 0.0.
-            phaseOscFreq (float): Freq of phase offset oscillation in Hz. Default: 0.0.
+            beatFreq (float): Beat frequency in Hz (difference between the two tones). Default: 4.0.
+            startPhaseL (float): Starting phase for the lower frequency tone in radians. Default: 0.0.
+            startPhaseR (float): Starting phase for the upper frequency tone in radians. Default: 0.0.
+            phaseOscFreq (float): Frequency of phase offset oscillation in Hz. Default: 0.0.
             phaseOscRange (float): Range of phase offset oscillation in radians. Default: 0.0.
-            ampOscDepth (float): Depth of amp mod applied to summed signal. Default: 0.0.
-            ampOscFreq (float): Freq of amp mod applied to summed signal. Default: 0.0.
+            ampOscDepth (float): Depth of amplitude modulation (tremolo) applied to
+                                 the summed signal in each channel (0 to 2). Default: 0.0.
+            ampOscFreq (float): Frequency of amplitude modulation (tremolo) in Hz. Default: 0.0.
 
     Returns:
-        np.ndarray: Stereo audio signal (N, 2), identical in both channels.
+        np.ndarray: Stereo audio signal (N, 2) as float32.
     """
     # --- Get Parameters ---
-    amp = float(params.get('amp', 0.5))
+    # Amplitudes for each tone component in each channel
+    amp_lower_L = float(params.get('amp_lower_L', 0.5))
+    amp_upper_L = float(params.get('amp_upper_L', 0.5))
+    amp_lower_R = float(params.get('amp_lower_R', 0.5))
+    amp_upper_R = float(params.get('amp_upper_R', 0.5))
+
+    # Frequency and Phase parameters
     baseFreq = float(params.get('baseFreq', 200.0))
     beatFreq = float(params.get('beatFreq', 4.0))
-    startPhaseL_rad = float(params.get('startPhaseL', 0.0))
-    startPhaseR_rad = float(params.get('startPhaseR', 0.0))
+    startPhaseLower_rad = float(params.get('startPhaseL', 0.0)) # Renamed for clarity
+    startPhaseUpper_rad = float(params.get('startPhaseR', 0.0)) # Renamed for clarity
     phaseOscFreq = float(params.get('phaseOscFreq', 0.0))
     phaseOscRange_rad = float(params.get('phaseOscRange', 0.0))
+
+    # Amplitude Modulation (Tremolo) parameters
     ampOscDepth = float(params.get('ampOscDepth', 0.0))
     ampOscFreq = float(params.get('ampOscFreq', 0.0))
 
     # --- Basic Setup ---
     N = int(sample_rate * duration)
-    if N <= 0: return np.zeros((0, 2))
+    if N <= 0: return np.zeros((0, 2), dtype=np.float32)
     t_abs = np.linspace(0, duration, N, endpoint=False)
 
     # --- Frequency Calculation ---
-    freq1 = np.maximum(0.0, baseFreq - beatFreq / 2.0)
-    freq2 = np.maximum(0.0, baseFreq + beatFreq / 2.0)
-    freq1_array = np.full(N, freq1)
-    freq2_array = np.full(N, freq2)
+    # Ensure frequencies are non-negative
+    freq_lower = np.maximum(0.0, baseFreq - beatFreq / 2.0)
+    freq_upper = np.maximum(0.0, baseFreq + beatFreq / 2.0)
+    freq_lower_array = np.full(N, freq_lower)
+    freq_upper_array = np.full(N, freq_upper)
 
     # --- Phase Calculation ---
-    if N > 1: dt = np.diff(t_abs, prepend=t_abs[0])
-    elif N == 1: dt = np.array([duration])
-    else: dt = np.array([])
-    phase1_base = np.cumsum(2 * np.pi * freq1_array * dt)
-    phase2_base = np.cumsum(2 * np.pi * freq2_array * dt)
+    # Calculate instantaneous phase for each frequency component
+    if N > 1:
+        dt = np.diff(t_abs, prepend=t_abs[0]) # Time difference between samples
+    elif N == 1:
+        dt = np.array([duration])
+    else: # N == 0
+        dt = np.array([])
+
+    phase_lower_base = np.cumsum(2 * np.pi * freq_lower_array * dt)
+    phase_upper_base = np.cumsum(2 * np.pi * freq_upper_array * dt)
+
+    # Optional phase oscillation between the two tones
     phase_osc_term = (phaseOscRange_rad / 2.0) * np.sin(2 * np.pi * phaseOscFreq * t_abs)
-    phase1_total = phase1_base + startPhaseL_rad - phase_osc_term
-    phase2_total = phase2_base + startPhaseR_rad + phase_osc_term
 
-    # --- Single Amplitude Modulation (Tremolo) for summed signal ---
-    # Using the simpler LFO form: amp * (1 - depth/2 + (depth/2)*sin)
-    amp_mod = (1.0 - ampOscDepth / 2.0) + (ampOscDepth / 2.0) * np.sin(2 * np.pi * ampOscFreq * t_abs)
+    # Total phase for each tone, including start phase and oscillation
+    phase_lower_total = phase_lower_base + startPhaseLower_rad - phase_osc_term
+    phase_upper_total = phase_upper_base + startPhaseUpper_rad + phase_osc_term
 
-    # --- Signal Generation ---
-    s1 = np.sin(phase1_total)
-    s2 = np.sin(phase2_total)
-    # Sum tones. Dividing by 2 prevents immediate clipping if both s1 and s2 are 1.
-    # The final amplitude 'amp' controls the overall level.
-    s_mono = (s1 + s2) / 2.0
+    # --- Generate Individual Sine Waves ---
+    s_lower = np.sin(phase_lower_total)
+    s_upper = np.sin(phase_upper_total)
 
-    # Apply single amp mod and single base amp to the summed signal
-    s_mono_mod = s_mono * amp_mod * amp
+    # --- Apply Individual Amplitudes and Sum for Each Channel ---
+    # Note: No division by 2 here, as amplitudes control the mix.
+    s_L = (s_lower * amp_lower_L) + (s_upper * amp_upper_L)
+    s_R = (s_lower * amp_lower_R) + (s_upper * amp_upper_R)
 
-    # Create stereo output
-    audio = np.column_stack((s_mono_mod, s_mono_mod)).astype(np.float32)
+    # --- Amplitude Modulation (Tremolo) ---
+    # Applied to the combined signal in each channel
+    # LFO form: (1 - depth/2 + (depth/2)*sin) ensures max amp is 1 when depth=0
+    # and max amp is 1.5 when depth=1, max amp is 2 when depth=2.
+    # Clamp depth to avoid negative modulation values.
+    clamped_ampOscDepth = np.clip(ampOscDepth, 0.0, 2.0)
+    amp_mod = (1.0 - clamped_ampOscDepth / 2.0) + \
+              (clamped_ampOscDepth / 2.0) * np.sin(2 * np.pi * ampOscFreq * t_abs)
+
+    # Apply modulation to each channel
+    s_L_mod = s_L * amp_mod
+    s_R_mod = s_R * amp_mod
+
+    # --- Create Stereo Output ---
+    # Combine left and right channels
+    # Clip final signal to [-1, 1] to prevent potential clipping issues
+    # due to summing and modulation.
+    audio_L = np.clip(s_L_mod, -1.0, 1.0)
+    audio_R = np.clip(s_R_mod, -1.0, 1.0)
+
+    audio = np.column_stack((audio_L, audio_R)).astype(np.float32)
+
     return audio
-
 
 def binaural_beat_transition(duration, sample_rate=44100, **params):
     """
@@ -2281,7 +2355,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
 # JSON Loading/Saving
 # -----------------------------------------------------------------------------
 
-# Custom JSON encoder to handle numpy types
+# Custom JSON encoder to handle numpy types (if needed)
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer): return int(obj)
@@ -2392,7 +2466,7 @@ def generate_wav(track_data, output_filename=None):
 
     if max_abs_val > 1e-9: # Avoid division by zero for silent tracks
         # --- *** CHANGED: Increase target level *** ---
-        target_level = 0.15 # Normalize closer to full scale (e.g., -0.4 dBFS)
+        target_level = 0.2 # Normalize closer to full scale (e.g., -0.4 dBFS)
         # --- *** End Change *** ---
         scaling_factor = target_level / max_abs_val
         print(f"Normalizing final track (peak value: {max_abs_val:.4f}) to target level: {target_level}")
