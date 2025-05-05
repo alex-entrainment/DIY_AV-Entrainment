@@ -2512,11 +2512,11 @@ def generate_audio(track_data, output_format:str, output_filename=None):
             )
             audio_segment.export(output_filename, format="mp3", bitrate="320k")
         
-        print(f"--- {output_format.lower()} Generation Complete ---")
+        print(f"--- {output_format.upper()} Generation Complete ---")
         print(f"Track successfully written to {output_filename}")
         return True
     except Exception as e:
-        print(f"Error writing {output_format.lower()} file {output_filename}:")
+        print(f"Error writing {output_format.upper()} file {output_filename}:")
         traceback.print_exc()
         return False
 
