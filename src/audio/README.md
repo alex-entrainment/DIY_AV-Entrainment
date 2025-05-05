@@ -31,10 +31,9 @@ This project provides a Python-based **Brainwave Entrainment Audio File Generato
 
 2. **Programmatic mode**  
    ```python
-   from sound_creator import load_track_from_json, assemble_track_from_data, write_track_to_wav
+   from sound_creator import load_track_from_json, assemble_track_from_data, generate_wav
    data = load_track_from_json("my_track.json")
-   audio = assemble_track_from_data(data, sample_rate=44100, crossfade_duration=1.0)
-   write_track_to_wav(audio, "output.wav", sample_rate=44100)
+   generate_wav(data, "output.wav")
    ```
 
 ---
@@ -46,7 +45,7 @@ This project provides a Python-based **Brainwave Entrainment Audio File Generato
   "global_settings": {
     "sample_rate": 44100,
     "crossfade_duration": 1.0,
-    "output_filename": "my_track.wav"
+    "output_filename": "my_track"
   },
   "steps": [
     {
