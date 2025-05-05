@@ -1985,9 +1985,9 @@ _EXCLUDED_FUNCTION_NAMES = [
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
-    'load_track_from_json', 'save_track_to_json', 'generate_wav', 'generate_flac',
-    'generate_mp3', 'get_synth_params', 'trapezoid_envelope_vectorized', 
-    '_flanger_effect_stereo_continuous', 'butter', 'lfilter', 'write', 'ensure_stereo',
+    'load_track_from_json', 'save_track_to_json', 'generate_audio', 'get_synth_params',
+    'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous', 'butter',
+    'lfilter', 'write', 'ensure_stereo',
     # Standard library functions that might be imported
     'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
