@@ -3,7 +3,6 @@ from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
 import soundfile as sf # FLAC conversion
 from pydub import AudioSegment # MP3 conversion
-import io
 import math
 import json
 import inspect # Needed to inspect function parameters for GUI
