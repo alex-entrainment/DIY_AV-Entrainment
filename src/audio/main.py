@@ -827,7 +827,7 @@ class TrackEditorApp(QMainWindow):
             if success:
                 QMessageBox.information(self, "Generation Complete", f"{selected_format} file generated successfully:\n{output_filename}")
             else:
-                QMessageBox.critical(self, "Generation Failed", f"Error during {selected_format} generation. Check console/logs.\n{success}")
+                QMessageBox.critical(self, "Generation Failed", f"Error during {selected_format} generation. Check console/logs.")
         except Exception as e:
             QMessageBox.critical(self, "Generation Error", f"An unexpected error occurred during {selected_format} generation:\n{e}")
             traceback.print_exc()
