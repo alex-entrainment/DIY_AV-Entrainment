@@ -55,7 +55,7 @@ class TrackEditorApp(QMainWindow):
             "global_settings": {
                 "sample_rate": DEFAULT_SAMPLE_RATE,
                 "crossfade_duration": DEFAULT_CROSSFADE,
-                "output_filename": "my_track.wav"
+                "output_filename": "my_track"
             },
             "steps": []
         }
@@ -104,11 +104,21 @@ class TrackEditorApp(QMainWindow):
         globals_layout.addWidget(self.cf_entry, 1, 1)
 
         globals_layout.addWidget(QLabel("Output File:"), 2, 0)
-        self.outfile_entry = QLineEdit("my_track.wav")
+        self.outfile_entry = QLineEdit("my_track")
         globals_layout.addWidget(self.outfile_entry, 2, 1)
         self.browse_outfile_button = QPushButton("Browse...")
         self.browse_outfile_button.clicked.connect(self.browse_outfile)
         globals_layout.addWidget(self.browse_outfile_button, 2, 2)
+
+        # Add Export Format Selection
+        globals_layout.addWidget(QLabel("Export Format:"), 3, 0)
+        self.export_format_combo = QComboBox()
+        self.export_format_combo.addItems(["WAV", "MP3", "FLAC"])
+        globals_layout.addWidget(self.export_format_combo, 3, 1)
+
+        globals_layout.setColumnStretch(1, 1)  # Allow entry to expand
+        control_layout.addWidget(globals_groupbox, 1)  # Add stretch factor
+
         globals_layout.setColumnStretch(1, 1) # Allow entry to expand
         control_layout.addWidget(globals_groupbox, 1) # Add stretch factor
 
@@ -118,11 +128,11 @@ class TrackEditorApp(QMainWindow):
         generate_frame = QWidget() # Use a widget for alignment
         generate_layout = QHBoxLayout(generate_frame)
         generate_layout.addStretch(1)
-        self.generate_button = QPushButton("Generate WAV")
+        self.generate_button = QPushButton("Generate Audio")
         self.generate_button.setStyleSheet("QPushButton { background-color: #0078D7; color: white; padding: 8px; font-weight: bold; border-radius: 3px; } QPushButton:hover { background-color: #005A9E; } QPushButton:pressed { background-color: #003C6A; } QPushButton:disabled { background-color: #AAAAAA; color: #666666; }")
         # self.generate_button.setMinimumHeight(35)
         self.generate_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.generate_button.clicked.connect(self.generate_wav_action)
+        self.generate_button.clicked.connect(self.generate_audio_action)
         generate_layout.addWidget(self.generate_button)
         generate_layout.setContentsMargins(0,0,0,0)
         control_layout.addWidget(generate_frame)
@@ -275,7 +285,7 @@ class TrackEditorApp(QMainWindow):
         settings = self.track_data.get("global_settings", {})
         self.sr_entry.setText(str(settings.get("sample_rate", DEFAULT_SAMPLE_RATE)))
         self.cf_entry.setText(str(settings.get("crossfade_duration", DEFAULT_CROSSFADE)))
-        self.outfile_entry.setText(settings.get("output_filename", "my_track.wav"))
+        self.outfile_entry.setText(settings.get("output_filename", "my_track"))
 
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
@@ -500,9 +510,12 @@ class TrackEditorApp(QMainWindow):
 
         initial_filename = "track_definition.json"
         initial_dir = os.path.dirname(self.current_json_path) if self.current_json_path else "."
+
+        selected_format = self.export_format_combo.currentText().lower()  # Get selected format
+
         try:
-            wav_filename = self.track_data["global_settings"].get("output_filename", "my_track.wav")
-            base, _ = os.path.splitext(wav_filename)
+            audio_filename = self.track_data["global_settings"].get("output_filename", "my_track")
+            base, _ = os.path.splitext(audio_filename)
             initial_filename = base + ".json"
         except Exception: pass
 
@@ -526,7 +539,7 @@ class TrackEditorApp(QMainWindow):
         initial_dir = os.path.dirname(self.current_json_path) if self.current_json_path else "."
         suggested_path = os.path.join(initial_dir, initial_filename)
 
-        filepath, _ = QFileDialog.getSaveFileName(self, "Select Output WAV File", suggested_path, "WAV files (*.wav);;All files (*.*)")
+        filepath, _ = QFileDialog.getSaveFileName(self, "Select Output File", suggested_path, "WAV files (*.wav);;All files (*.*)")
         if filepath:
             self.outfile_entry.setText(filepath)
 
@@ -778,39 +791,49 @@ class TrackEditorApp(QMainWindow):
             traceback.print_exc()
 
     @pyqtSlot()
-    def generate_wav_action(self):
+    def generate_audio_action(self):
         if not self._update_global_settings_from_ui(): return
         output_filename = self.track_data["global_settings"]["output_filename"]
         if not output_filename:
             QMessageBox.critical(self, "Generate Error", "Please specify an output filename.")
             return
 
+        selected_format = self.export_format_combo.currentText().lower() # Get selected format
+
         if os.path.exists(output_filename):
             reply = QMessageBox.question(self, "Confirm Overwrite", f"Output file '{os.path.basename(output_filename)}' exists.\nOverwrite?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.No: return
 
-        print("\nStarting WAV generation process...")
+        print("\nStarting audio generation process...")
         self.generate_button.setEnabled(False)
         self.generate_button.setText("Generating...")
         QApplication.processEvents() # Allow UI to update
 
         try:
             # *** Crossfade Handling Assumption ***
-            # It is assumed that the sound_creator.generate_wav function will internally
+            # It is assumed that the sound_creator.generate_* function will internally
             # use the 'crossfade_duration' value from track_data["global_settings"]
             # to apply crossfades between the generated audio segments for each step.
             # This UI code only ensures the setting is correctly passed.
-            success = sound_creator.generate_wav(self.track_data, output_filename)
+            success = None
+            if selected_format:
+                if selected_format == "wav":
+                    success = sound_creator.generate_wav(self.track_data, output_filename)
+                elif selected_format == "flac":
+                    success = sound_creator.generate_flac(self.track_data, output_filename)
+                elif selected_format == "mp3":
+                    success = sound_creator.generate_mp3(self.track_data, output_filename)
+    
             if success:
-                QMessageBox.information(self, "Generation Complete", f"WAV file generated successfully:\n{output_filename}")
+                QMessageBox.information(self, "Generation Complete", f"{selected_format} file generated successfully:\n{output_filename}")
             else:
-                QMessageBox.critical(self, "Generation Failed", "Error during WAV generation. Check console/logs.")
+                QMessageBox.critical(self, "Generation Failed", f"Error during {selected_format} generation. Check console/logs.\n{success}")
         except Exception as e:
-            QMessageBox.critical(self, "Generation Error", f"An unexpected error occurred during WAV generation:\n{e}")
+            QMessageBox.critical(self, "Generation Error", f"An unexpected error occurred during {selected_format} generation:\n{e}")
             traceback.print_exc()
         finally:
             self.generate_button.setEnabled(True)
-            self.generate_button.setText("Generate WAV")
+            self.generate_button.setText("Generate Audio")
 
     # --- Utility Methods ---
     def get_selected_step_index(self):

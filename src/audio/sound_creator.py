@@ -1,6 +1,9 @@
 import numpy as np
 from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
+import soundfile as sf # FLAC conversion
+from pydub import AudioSegment # MP3 conversion
+import io
 import math
 import json
 import inspect # Needed to inspect function parameters for GUI
@@ -1983,9 +1986,9 @@ _EXCLUDED_FUNCTION_NAMES = [
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
-    'load_track_from_json', 'save_track_to_json', 'generate_wav', 'get_synth_params',
-    'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
-    'butter', 'lfilter', 'write', 'ensure_stereo',
+    'load_track_from_json', 'save_track_to_json', 'generate_wav', 'generate_flac',
+    'generate_mp3', 'get_synth_params', 'trapezoid_envelope_vectorized', 
+    '_flanger_effect_stereo_continuous', 'butter', 'lfilter', 'write', 'ensure_stereo',
     # Standard library functions that might be imported
     'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
@@ -1995,7 +1998,7 @@ try:
     current_module = __import__(__name__)
     for name, obj in inspect.getmembers(current_module):
         if inspect.isfunction(obj) and name not in _EXCLUDED_FUNCTION_NAMES and not name.startswith('_'):
-             # Further check if the function is defined in *this* module, not imported
+            # Further check if the function is defined in *this* module, not imported
             if inspect.getmodule(obj) == current_module:
                 SYNTH_FUNCTIONS[name] = obj
 except Exception as e:
@@ -2102,11 +2105,12 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
             # Pass duration and sample_rate if needed by envelope func
             if 'duration' not in cleaned_env_params: cleaned_env_params['duration'] = duration
             if 'sample_rate' not in cleaned_env_params: cleaned_env_params['sample_rate'] = sample_rate
-
+            
+            print(f"Debugging: cleaned_env_params = {cleaned_env_params}")
             if env_type == "adsr":
                 env = adsr_envelope(t_rel, **cleaned_env_params)
             elif env_type == "linen":
-                 env = linen_envelope(t_rel, **cleaned_env_params)
+                 env = linen_envelope(t_rel, cleaned_env_params['attack'], cleaned_env_params['release'])
             elif env_type == "linear_fade":
                  # This function uses duration/sr internally, ensure they are passed if needed
                  required = ['fade_duration', 'start_amp', 'end_amp']
@@ -2438,6 +2442,8 @@ def generate_wav(track_data, output_filename=None):
          print(f"Error: Invalid output filename: {output_filename}")
          return False
 
+    output_filename = output_filename.replace(".wav", "") + ".wav" # Ensure .wav extension
+
     # Ensure output directory exists before assembly
     output_dir = os.path.dirname(output_filename)
     if output_dir and not os.path.exists(output_dir):
@@ -2498,6 +2504,176 @@ def generate_wav(track_data, output_filename=None):
         print(f"Error writing WAV file {output_filename}:")
         traceback.print_exc()
         return False
+
+def generate_flac(track_data, output_filename=None):
+    """Generates and saves the FLAC file based on the track_data."""
+    if not track_data:
+        print("Error: Cannot generate FLAC, track data is missing.")
+        return False
+
+    global_settings = track_data.get("global_settings", {})
+    try:
+        sample_rate = int(global_settings.get("sample_rate", 44100))
+        crossfade_duration = float(global_settings.get("crossfade_duration", 1.0))
+    except (ValueError, TypeError) as e:
+        print(f"Error: Invalid global settings (sample_rate or crossfade_duration): {e}")
+        return False
+
+    output_filename = output_filename or global_settings.get("output_filename", "generated_track.flac")
+    if not output_filename or not isinstance(output_filename, str):
+         print(f"Error: Invalid output filename: {output_filename}")
+         return False
+
+    output_filename = output_filename.replace(".flac", "") + ".flac" # Ensure .flac extension
+    
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_filename)
+    if output_dir and not os.path.exists(output_dir):
+        try:
+            os.makedirs(output_dir)
+            print(f"Created output directory for FLAC: {output_dir}")
+        except OSError as e:
+            print(f"Error creating output directory '{output_dir}': {e}")
+            return False
+
+    print(f"\n--- Starting FLAC Generation ---")
+    print(f"Sample Rate: {sample_rate} Hz")
+    print(f"Crossfade Duration: {crossfade_duration} s")
+    print(f"Output File: {output_filename}")
+
+    # Assemble the track
+    track_audio = assemble_track_from_data(track_data, sample_rate, crossfade_duration)
+
+    if track_audio is None or track_audio.size == 0:
+        print("Error: Track assembly failed or resulted in empty audio.")
+        return False
+
+    # Normalize the audio
+    max_abs_val = np.max(np.abs(track_audio))
+    if max_abs_val > 1e-9:  # Avoid division by zero for silent tracks
+        # --- *** CHANGED: Increase target level *** ---
+        target_level = 0.2 # Normalize closer to full scale (e.g., -0.4 dBFS)
+        # --- *** End Change *** ---
+        scaling_factor = target_level / max_abs_val
+        print(f"Normalizing final track (peak value: {max_abs_val:.4f}) to target level: {target_level}")
+        normalized_track = track_audio * scaling_factor
+        # Optional: Apply a limiter after normalization as a final safety net
+        # normalized_track = np.clip(normalized_track, -target_level, target_level)
+    else:
+        print("Track is silent or near-silent. Skipping final normalization.")
+        normalized_track = track_audio # Already silent or zero
+
+    # Convert normalized float audio to 16-bit PCM
+    if not np.issubdtype(normalized_track.dtype, np.floating):
+         print(f"Warning: Normalized track data type is not float ({normalized_track.dtype}). Attempting conversion.")
+         try: normalized_track = normalized_track.astype(np.float64) # Use float64 for precision before scaling
+         except Exception as e:
+              print(f"Error converting normalized track to float: {e}")
+              return False
+
+    # Scale to 16-bit integer range and clip just in case
+    track_int16 = np.int16(np.clip(normalized_track * 32767, -32768, 32767))
+
+    # Write FLAC file
+    try:
+        sf.write(output_filename, track_int16, sample_rate, format='FLAC')
+        print(f"--- FLAC Generation Complete ---")
+        print(f"Track successfully written to {output_filename}")
+        return True
+    except Exception as e:
+        print(f"Error writing FLAC file {output_filename}:")
+        traceback.print_exc()
+        return False
+
+def generate_mp3(track_data, output_filename=None):
+    """Generates and saves the MP3 file based on the track_data."""
+    if not track_data:
+        print("Error: Cannot generate MP3, track data is missing.")
+        return False
+
+    global_settings = track_data.get("global_settings", {})
+    try:
+        sample_rate = int(global_settings.get("sample_rate", 44100))
+        crossfade_duration = float(global_settings.get("crossfade_duration", 1.0))
+    except (ValueError, TypeError) as e:
+        print(f"Error: Invalid global settings (sample_rate or crossfade_duration): {e}")
+        return False
+
+    output_filename = output_filename or global_settings.get("output_filename", "generated_track.mp3")
+    if not output_filename.endswith(".mp3"):
+        output_filename += ".mp3"
+
+    output_filename = output_filename.replace(".mp3", "") + ".mp3" # Ensure .mp3 extension
+    
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_filename)
+    if output_dir and not os.path.exists(output_dir):
+        try:
+            os.makedirs(output_dir)
+            print(f"Created output directory for MP3: {output_dir}")
+        except OSError as e:
+            print(f"Error creating output directory '{output_dir}': {e}")
+            return False
+
+    print(f"\n--- Starting MP3 Generation ---")
+    print(f"Sample Rate: {sample_rate} Hz")
+    print(f"Crossfade Duration: {crossfade_duration} s")
+    print(f"Output File: {output_filename}")
+
+    # Assemble the track
+    track_audio = assemble_track_from_data(track_data, sample_rate, crossfade_duration)
+
+    if track_audio is None or track_audio.size == 0:
+        print("Error: Track assembly failed or resulted in empty audio.")
+        return False
+
+    # Normalize the audio
+    max_abs_val = np.max(np.abs(track_audio))
+    
+    if max_abs_val > 1e-9: # Avoid division by zero for silent tracks
+        # --- *** CHANGED: Increase target level *** ---
+        target_level = 0.2 # Normalize closer to full scale (e.g., -0.4 dBFS)
+        # --- *** End Change *** ---
+        scaling_factor = target_level / max_abs_val
+        print(f"Normalizing final track (peak value: {max_abs_val:.4f}) to target level: {target_level}")
+        normalized_track = track_audio * scaling_factor
+        # Optional: Apply a limiter after normalization as a final safety net
+        # normalized_track = np.clip(normalized_track, -target_level, target_level)
+    else:
+        print("Track is silent or near-silent. Skipping final normalization.")
+        normalized_track = track_audio # Already silent or zero
+
+    # Convert normalized float audio to 16-bit PCM
+    if not np.issubdtype(normalized_track.dtype, np.floating):
+         print(f"Warning: Normalized track data type is not float ({normalized_track.dtype}). Attempting conversion.")
+         try: normalized_track = normalized_track.astype(np.float64) # Use float64 for precision before scaling
+         except Exception as e:
+              print(f"Error converting normalized track to float: {e}")
+              return False
+
+    # Scale to 16-bit integer range and clip just in case
+    track_int16 = np.int16(np.clip(normalized_track * 32767, -32768, 32767))
+
+    # Convert to MP3 using pydub
+    try:
+        # Convert NumPy array to pydub AudioSegment
+        audio_segment = AudioSegment(
+            track_int16.tobytes(),
+            frame_rate=sample_rate,
+            sample_width=2, # 16-bit PCM = 2 bytes per sample
+            channels=2
+        )
+
+        # Export to MP3
+        audio_segment.export(output_filename, format="mp3", bitrate="320k")
+        print(f"--- MP3 Generation Complete ---")
+        print(f"Track successfully written to {output_filename}")
+        return True
+    except Exception as e:
+        print(f"Error writing MP3 file {output_filename}:")
+        traceback.print_exc()
+        return False
+
 # -----------------------------------------------------------------------------
 # Example Usage (if script is run directly)
 # -----------------------------------------------------------------------------
