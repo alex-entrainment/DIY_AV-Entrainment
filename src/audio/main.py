@@ -116,9 +116,6 @@ class TrackEditorApp(QMainWindow):
         self.export_format_combo.addItems(["WAV", "MP3", "FLAC"])
         globals_layout.addWidget(self.export_format_combo, 3, 1)
 
-        globals_layout.setColumnStretch(1, 1)  # Allow entry to expand
-        control_layout.addWidget(globals_groupbox, 1)  # Add stretch factor
-
         globals_layout.setColumnStretch(1, 1) # Allow entry to expand
         control_layout.addWidget(globals_groupbox, 1) # Add stretch factor
 
