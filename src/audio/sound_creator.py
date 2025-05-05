@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
+import soundfile as sf # FLAC conversion
+from pydub import AudioSegment # MP3 conversion
 import math
 import json
 import inspect # Needed to inspect function parameters for GUI
@@ -1983,9 +1985,9 @@ _EXCLUDED_FUNCTION_NAMES = [
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
-    'load_track_from_json', 'save_track_to_json', 'generate_wav', 'get_synth_params',
-    'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
-    'butter', 'lfilter', 'write', 'ensure_stereo',
+    'load_track_from_json', 'save_track_to_json', 'generate_audio', 'get_synth_params',
+    'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous', 'butter',
+    'lfilter', 'write', 'ensure_stereo',
     # Standard library functions that might be imported
     'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
@@ -1995,7 +1997,7 @@ try:
     current_module = __import__(__name__)
     for name, obj in inspect.getmembers(current_module):
         if inspect.isfunction(obj) and name not in _EXCLUDED_FUNCTION_NAMES and not name.startswith('_'):
-             # Further check if the function is defined in *this* module, not imported
+            # Further check if the function is defined in *this* module, not imported
             if inspect.getmodule(obj) == current_module:
                 SYNTH_FUNCTIONS[name] = obj
 except Exception as e:
@@ -2102,11 +2104,12 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
             # Pass duration and sample_rate if needed by envelope func
             if 'duration' not in cleaned_env_params: cleaned_env_params['duration'] = duration
             if 'sample_rate' not in cleaned_env_params: cleaned_env_params['sample_rate'] = sample_rate
-
+            
+            print(f"Debugging: cleaned_env_params = {cleaned_env_params}")
             if env_type == "adsr":
                 env = adsr_envelope(t_rel, **cleaned_env_params)
             elif env_type == "linen":
-                 env = linen_envelope(t_rel, **cleaned_env_params)
+                 env = linen_envelope(t_rel, cleaned_env_params['attack'], cleaned_env_params['release'])
             elif env_type == "linear_fade":
                  # This function uses duration/sr internally, ensure they are passed if needed
                  required = ['fade_duration', 'start_amp', 'end_amp']
@@ -2419,10 +2422,13 @@ def save_track_to_json(track_data, filepath):
 # Main Generation Function
 # -----------------------------------------------------------------------------
 
-def generate_wav(track_data, output_filename=None):
-    """Generates and saves the WAV file based on the track_data."""
+def generate_audio(track_data, output_format:str, output_filename=None):
+    """Generates and saves the audio file based on the track_data."""
+    """
+    output_format: "wav", "flac", or "mp3"
+    """
     if not track_data:
-        print("Error: Cannot generate WAV, track data is missing.")
+        print(f"Error: Cannot generate {output_format.upper()}, track data is missing.")
         return False
 
     global_settings = track_data.get("global_settings", {})
@@ -2433,23 +2439,25 @@ def generate_wav(track_data, output_filename=None):
          print(f"Error: Invalid global settings (sample_rate or crossfade_duration): {e}")
          return False
 
-    output_filename = output_filename or global_settings.get("output_filename", "generated_track.wav")
+    output_filename = output_filename or global_settings.get("output_filename", f"generated_track.{output_format.lower()}")
     if not output_filename or not isinstance(output_filename, str):
          print(f"Error: Invalid output filename: {output_filename}")
          return False
+
+    output_filename = output_filename.replace(f".{output_format.lower()}", "") + f".{output_format.lower()}" # Ensure .wav extension
 
     # Ensure output directory exists before assembly
     output_dir = os.path.dirname(output_filename)
     if output_dir and not os.path.exists(output_dir):
         try:
             os.makedirs(output_dir)
-            print(f"Created output directory for WAV: {output_dir}")
+            print(f"Created output directory for audio: {output_dir}")
         except OSError as e:
             print(f"Error creating output directory '{output_dir}': {e}")
             return False
 
 
-    print(f"\n--- Starting WAV Generation ---")
+    print(f"\n--- Starting {output_format.upper()} Generation ---")
     print(f"Sample Rate: {sample_rate} Hz")
     print(f"Crossfade Duration: {crossfade_duration} s")
     print(f"Output File: {output_filename}")
@@ -2490,14 +2498,28 @@ def generate_wav(track_data, output_filename=None):
 
     # Write WAV file
     try:
-        write(output_filename, sample_rate, track_int16)
-        print(f"--- WAV Generation Complete ---")
+        if output_format.lower() == "wav":
+            write(output_filename, sample_rate, track_int16)
+        elif output_format.lower() == "flac":
+            sf.write(output_filename, track_int16, sample_rate, format='FLAC')
+        elif output_format.lower() == "mp3":
+            # Convert to MP3 using pydub
+            audio_segment = AudioSegment(
+            track_int16.tobytes(),
+            frame_rate=sample_rate,
+            sample_width=2, # 16-bit PCM = 2 bytes per sample
+            channels=2
+            )
+            audio_segment.export(output_filename, format="mp3", bitrate="320k")
+        
+        print(f"--- {output_format.upper()} Generation Complete ---")
         print(f"Track successfully written to {output_filename}")
         return True
     except Exception as e:
-        print(f"Error writing WAV file {output_filename}:")
+        print(f"Error writing {output_format.upper()} file {output_filename}:")
         traceback.print_exc()
         return False
+
 # -----------------------------------------------------------------------------
 # Example Usage (if script is run directly)
 # -----------------------------------------------------------------------------

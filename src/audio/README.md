@@ -31,22 +31,19 @@ A Python-based tool for building customized brainwave entrainment audio files. C
 
 ## Quick Start
 
-### GUI Mode
-```bash
-python main.py
-```
-- Load or create a JSON track.
-- Add **Steps**, each with one or more **Voices**.
-- Click **Generate WAV**.
 
-### Code Mode
-```python
-from sound_creator import load_track_from_json, assemble_track_from_data, write_track_to_wav
+1. **GUI mode**  
+   ```bash
+   python main.py
+   ```
+   Use **Load JSON**, **Add Step**, **Add Voice**, etc., then **Generate WAV**.
 
-data = load_track_from_json("my_track.json")
-audio = assemble_track_from_data(data, sample_rate=44100, crossfade_duration=1.0)
-write_track_to_wav(audio, "output.wav", sample_rate=44100)
-```
+2. **Programmatic mode**  
+   ```python
+   from sound_creator import load_track_from_json, assemble_track_from_data, generate_audio
+   data = load_track_from_json("my_track.json")
+   generate_audio(data, "wav", "output.wav")
+   ```
 
 ---
 
@@ -57,7 +54,7 @@ write_track_to_wav(audio, "output.wav", sample_rate=44100)
   "global_settings": {
     "sample_rate": 44100,
     "crossfade_duration": 1.0,
-    "output_filename": "my_track.wav"
+    "output_filename": "my_track"
   },
   "steps": [
     {
