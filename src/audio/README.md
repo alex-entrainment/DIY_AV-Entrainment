@@ -40,9 +40,9 @@ A Python-based tool for building customized brainwave entrainment audio files. C
 
 2. **Programmatic mode**  
    ```python
-   from sound_creator import load_track_from_json, assemble_track_from_data, generate_wav
+   from sound_creator import load_track_from_json, assemble_track_from_data, generate_audio
    data = load_track_from_json("my_track.json")
-   generate_wav(data, "output.wav")
+   generate_audio(data, "wav", "output.wav")
    ```
 
 ---
