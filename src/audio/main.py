@@ -798,8 +798,7 @@ class TrackEditorApp(QMainWindow):
             QMessageBox.critical(self, "Generate Error", "Please specify an output filename.")
             return
 
-        selected_format = self.export_format_combo.currentText().lower() # Get selected format
-
+        selected_format = self.export_format_combo.currentText() # Get selected format
         if os.path.exists(output_filename):
             reply = QMessageBox.question(self, "Confirm Overwrite", f"Output file '{os.path.basename(output_filename)}' exists.\nOverwrite?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.No: return
@@ -811,21 +810,15 @@ class TrackEditorApp(QMainWindow):
 
         try:
             # *** Crossfade Handling Assumption ***
-            # It is assumed that the sound_creator.generate_* function will internally
+            # It is assumed that the sound_creator.generate_audio function will internally
             # use the 'crossfade_duration' value from track_data["global_settings"]
             # to apply crossfades between the generated audio segments for each step.
             # This UI code only ensures the setting is correctly passed.
-            success = None
-            if selected_format:
-                if selected_format == "wav":
-                    success = sound_creator.generate_wav(self.track_data, output_filename)
-                elif selected_format == "flac":
-                    success = sound_creator.generate_flac(self.track_data, output_filename)
-                elif selected_format == "mp3":
-                    success = sound_creator.generate_mp3(self.track_data, output_filename)
+            
+            success = sound_creator.generate_audio(self.track_data, selected_format.lower(), output_filename)
     
             if success:
-                QMessageBox.information(self, "Generation Complete", f"{selected_format} file generated successfully:\n{output_filename}")
+                QMessageBox.information(self, "Generation Complete", f"{selected_format} file generated successfully:\n{output_filename}.{selected_format.lower()}")
             else:
                 QMessageBox.critical(self, "Generation Failed", f"Error during {selected_format} generation. Check console/logs.")
         except Exception as e:
