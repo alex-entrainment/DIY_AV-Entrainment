@@ -1,13 +1,13 @@
 import numpy as np
 from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
-import soundfile as sf # FLAC conversion
-from pydub import AudioSegment # MP3 conversion
 import math
 import json
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
 import traceback # For detailed error printing
+import numba 
+from numba import jit, prange
 
 # Placeholder for the missing audio_engine module
 # If you have the 'audio_engine.py' file, place it in the same directory.
@@ -1404,335 +1404,438 @@ def spatial_angle_modulation_transition(duration, sample_rate=44100, **params):
         N = int(sample_rate * duration)
         return np.zeros((N, 2))
 
+from scipy.signal import butter, sosfiltfilt
 
+
+import numpy as np
+import numba
+
+# -----------------------------------------------------------------------------
+# Core JIT-compiled function for binaural_beat
+# -----------------------------------------------------------------------------
 def binaural_beat(duration, sample_rate=44100, **params):
-    """
-    Generates a binaural beat signal with optional phase, independent L/R
-    base amplitude, amplitude modulation, and frequency oscillation.
-
-    Args:
-        duration (float): Duration of the signal in seconds.
-        sample_rate (int): Sampling rate in Hz.
-        **params: Dictionary of parameters:
-            ampL (float): Base amplitude for LEFT channel (0 to 1). Default: 0.5.
-            ampR (float): Base amplitude for RIGHT channel (0 to 1). Default: 0.5.
-            baseFreq (float): Center frequency in Hz before beat/oscillation. Default: 200.0.
-            beatFreq (float): Beat frequency in Hz (difference between L/R mean freqs). Default: 4.0.
-            startPhaseL (float): Starting phase for the left channel in radians. Default: 0.0.
-            startPhaseR (float): Starting phase for the right channel in radians. Default: 0.0.
-            phaseOscFreq (float): Frequency of phase offset oscillation in Hz. Default: 0.0.
-            phaseOscRange (float): Range of phase offset oscillation in radians. Default: 0.0.
-            ampOscDepthL (float): Depth of LEFT amplitude modulation (0 to 1). Default: 0.0.
-            ampOscFreqL (float): Frequency of LEFT amplitude modulation in Hz. Default: 0.0.
-            ampOscDepthR (float): Depth of RIGHT amplitude modulation (0 to 1). Default: 0.0.
-            ampOscFreqR (float): Frequency of RIGHT amplitude modulation in Hz. Default: 0.0.
-            freqOscRangeL (float): Range of LEFT frequency oscillation in Hz. Default: 0.0.
-            freqOscFreqL (float): Frequency of LEFT frequency oscillation in Hz. Default: 0.0.
-            freqOscRangeR (float): Range of RIGHT frequency oscillation in Hz. Default: 0.0.
-            freqOscFreqR (float): Frequency of RIGHT frequency oscillation in Hz. Default: 0.0.
-
-
-    Returns:
-        np.ndarray: Stereo audio signal as a numpy array (N, 2).
-    """
-    # --- Get Parameters ---
+    # --- Unpack synthesis parameters ---
     ampL = float(params.get('ampL', 0.5))
     ampR = float(params.get('ampR', 0.5))
-    baseFreq = float(params.get('baseFreq', 200.0))
-    beatFreq = float(params.get('beatFreq', 4.0))
-    startPhaseL_rad = float(params.get('startPhaseL', 0.0))
-    startPhaseR_rad = float(params.get('startPhaseR', 0.0))
-    phaseOscFreq = float(params.get('phaseOscFreq', 0.0))
-    phaseOscRange_rad = float(params.get('phaseOscRange', 0.0))
-    ampOscDepthL = float(params.get('ampOscDepthL', 0.0))
-    ampOscFreqL = float(params.get('ampOscFreqL', 0.0))
-    ampOscDepthR = float(params.get('ampOscDepthR', 0.0))
-    ampOscFreqR = float(params.get('ampOscFreqR', 0.0))
-    # New frequency oscillation parameters
-    freqOscRangeL = float(params.get('freqOscRangeL', 0.0))
-    freqOscFreqL = float(params.get('freqOscFreqL', 0.0))
-    freqOscRangeR = float(params.get('freqOscRangeR', 0.0))
-    freqOscFreqR = float(params.get('freqOscFreqR', 0.0))
+    baseF = float(params.get('baseFreq', 200.0))
+    beatF = float(params.get('beatFreq', 4.0))
+    force_mono = bool(params.get('forceMono', False))
+    startL = float(params.get('startPhaseL', 0.0))
+    startR = float(params.get('startPhaseR', 0.0))
+    pOF = float(params.get('phaseOscFreq', 0.0))
+    pOR = float(params.get('phaseOscRange', 0.0))
+    aODL = float(params.get('ampOscDepthL', 0.0))
+    aOFL = float(params.get('ampOscFreqL', 0.0))
+    aODR = float(params.get('ampOscDepthR', 0.0))
+    aOFR = float(params.get('ampOscFreqR', 0.0))
+    fORL = float(params.get('freqOscRangeL', 0.0))
+    fOFL = float(params.get('freqOscFreqL', 0.0))
+    fORR = float(params.get('freqOscRangeR', 0.0))
+    fOFR = float(params.get('freqOscFreqR', 0.0))
 
-    # --- Basic Setup ---
-    N = int(sample_rate * duration)
-    if N <= 0: return np.zeros((0, 2))
-    t_abs = np.linspace(0, duration, N, endpoint=False)
+    # --- Unpack glitch parameters ---
+    glitchInterval   = float(params.get('glitchInterval',   0.0)) # 3.5
+    glitchDur        = float(params.get('glitchDur',        0.0)) # 0.5
+    glitchNoiseLevel = float(params.get('glitchNoiseLevel', 0.0)) # 0.25ish
+    glitchFocusWidth = float(params.get('glitchFocusWidth', 000.0)) # 100 - 200
+    glitchFocusExp   = float(params.get('glitchFocusExp',     0.0)) # 2-4
 
-    # --- Frequency Calculation (Now includes Oscillation) ---
-    half_beat_freq = beatFreq / 2.0
-    # Calculate base frequencies for each channel
-    baseFreqL = baseFreq - half_beat_freq
-    baseFreqR = baseFreq + half_beat_freq
+    N = int(duration * sample_rate)
 
-    # Calculate frequency oscillation terms (LFOs for frequency)
-    # Oscillation is centered around 0, range is peak-to-peak
-    freq_osc_term_l = (freqOscRangeL / 2.0) * np.sin(2 * np.pi * freqOscFreqL * t_abs)
-    freq_osc_term_r = (freqOscRangeR / 2.0) * np.sin(2 * np.pi * freqOscFreqR * t_abs)
+    # --- Precompute glitch bursts in NumPy ---
+    positions = []
+    bursts = []
+    if glitchInterval > 0 and glitchDur > 0 and glitchNoiseLevel > 0:
+        full_n = int(glitchDur * sample_rate)
+        repeats = int(duration / glitchInterval)
+        for k in range(1, repeats + 1):
+            t_end   = k * glitchInterval
+            t_start = max(0.0, t_end - glitchDur)
+            i0 = int(t_start * sample_rate)
+            i1 = i0 + full_n
+            if i1 > N:
+                continue
 
-    # Calculate instantaneous frequency arrays for each channel
-    # Add the oscillation term to the base frequency for each channel
-    # Ensure frequency doesn't go below zero
-    left_freq_array = np.maximum(0.0, baseFreqL + freq_osc_term_l)
-    right_freq_array = np.maximum(0.0, baseFreqR + freq_osc_term_r)
+            white = np.random.standard_normal(full_n)
+            S = np.fft.rfft(white)
+            freqs = np.arange(S.size) * (sample_rate / full_n)
+            gauss = np.exp(-0.5 * ((freqs - baseF) / glitchFocusWidth) ** glitchFocusExp)
+            shaped = np.fft.irfft(S * gauss, n=full_n)
+            shaped /= (np.max(np.abs(shaped)) + 1e-16)
+            ramp = np.linspace(0.0, 1.0, full_n, endpoint=True)
+            burst = (shaped * ramp * glitchNoiseLevel).astype(np.float32)
 
-    # --- Phase Calculation (Integrates the instantaneous frequency) ---
-    # Calculate time delta between samples for integration
-    if N > 1: dt = np.diff(t_abs, prepend=t_abs[0]) # More robust dt calculation
-    elif N == 1: dt = np.array([duration])
-    else: dt = np.array([])
+            positions.append(i0)
+            bursts.append(burst)
 
-    if N > 0:
-      # Use cumulative sum for phase integration: phase = integral(2*pi*frequency(t) dt)
-      phase_left_base = np.cumsum(2 * np.pi * left_freq_array * dt)
-      phase_right_base = np.cumsum(2 * np.pi * right_freq_array * dt)
+    if bursts:
+        pos_arr   = np.array(positions, dtype=np.int32)
+        burst_arr = np.concatenate(bursts)
     else:
-      phase_left_base = np.array([])
-      phase_right_base = np.array([])
+        pos_arr   = np.empty(0, dtype=np.int32)
+        burst_arr = np.empty(0, dtype=np.float32)
 
-    # Add starting phase and phase offset oscillation (if any)
-    phase_osc_term = (phaseOscRange_rad / 2.0) * np.sin(2 * np.pi * phaseOscFreq * t_abs)
-    phase_left_total = phase_left_base + startPhaseL_rad - phase_osc_term
-    phase_right_total = phase_right_base + startPhaseR_rad + phase_osc_term
+    return _binaural_beat_core(
+        N,
+        float(duration),
+        float(sample_rate),
+        ampL, ampR, baseF, beatF, force_mono,
+        startL, startR, pOF, pOR,
+        aODL, aOFL, aODR, aOFR,
+        fORL, fOFL, fORR, fOFR,
+        pos_arr, burst_arr
+    )
 
-    # --- Independent Amplitude Modulation (Tremolo) ---
-    # Amplitude LFOs: vary between (1 - depth) and 1 ? No, previous was better
-    # Corrected LFO: (1.0 - depth / 2.0) + (depth / 2.0) * sin -> range [1-depth, 1] Seems wrong
-    # Let's try Amplitude * (1 + depth * sin): Range [Amp*(1-depth), Amp*(1+depth)] centered at Amp. Needs clipping/scaling.
-    # Let's stick to the previous formula: multiplies base signal by a value in [1-depth, 1]
-    # Correct calculation: Modulator varies from 0 to 1: (1 + sin)/2
-    # Modulated Amplitude = BaseAmp * (1 - Depth * Modulator) = BaseAmp * (1 - Depth * (1+sin)/2 )
-    # This ranges from BaseAmp*(1-Depth) to BaseAmp*(1 - Depth*0) = BaseAmp
-    amp_mod_l = (1.0 - ampOscDepthL * (0.5 * (1 + np.sin(2 * np.pi * ampOscFreqL * t_abs))))
-    amp_mod_r = (1.0 - ampOscDepthR * (0.5 * (1 + np.sin(2 * np.pi * ampOscFreqR * t_abs))))
+@numba.njit(parallel=True, fastmath=True)
+def _binaural_beat_core(
+    N, duration, sample_rate,
+    ampL, ampR, baseF, beatF, force_mono,
+    startL, startR, pOF, pOR,
+    aODL, aOFL, aODR, aOFR,
+    fORL, fOFL, fORR, fOFR,
+    pos,    # int32[:] start indices
+    burst   # float32[:] concatenated glitch samples
+):
+    # time vector
+    t = np.empty(N, dtype=np.float64)
+    dt = duration / N if N > 0 else 0.0
+    for i in prange(N):
+        t[i] = i * dt
 
-    # --- Signal Generation ---
-    s_left_base = np.sin(phase_left_total)
-    s_right_base = np.sin(phase_right_total)
+    # instantaneous frequencies
+    halfB = beatF / 2.0
+    fL_base = baseF - halfB
+    fR_base = baseF + halfB
+    instL = np.empty(N, dtype=np.float64)
+    instR = np.empty(N, dtype=np.float64)
+    for i in prange(N):
+        vibL = (fORL/2.0) * np.sin(2*np.pi*fOFL*t[i])
+        vibR = (fORR/2.0) * np.sin(2*np.pi*fOFR*t[i])
+        instL[i] = max(0.0, fL_base + vibL)
+        instR[i] = max(0.0, fR_base + vibR)
+    if force_mono or beatF == 0.0:
+        for i in prange(N):
+            instL[i] = baseF
+            instR[i] = baseF
 
-    # Apply independent amplitude modulation AND independent base amplitude
-    s_left = s_left_base * amp_mod_l * ampL
-    s_right = s_right_base * amp_mod_r * ampR
+    # phase accumulation (sequential)
+    phL = np.empty(N, dtype=np.float64)
+    phR = np.empty(N, dtype=np.float64)
+    curL = startL
+    curR = startR
+    for i in range(N):
+        curL += 2 * np.pi * instL[i] * dt
+        curR += 2 * np.pi * instR[i] * dt
+        phL[i] = curL
+        phR[i] = curR
 
-    # Combine into stereo signal
-    audio = np.column_stack((s_left, s_right)).astype(np.float32)
-    return audio
+    # phase modulation
+    if pOF != 0.0 or pOR != 0.0:
+        for i in prange(N):
+            dphi = (pOR/2.0) * np.sin(2*np.pi*pOF*t[i])
+            phL[i] -= dphi
+            phR[i] += dphi
 
-def monaural_beat_stereo_amps(duration, sample_rate=44100, **params):
-    """
-    Generates a potentially stereo beat signal by summing two tones with
-    independent amplitude control for each tone in each channel.
+    # amplitude envelopes
+    envL = np.empty(N, dtype=np.float64)
+    envR = np.empty(N, dtype=np.float64)
+    for i in prange(N):
+        envL[i] = 1.0 - aODL * (0.5*(1.0 + np.sin(2*np.pi*aOFL*t[i])))
+        envR[i] = 1.0 - aODR * (0.5*(1.0 + np.sin(2*np.pi*aOFR*t[i])))
 
-    This allows for creating variations beyond a strict monaural beat
-    (where L and R channels are identical). Amplitude modulation (tremolo)
-    can still be applied to the resulting signal in each channel.
+    # generate stereo signal
+    out = np.empty((N,2), dtype=np.float32)
+    for i in prange(N):
+        out[i,0] = np.float32(np.sin(phL[i]) * envL[i] * ampL)
+        out[i,1] = np.float32(np.sin(phR[i]) * envR[i] * ampR)
 
-    Args:
-        duration (float): Duration of the signal in seconds.
-        sample_rate (int): Sampling rate in Hz.
-        **params: Dictionary of parameters:
-            amp_lower_L (float): Amplitude (0 to 1) for the lower frequency tone
-                                 (baseFreq - beatFreq/2) in the Left channel. Default: 0.5.
-            amp_upper_L (float): Amplitude (0 to 1) for the upper frequency tone
-                                 (baseFreq + beatFreq/2) in the Left channel. Default: 0.5.
-            amp_lower_R (float): Amplitude (0 to 1) for the lower frequency tone
-                                 (baseFreq - beatFreq/2) in the Right channel. Default: 0.5.
-            amp_upper_R (float): Amplitude (0 to 1) for the upper frequency tone
-                                 (baseFreq + beatFreq/2) in the Right channel. Default: 0.5.
-            baseFreq (float): Center frequency in Hz. Default: 200.0.
-            beatFreq (float): Beat frequency in Hz (difference between the two tones). Default: 4.0.
-            startPhaseL (float): Starting phase for the lower frequency tone in radians. Default: 0.0.
-            startPhaseR (float): Starting phase for the upper frequency tone in radians. Default: 0.0.
-            phaseOscFreq (float): Frequency of phase offset oscillation in Hz. Default: 0.0.
-            phaseOscRange (float): Range of phase offset oscillation in radians. Default: 0.0.
-            ampOscDepth (float): Depth of amplitude modulation (tremolo) applied to
-                                 the summed signal in each channel (0 to 2). Default: 0.0.
-            ampOscFreq (float): Frequency of amplitude modulation (tremolo) in Hz. Default: 0.0.
+    # add glitch bursts
+    num_bursts = pos.shape[0]
+    if num_bursts > 0:
+        L = burst.size // num_bursts
+        idx = 0
+        for b in range(num_bursts):
+            start = pos[b]
+            for j in range(L):
+                p = start + j
+                if p < N:
+                    v = burst[idx + j]
+                    out[p,0] += v
+                    out[p,1] += v
+            idx += L
 
-    Returns:
-        np.ndarray: Stereo audio signal (N, 2) as float32.
-    """
-    # --- Get Parameters ---
-    # Amplitudes for each tone component in each channel
-    amp_lower_L = float(params.get('amp_lower_L', 0.5))
-    amp_upper_L = float(params.get('amp_upper_L', 0.5))
-    amp_lower_R = float(params.get('amp_lower_R', 0.5))
-    amp_upper_R = float(params.get('amp_upper_R', 0.5))
+    return out
 
-    # Frequency and Phase parameters
-    baseFreq = float(params.get('baseFreq', 200.0))
-    beatFreq = float(params.get('beatFreq', 4.0))
-    startPhaseLower_rad = float(params.get('startPhaseL', 0.0)) # Renamed for clarity
-    startPhaseUpper_rad = float(params.get('startPhaseR', 0.0)) # Renamed for clarity
-    phaseOscFreq = float(params.get('phaseOscFreq', 0.0))
-    phaseOscRange_rad = float(params.get('phaseOscRange', 0.0))
-
-    # Amplitude Modulation (Tremolo) parameters
-    ampOscDepth = float(params.get('ampOscDepth', 0.0))
-    ampOscFreq = float(params.get('ampOscFreq', 0.0))
-
-    # --- Basic Setup ---
-    N = int(sample_rate * duration)
-    if N <= 0: return np.zeros((0, 2), dtype=np.float32)
-    t_abs = np.linspace(0, duration, N, endpoint=False)
-
-    # --- Frequency Calculation ---
-    # Ensure frequencies are non-negative
-    freq_lower = np.maximum(0.0, baseFreq - beatFreq / 2.0)
-    freq_upper = np.maximum(0.0, baseFreq + beatFreq / 2.0)
-    freq_lower_array = np.full(N, freq_lower)
-    freq_upper_array = np.full(N, freq_upper)
-
-    # --- Phase Calculation ---
-    # Calculate instantaneous phase for each frequency component
-    if N > 1:
-        dt = np.diff(t_abs, prepend=t_abs[0]) # Time difference between samples
-    elif N == 1:
-        dt = np.array([duration])
-    else: # N == 0
-        dt = np.array([])
-
-    phase_lower_base = np.cumsum(2 * np.pi * freq_lower_array * dt)
-    phase_upper_base = np.cumsum(2 * np.pi * freq_upper_array * dt)
-
-    # Optional phase oscillation between the two tones
-    phase_osc_term = (phaseOscRange_rad / 2.0) * np.sin(2 * np.pi * phaseOscFreq * t_abs)
-
-    # Total phase for each tone, including start phase and oscillation
-    phase_lower_total = phase_lower_base + startPhaseLower_rad - phase_osc_term
-    phase_upper_total = phase_upper_base + startPhaseUpper_rad + phase_osc_term
-
-    # --- Generate Individual Sine Waves ---
-    s_lower = np.sin(phase_lower_total)
-    s_upper = np.sin(phase_upper_total)
-
-    # --- Apply Individual Amplitudes and Sum for Each Channel ---
-    # Note: No division by 2 here, as amplitudes control the mix.
-    s_L = (s_lower * amp_lower_L) + (s_upper * amp_upper_L)
-    s_R = (s_lower * amp_lower_R) + (s_upper * amp_upper_R)
-
-    # --- Amplitude Modulation (Tremolo) ---
-    # Applied to the combined signal in each channel
-    # LFO form: (1 - depth/2 + (depth/2)*sin) ensures max amp is 1 when depth=0
-    # and max amp is 1.5 when depth=1, max amp is 2 when depth=2.
-    # Clamp depth to avoid negative modulation values.
-    clamped_ampOscDepth = np.clip(ampOscDepth, 0.0, 2.0)
-    amp_mod = (1.0 - clamped_ampOscDepth / 2.0) + \
-              (clamped_ampOscDepth / 2.0) * np.sin(2 * np.pi * ampOscFreq * t_abs)
-
-    # Apply modulation to each channel
-    s_L_mod = s_L * amp_mod
-    s_R_mod = s_R * amp_mod
-
-    # --- Create Stereo Output ---
-    # Combine left and right channels
-    # Clip final signal to [-1, 1] to prevent potential clipping issues
-    # due to summing and modulation.
-    audio_L = np.clip(s_L_mod, -1.0, 1.0)
-    audio_R = np.clip(s_R_mod, -1.0, 1.0)
-
-    audio = np.column_stack((audio_L, audio_R)).astype(np.float32)
-
-    return audio
+# Transition BB version
 
 def binaural_beat_transition(duration, sample_rate=44100, **params):
-    """
-    Generates a binaural beat with linearly transitioning parameters,
-    including independent L/R base amplitude, phase modulation,
-    and amplitude modulation.
-    """
-    # --- Get Start/End Parameters ---
-    startAmpL = float(params.get('startAmpL', 0.5))
-    endAmpL = float(params.get('endAmpL', startAmpL))
-    startAmpR = float(params.get('startAmpR', 0.5))
-    endAmpR = float(params.get('endAmpR', startAmpR))
+    # --- Unpack start/end parameters ---
+    startAmpL     = float(params.get('startAmpL',     params.get('ampL',       0.5)))
+    endAmpL       = float(params.get('endAmpL',       startAmpL))
+    startAmpR     = float(params.get('startAmpR',     params.get('ampR',       0.5)))
+    endAmpR       = float(params.get('endAmpR',       startAmpR))
+    startBaseF    = float(params.get('startBaseFreq', params.get('baseFreq', 200.0)))
+    endBaseF      = float(params.get('endBaseFreq',   startBaseF))
+    startBeatF    = float(params.get('startBeatFreq', params.get('beatFreq',   4.0)))
+    endBeatF      = float(params.get('endBeatFreq',   startBeatF))
 
-    startBaseFreq = float(params.get('startBaseFreq', 200.0))
-    endBaseFreq = float(params.get('endBaseFreq', startBaseFreq))
-    startBeatFreq = float(params.get('startBeatFreq', 4.0))
-    endBeatFreq = float(params.get('endBeatFreq', startBeatFreq))
+    N = int(duration * sample_rate)
+    return _binaural_beat_transition_core(
+        N, float(duration), float(sample_rate),
+        startAmpL, endAmpL, startAmpR, endAmpR,
+        startBaseF, endBaseF, startBeatF, endBeatF
+    )
 
-    startStartPhaseL = float(params.get('startStartPhaseL', 0.0))
-    endStartPhaseL = float(params.get('endStartPhaseL', startStartPhaseL))
-    startStartPhaseR = float(params.get('startStartPhaseR', 0.0))
-    endStartPhaseR = float(params.get('endStartPhaseR', startStartPhaseR))
+@numba.njit(parallel=True, fastmath=True)
+def _binaural_beat_transition_core(
+    N, duration, sample_rate,
+    startAmpL, endAmpL, startAmpR, endAmpR,
+    startBaseF, endBaseF, startBeatF, endBeatF
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
 
-    startPhaseOscFreq = float(params.get('startPhaseOscFreq', 0.0))
-    endPhaseOscFreq = float(params.get('endPhaseOscFreq', startPhaseOscFreq))
-    startPhaseOscRange = float(params.get('startPhaseOscRange', 0.0))
-    endPhaseOscRange = float(params.get('endPhaseOscRange', startPhaseOscRange))
+    dt = duration / N
+    # Preallocate
+    ampL = np.empty(N, np.float64)
+    ampR = np.empty(N, np.float64)
+    instL = np.empty(N, np.float64)
+    instR = np.empty(N, np.float64)
 
-    startAmpOscDepthL = float(params.get('startAmpOscDepthL', 0.0))
-    endAmpOscDepthL = float(params.get('endAmpOscDepthL', startAmpOscDepthL))
-    startAmpOscFreqL = float(params.get('startAmpOscFreqL', 0.0))
-    endAmpOscFreqL = float(params.get('endAmpOscFreqL', startAmpOscFreqL))
+    # Linear interpolation of parameters + inst freq
+    for i in prange(N):
+        alpha = i / (N - 1) if N > 1 else 0.0
+        aL = startAmpL + (endAmpL - startAmpL) * alpha
+        aR = startAmpR + (endAmpR - startAmpR) * alpha
+        baseF = startBaseF + (endBaseF - startBaseF) * alpha
+        beatF = startBeatF + (endBeatF - startBeatF) * alpha
+        ampL[i] = aL
+        ampR[i] = aR
+        half = beatF * 0.5
+        instL[i] = baseF - half
+        instR[i] = baseF + half
 
-    startAmpOscDepthR = float(params.get('startAmpOscDepthR', 0.0))
-    endAmpOscDepthR = float(params.get('endAmpOscDepthR', startAmpOscDepthR))
-    startAmpOscFreqR = float(params.get('startAmpOscFreqR', 0.0))
-    endAmpOscFreqR = float(params.get('endAmpOscFreqR', startAmpOscFreqR))
+    # clamp non-negative freqs
+    for i in prange(N):
+        if instL[i] < 0.0: instL[i] = 0.0
+        if instR[i] < 0.0: instR[i] = 0.0
 
-    # --- Basic Setup ---
-    N = int(sample_rate * duration)
-    if N <= 0: return np.zeros((0, 2))
-    t_abs = np.linspace(0, duration, N, endpoint=False)
+    # phase accumulation
+    phL = np.empty(N, np.float64)
+    phR = np.empty(N, np.float64)
+    curL = 0.0
+    curR = 0.0
+    for i in range(N):
+        curL += 2.0 * np.pi * instL[i] * dt
+        curR += 2.0 * np.pi * instR[i] * dt
+        phL[i] = curL
+        phR[i] = curR
 
-    # --- Interpolate Parameters ---
-    ampL_array = np.linspace(startAmpL, endAmpL, N) # Base Amp L
-    ampR_array = np.linspace(startAmpR, endAmpR, N) # Base Amp R
-    base_freq_array = np.linspace(startBaseFreq, endBaseFreq, N)
-    beat_freq_array = np.linspace(startBeatFreq, endBeatFreq, N)
-    startPhaseL_array = np.linspace(startStartPhaseL, endStartPhaseL, N) # Initial phase offset for L
-    startPhaseR_array = np.linspace(startStartPhaseR, endStartPhaseR, N) # Initial phase offset for R
-    phaseOscFreq_array = np.linspace(startPhaseOscFreq, endPhaseOscFreq, N)
-    phaseOscRange_array = np.linspace(startPhaseOscRange, endPhaseOscRange, N)
-    ampOscDepthL_array = np.linspace(startAmpOscDepthL, endAmpOscDepthL, N)
-    ampOscFreqL_array = np.linspace(startAmpOscFreqL, endAmpOscFreqL, N)
-    ampOscDepthR_array = np.linspace(startAmpOscDepthR, endAmpOscDepthR, N)
-    ampOscFreqR_array = np.linspace(startAmpOscFreqR, endAmpOscFreqR, N)
+    # generate output
+    out = np.empty((N, 2), dtype=np.float32)
+    for i in prange(N):
+        out[i, 0] = np.float32(np.sin(phL[i]) * ampL[i])
+        out[i, 1] = np.float32(np.sin(phR[i]) * ampR[i])
 
-    # --- Frequency Calculation (Time-Varying) ---
-    half_beat_freq_array = beat_freq_array / 2.0
-    left_freq_array = np.maximum(0.0, base_freq_array - half_beat_freq_array)
-    right_freq_array = np.maximum(0.0, base_freq_array + half_beat_freq_array)
+    return out
 
-    # --- Phase Calculation (Time-Varying) ---
-    if N > 1: dt = np.diff(t_abs, prepend=t_abs[0])
-    elif N == 1: dt = np.array([duration])
-    else: dt = np.array([])
 
-    # Integrate instantaneous frequency for base phase
-    phase_left_base = np.cumsum(2 * np.pi * left_freq_array * dt)
-    phase_right_base = np.cumsum(2 * np.pi * right_freq_array * dt)
+def monaural_beat_stereo_amps(duration, sample_rate=44100, **params):
+    # --- Unpack synthesis parameters ---
+    amp_l_L   = float(params.get('amp_lower_L', 0.5))
+    amp_u_L   = float(params.get('amp_upper_L', 0.5))
+    amp_l_R   = float(params.get('amp_lower_R', 0.5))
+    amp_u_R   = float(params.get('amp_upper_R', 0.5))
+    baseF     = float(params.get('baseFreq',    200.0))
+    beatF     = float(params.get('beatFreq',      4.0))
+    start_l   = float(params.get('startPhaseL',  0.0))
+    start_u   = float(params.get('startPhaseR',  0.0))
+    phiF      = float(params.get('phaseOscFreq', 0.0))
+    phiR      = float(params.get('phaseOscRange',0.0))
+    aOD       = float(params.get('ampOscDepth',  0.0))
+    aOF       = float(params.get('ampOscFreq',   0.0))
 
-    # Integrate instantaneous phase oscillation frequency for its phase argument
-    phase_osc_phase_arg = np.cumsum(2 * np.pi * phaseOscFreq_array * dt)
-    phase_osc_term = (phaseOscRange_array / 2.0) * np.sin(phase_osc_phase_arg)
+    N = int(duration * sample_rate)
+    return _monaural_beat_stereo_amps_core(
+        N,
+        float(duration),
+        float(sample_rate),
+        amp_l_L, amp_u_L, amp_l_R, amp_u_R,
+        baseF, beatF,
+        start_l, start_u,
+        phiF, phiR,
+        aOD, aOF
+    )
 
-    # Combine: base phase + initial offset + oscillation term
-    phase_left_total = phase_left_base + startPhaseL_array - phase_osc_term
-    phase_right_total = phase_right_base + startPhaseR_array + phase_osc_term
+@numba.njit(parallel=True, fastmath=True)
+def _monaural_beat_stereo_amps_core(
+    N, duration, sample_rate,
+    amp_l_L, amp_u_L, amp_l_R, amp_u_R,
+    baseF, beatF,
+    start_l, start_u,
+    phiF, phiR,
+    aOD, aOF
+):
+    # time base
+    t = np.empty(N, dtype=np.float64)
+    dt = duration / N if N > 0 else 0.0
+    for i in prange(N):
+        t[i] = i * dt
 
-    # --- Independent Amplitude Modulation (Time-Varying) ---
-    # Integrate instantaneous amp oscillation frequency for LFO phase arguments
-    amp_osc_phase_arg_l = np.cumsum(2 * np.pi * ampOscFreqL_array * dt)
-    amp_osc_phase_arg_r = np.cumsum(2 * np.pi * ampOscFreqR_array * dt)
+    # carrier freqs
+    halfB = beatF / 2.0
+    f_l = max(0.0, baseF - halfB)
+    f_u = max(0.0, baseF + halfB)
 
-    # Calculate time-varying LFO using the simpler form
-    amp_mod_l = (1.0 - ampOscDepthL_array / 2.0) + (ampOscDepthL_array / 2.0) * np.sin(amp_osc_phase_arg_l)
-    amp_mod_r = (1.0 - ampOscDepthR_array / 2.0) + (ampOscDepthR_array / 2.0) * np.sin(amp_osc_phase_arg_r)
+    # phase accumulation (sequential)
+    ph_l = np.empty(N, dtype=np.float64)
+    ph_u = np.empty(N, dtype=np.float64)
+    cur_l = start_l
+    cur_u = start_u
+    for i in range(N):
+        cur_l += 2 * np.pi * f_l * dt
+        cur_u += 2 * np.pi * f_u * dt
+        ph_l[i] = cur_l
+        ph_u[i] = cur_u
 
-    # --- Signal Generation ---
-    s_left_base = np.sin(phase_left_total)
-    s_right_base = np.sin(phase_right_total)
+    # phase modulation
+    if phiF != 0.0 or phiR != 0.0:
+        for i in prange(N):
+            dphi = (phiR/2.0) * np.sin(2*np.pi*phiF*t[i])
+            ph_l[i] -= dphi
+            ph_u[i] += dphi
 
-    # Apply independent amplitude modulation AND independent interpolated base amplitude
-    s_left = s_left_base * amp_mod_l * ampL_array
-    s_right = s_right_base * amp_mod_r * ampR_array
+    # generate sine waves
+    s_l = np.empty(N, dtype=np.float64)
+    s_u = np.empty(N, dtype=np.float64)
+    for i in prange(N):
+        s_l[i] = np.sin(ph_l[i])
+        s_u[i] = np.sin(ph_u[i])
 
-    # Combine into stereo signal
-    audio = np.column_stack((s_left, s_right)).astype(np.float32)
-    return audio
+    # mix into channels
+    mix_L = np.empty(N, dtype=np.float64)
+    mix_R = np.empty(N, dtype=np.float64)
+    for i in prange(N):
+        mix_L[i] = s_l[i] * amp_l_L + s_u[i] * amp_u_L
+        mix_R[i] = s_l[i] * amp_l_R + s_u[i] * amp_u_R
+
+    # amplitude modulation
+    depth = aOD
+    if depth < 0.0: depth = 0.0
+    if depth > 2.0: depth = 2.0
+
+    if depth != 0.0 and aOF != 0.0:
+        for i in prange(N):
+            m = (1.0 - depth/2.0) + (depth/2.0)*np.sin(2*np.pi*aOF*t[i])
+            mix_L[i] *= m
+            mix_R[i] *= m
+
+    # build output and clip
+    out = np.empty((N,2), dtype=np.float32)
+    for i in prange(N):
+        l = mix_L[i]
+        if l > 1.0: l = 1.0
+        elif l < -1.0: l = -1.0
+        r = mix_R[i]
+        if r > 1.0: r = 1.0
+        elif r < -1.0: r = -1.0
+        out[i,0] = np.float32(l)
+        out[i,1] = np.float32(r)
+
+    return out    
+
+# Transition Version MB 
+
+def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, **params):
+    # --- Unpack start/end parameters ---
+    s_ll = float(params.get('start_amp_lower_L', params.get('amp_lower_L', 0.5)))
+    e_ll = float(params.get('end_amp_lower_L',   s_ll))
+    s_ul = float(params.get('start_amp_upper_L', params.get('amp_upper_L', 0.5)))
+    e_ul = float(params.get('end_amp_upper_L',   s_ul))
+    s_lr = float(params.get('start_amp_lower_R', params.get('amp_lower_R', 0.5)))
+    e_lr = float(params.get('end_amp_lower_R',   s_lr))
+    s_ur = float(params.get('start_amp_upper_R', params.get('amp_upper_R', 0.5)))
+    e_ur = float(params.get('end_amp_upper_R',   s_ur))
+    sBF  = float(params.get('startBaseFreq',     params.get('baseFreq',    200.0)))
+    eBF  = float(params.get('endBaseFreq',       sBF))
+    sBt  = float(params.get('startBeatFreq',     params.get('beatFreq',      4.0)))
+    eBt  = float(params.get('endBeatFreq',       sBt))
+
+    N = int(duration * sample_rate)
+    return _monaural_beat_stereo_amps_transition_core(
+        N, float(duration), float(sample_rate),
+        s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,
+        sBF, eBF, sBt, eBt
+    )
+
+@numba.njit(parallel=True, fastmath=True)
+def _monaural_beat_stereo_amps_transition_core(
+    N, duration, sample_rate,
+    s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,
+    sBF, eBF, sBt, eBt
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    dt = duration / N
+    # Preallocate arrays
+    t = np.empty(N, np.float64)
+    ll = np.empty(N, np.float64)
+    ul = np.empty(N, np.float64)
+    lr = np.empty(N, np.float64)
+    ur = np.empty(N, np.float64)
+    f_lower = np.empty(N, np.float64)
+    f_upper = np.empty(N, np.float64)
+
+    # Time and parameter interpolation
+    for i in prange(N):
+        t[i] = i * dt
+        alpha = i / (N - 1) if N > 1 else 0.0
+        ll[i] = s_ll + (e_ll - s_ll) * alpha
+        ul[i] = s_ul + (e_ul - s_ul) * alpha
+        lr[i] = s_lr + (e_lr - s_lr) * alpha
+        ur[i] = s_ur + (e_ur - s_ur) * alpha
+        baseF = sBF + (eBF - sBF) * alpha
+        beatF = sBt + (eBt - sBt) * alpha
+        half    = beatF * 0.5
+        f_lower[i] = baseF - half
+        f_upper[i] = baseF + half
+
+    # clamp non-negative freqs
+    for i in prange(N):
+        if f_lower[i] < 0.0: f_lower[i] = 0.0
+        if f_upper[i] < 0.0: f_upper[i] = 0.0
+
+    # phase accumulation
+    ph_l = np.empty(N, np.float64)
+    ph_u = np.empty(N, np.float64)
+    cur_l = 0.0
+    cur_u = 0.0
+    for i in range(N):
+        cur_l += 2.0 * np.pi * f_lower[i] * dt
+        cur_u += 2.0 * np.pi * f_upper[i] * dt
+        ph_l[i] = cur_l
+        ph_u[i] = cur_u
+
+    # generate sine carriers
+    s_l = np.sin(ph_l)
+    s_u = np.sin(ph_u)
+
+    # mix into stereo
+    out = np.empty((N, 2), dtype=np.float32)
+    for i in prange(N):
+        l = s_l[i] * ll[i] + s_u[i] * ul[i]
+        r = s_l[i] * lr[i] + s_u[i] * ur[i]
+        # clamp
+        if l > 1.0: l = 1.0
+        elif l < -1.0: l = -1.0
+        if r > 1.0: r = 1.0
+        elif r < -1.0: r = -1.0
+        out[i, 0] = np.float32(l)
+        out[i, 1] = np.float32(r)
+
+    return out
+
 
 
 def isochronic_tone(duration, sample_rate=44100, **params):
@@ -1985,9 +2088,9 @@ _EXCLUDED_FUNCTION_NAMES = [
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
-    'load_track_from_json', 'save_track_to_json', 'generate_audio', 'get_synth_params',
-    'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous', 'butter',
-    'lfilter', 'write', 'ensure_stereo',
+    'load_track_from_json', 'save_track_to_json', 'generate_wav', 'get_synth_params',
+    'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
+    'butter', 'lfilter', 'write', 'ensure_stereo',
     # Standard library functions that might be imported
     'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
@@ -1997,7 +2100,7 @@ try:
     current_module = __import__(__name__)
     for name, obj in inspect.getmembers(current_module):
         if inspect.isfunction(obj) and name not in _EXCLUDED_FUNCTION_NAMES and not name.startswith('_'):
-            # Further check if the function is defined in *this* module, not imported
+             # Further check if the function is defined in *this* module, not imported
             if inspect.getmodule(obj) == current_module:
                 SYNTH_FUNCTIONS[name] = obj
 except Exception as e:
@@ -2104,12 +2207,11 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
             # Pass duration and sample_rate if needed by envelope func
             if 'duration' not in cleaned_env_params: cleaned_env_params['duration'] = duration
             if 'sample_rate' not in cleaned_env_params: cleaned_env_params['sample_rate'] = sample_rate
-            
-            print(f"Debugging: cleaned_env_params = {cleaned_env_params}")
+
             if env_type == "adsr":
                 env = adsr_envelope(t_rel, **cleaned_env_params)
             elif env_type == "linen":
-                 env = linen_envelope(t_rel, cleaned_env_params['attack'], cleaned_env_params['release'])
+                 env = linen_envelope(t_rel, **cleaned_env_params)
             elif env_type == "linear_fade":
                  # This function uses duration/sr internally, ensure they are passed if needed
                  required = ['fade_duration', 'start_amp', 'end_amp']
@@ -2422,13 +2524,10 @@ def save_track_to_json(track_data, filepath):
 # Main Generation Function
 # -----------------------------------------------------------------------------
 
-def generate_audio(track_data, output_format:str, output_filename=None):
-    """Generates and saves the audio file based on the track_data."""
-    """
-    output_format: "wav", "flac", or "mp3"
-    """
+def generate_wav(track_data, output_filename=None):
+    """Generates and saves the WAV file based on the track_data."""
     if not track_data:
-        print(f"Error: Cannot generate {output_format.upper()}, track data is missing.")
+        print("Error: Cannot generate WAV, track data is missing.")
         return False
 
     global_settings = track_data.get("global_settings", {})
@@ -2439,25 +2538,23 @@ def generate_audio(track_data, output_format:str, output_filename=None):
          print(f"Error: Invalid global settings (sample_rate or crossfade_duration): {e}")
          return False
 
-    output_filename = output_filename or global_settings.get("output_filename", f"generated_track.{output_format.lower()}")
+    output_filename = output_filename or global_settings.get("output_filename", "generated_track.wav")
     if not output_filename or not isinstance(output_filename, str):
          print(f"Error: Invalid output filename: {output_filename}")
          return False
-
-    output_filename = output_filename.replace(f".{output_format.lower()}", "") + f".{output_format.lower()}" # Ensure .wav extension
 
     # Ensure output directory exists before assembly
     output_dir = os.path.dirname(output_filename)
     if output_dir and not os.path.exists(output_dir):
         try:
             os.makedirs(output_dir)
-            print(f"Created output directory for audio: {output_dir}")
+            print(f"Created output directory for WAV: {output_dir}")
         except OSError as e:
             print(f"Error creating output directory '{output_dir}': {e}")
             return False
 
 
-    print(f"\n--- Starting {output_format.upper()} Generation ---")
+    print(f"\n--- Starting WAV Generation ---")
     print(f"Sample Rate: {sample_rate} Hz")
     print(f"Crossfade Duration: {crossfade_duration} s")
     print(f"Output File: {output_filename}")
@@ -2474,7 +2571,7 @@ def generate_audio(track_data, output_format:str, output_filename=None):
 
     if max_abs_val > 1e-9: # Avoid division by zero for silent tracks
         # --- *** CHANGED: Increase target level *** ---
-        target_level = 0.2 # Normalize closer to full scale (e.g., -0.4 dBFS)
+        target_level = 0.1 # Normalize closer to full scale (e.g., -0.4 dBFS)
         # --- *** End Change *** ---
         scaling_factor = target_level / max_abs_val
         print(f"Normalizing final track (peak value: {max_abs_val:.4f}) to target level: {target_level}")
@@ -2498,28 +2595,14 @@ def generate_audio(track_data, output_format:str, output_filename=None):
 
     # Write WAV file
     try:
-        if output_format.lower() == "wav":
-            write(output_filename, sample_rate, track_int16)
-        elif output_format.lower() == "flac":
-            sf.write(output_filename, track_int16, sample_rate, format='FLAC')
-        elif output_format.lower() == "mp3":
-            # Convert to MP3 using pydub
-            audio_segment = AudioSegment(
-            track_int16.tobytes(),
-            frame_rate=sample_rate,
-            sample_width=2, # 16-bit PCM = 2 bytes per sample
-            channels=2
-            )
-            audio_segment.export(output_filename, format="mp3", bitrate="320k")
-        
-        print(f"--- {output_format.upper()} Generation Complete ---")
+        write(output_filename, sample_rate, track_int16)
+        print(f"--- WAV Generation Complete ---")
         print(f"Track successfully written to {output_filename}")
         return True
     except Exception as e:
-        print(f"Error writing {output_format.upper()} file {output_filename}:")
+        print(f"Error writing WAV file {output_filename}:")
         traceback.print_exc()
         return False
-
 # -----------------------------------------------------------------------------
 # Example Usage (if script is run directly)
 # -----------------------------------------------------------------------------
