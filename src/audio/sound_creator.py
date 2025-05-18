@@ -1,4 +1,5 @@
 import numpy as np
+import slab
 from scipy.signal import butter, lfilter
 from scipy.io.wavfile import write
 import math
@@ -1420,10 +1421,10 @@ def binaural_beat(duration, sample_rate=44100, **params):
     baseF = float(params.get('baseFreq', 200.0))
     beatF = float(params.get('beatFreq', 4.0))
     force_mono = bool(params.get('forceMono', False))
-    startL = float(params.get('startPhaseL', 0.0))
-    startR = float(params.get('startPhaseR', 0.0))
+    startL = float(params.get('startPhaseL', 0.0)) # in radians
+    startR = float(params.get('startPhaseR', 0.0)) # in radians
     pOF = float(params.get('phaseOscFreq', 0.0))
-    pOR = float(params.get('phaseOscRange', 0.0))
+    pOR = float(params.get('phaseOscRange', 0.0)) # in radians
     aODL = float(params.get('ampOscDepthL', 0.0))
     aOFL = float(params.get('ampOscFreqL', 0.0))
     aODR = float(params.get('ampOscDepthR', 0.0))
@@ -1433,40 +1434,58 @@ def binaural_beat(duration, sample_rate=44100, **params):
     fORR = float(params.get('freqOscRangeR', 0.0))
     fOFR = float(params.get('freqOscFreqR', 0.0))
 
+    # --- NEW: Unpack amplitude oscillation phase offset parameters ---
+    # These are expected to be in radians
+    ampOscPhaseOffsetL = float(params.get('ampOscPhaseOffsetL', 0.0))
+    ampOscPhaseOffsetR = float(params.get('ampOscPhaseOffsetR', 0.0))
+
     # --- Unpack glitch parameters ---
     glitchInterval   = float(params.get('glitchInterval',   0.0)) # 3.5
     glitchDur        = float(params.get('glitchDur',        0.0)) # 0.5
     glitchNoiseLevel = float(params.get('glitchNoiseLevel', 0.0)) # 0.25ish
-    glitchFocusWidth = float(params.get('glitchFocusWidth', 000.0)) # 100 - 200
-    glitchFocusExp   = float(params.get('glitchFocusExp',     0.0)) # 2-4
+    glitchFocusWidth = float(params.get('glitchFocusWidth', 0.0)) # 100 - 200
+    glitchFocusExp   = float(params.get('glitchFocusExp',   0.0)) # 2-4
 
     N = int(duration * sample_rate)
 
     # --- Precompute glitch bursts in NumPy ---
     positions = []
     bursts = []
-    if glitchInterval > 0 and glitchDur > 0 and glitchNoiseLevel > 0:
+    if glitchInterval > 0 and glitchDur > 0 and glitchNoiseLevel > 0 and N > 0: # Added N > 0 check
         full_n = int(glitchDur * sample_rate)
-        repeats = int(duration / glitchInterval)
-        for k in range(1, repeats + 1):
-            t_end   = k * glitchInterval
-            t_start = max(0.0, t_end - glitchDur)
-            i0 = int(t_start * sample_rate)
-            i1 = i0 + full_n
-            if i1 > N:
-                continue
+        if full_n > 0: # Ensure full_n is positive
+            repeats = int(duration / glitchInterval)
+            for k in range(1, repeats + 1):
+                t_end   = k * glitchInterval
+                t_start = max(0.0, t_end - glitchDur)
+                i0 = int(t_start * sample_rate)
+                i1 = i0 + full_n
+                if i1 > N:
+                    continue
 
-            white = np.random.standard_normal(full_n)
-            S = np.fft.rfft(white)
-            freqs = np.arange(S.size) * (sample_rate / full_n)
-            gauss = np.exp(-0.5 * ((freqs - baseF) / glitchFocusWidth) ** glitchFocusExp)
-            shaped = np.fft.irfft(S * gauss, n=full_n)
-            shaped /= (np.max(np.abs(shaped)) + 1e-16)
-            ramp = np.linspace(0.0, 1.0, full_n, endpoint=True)
-            burst = (shaped * ramp * glitchNoiseLevel).astype(np.float32)
+                white = np.random.standard_normal(full_n)
+                S = np.fft.rfft(white)
+                # Ensure freqs calculation doesn't divide by zero if full_n is somehow zero
+                freqs_denominator = full_n if full_n != 0 else 1
+                freqs = np.arange(S.size) * (sample_rate / freqs_denominator)
 
-            positions.append(i0)
-            bursts.append(burst)
+                # Ensure glitchFocusWidth is not zero to avoid division by zero
+                if glitchFocusWidth == 0:
+                    gauss = np.ones_like(freqs) # Or handle as an error/default
+                else:
+                    gauss = np.exp(-0.5 * ((freqs - baseF) / glitchFocusWidth) ** glitchFocusExp)
+
+                shaped = np.fft.irfft(S * gauss, n=full_n)
+                max_abs_shaped = np.max(np.abs(shaped))
+                if max_abs_shaped < 1e-16: # Avoid division by very small number or zero
+                    shaped_normalized = np.zeros_like(shaped)
+                else:
+                    shaped_normalized = shaped / max_abs_shaped
+                ramp = np.linspace(0.0, 1.0, full_n, endpoint=True)
+                burst_samples = (shaped_normalized * ramp * glitchNoiseLevel).astype(np.float32)
+
+                positions.append(i0)
+                bursts.append(burst_samples)
 
     if bursts:
         pos_arr   = np.array(positions, dtype=np.int32)
@@ -1482,6 +1501,8 @@ def binaural_beat(duration, sample_rate=44100, **params):
         ampL, ampR, baseF, beatF, force_mono,
         startL, startR, pOF, pOR,
         aODL, aOFL, aODR, aOFR,
+        # --- NEW: Pass amplitude oscillation phase offset parameters ---
+        ampOscPhaseOffsetL, ampOscPhaseOffsetR,
         fORL, fOFL, fORR, fOFR,
         pos_arr, burst_arr
     )
@@ -1492,14 +1513,16 @@ def _binaural_beat_core(
     ampL, ampR, baseF, beatF, force_mono,
     startL, startR, pOF, pOR,
     aODL, aOFL, aODR, aOFR,
+    # --- NEW: Add amplitude oscillation phase offset parameters to signature ---
+    ampOscPhaseOffsetL, ampOscPhaseOffsetR,
     fORL, fOFL, fORR, fOFR,
     pos,    # int32[:] start indices
     burst   # float32[:] concatenated glitch samples
 ):
     # time vector
     t = np.empty(N, dtype=np.float64)
-    dt = duration / N if N > 0 else 0.0
-    for i in prange(N):
+    dt = duration / N if N > 0 else 0.0 # Prevent division by zero if N is 0
+    for i in prange(N): # Use prange if Numba is in parallel mode
         t[i] = i * dt
 
     # instantaneous frequencies
@@ -1508,30 +1531,34 @@ def _binaural_beat_core(
     fR_base = baseF + halfB
     instL = np.empty(N, dtype=np.float64)
     instR = np.empty(N, dtype=np.float64)
-    for i in prange(N):
+    for i in prange(N): # Use prange
         vibL = (fORL/2.0) * np.sin(2*np.pi*fOFL*t[i])
         vibR = (fORR/2.0) * np.sin(2*np.pi*fOFR*t[i])
         instL[i] = max(0.0, fL_base + vibL)
         instR[i] = max(0.0, fR_base + vibR)
     if force_mono or beatF == 0.0:
-        for i in prange(N):
+        for i in prange(N): # Use prange
             instL[i] = baseF
             instR[i] = baseF
 
-    # phase accumulation (sequential)
+    # phase accumulation (sequential, cannot be parallelized with current approach)
     phL = np.empty(N, dtype=np.float64)
     phR = np.empty(N, dtype=np.float64)
     curL = startL
     curR = startR
-    for i in range(N):
+    # This loop must be sequential due to curL and curR dependencies
+    for i in range(N): # Cannot use prange here
         curL += 2 * np.pi * instL[i] * dt
         curR += 2 * np.pi * instR[i] * dt
         phL[i] = curL
         phR[i] = curR
 
     # phase modulation
-    if pOF != 0.0 or pOR != 0.0:
-        for i in prange(N):
+    if pOF != 0.0 or pOR != 0.0: # Check if phase oscillation is active
+        for i in prange(N): # Use prange
+            # Ensure pOF is not zero before using it in np.sin to avoid issues,
+            # though the outer if should catch pOF == 0 if pOR is also 0.
+            # The (pOR/2.0) term handles the amplitude of this modulation.
             dphi = (pOR/2.0) * np.sin(2*np.pi*pOF*t[i])
             phL[i] -= dphi
             phR[i] += dphi
@@ -1539,33 +1566,52 @@ def _binaural_beat_core(
     # amplitude envelopes
     envL = np.empty(N, dtype=np.float64)
     envR = np.empty(N, dtype=np.float64)
-    for i in prange(N):
-        envL[i] = 1.0 - aODL * (0.5*(1.0 + np.sin(2*np.pi*aOFL*t[i])))
-        envR[i] = 1.0 - aODR * (0.5*(1.0 + np.sin(2*np.pi*aOFR*t[i])))
+    for i in prange(N): # Use prange
+        # --- MODIFIED: Include phase offsets for amplitude modulation ---
+        # The phase offset is added inside the np.sin function.
+        # It's assumed ampOscPhaseOffsetL and ampOscPhaseOffsetR are in radians.
+        envL[i] = 1.0 - aODL * (0.5*(1.0 + np.sin(2*np.pi*aOFL*t[i] + ampOscPhaseOffsetL)))
+        envR[i] = 1.0 - aODR * (0.5*(1.0 + np.sin(2*np.pi*aOFR*t[i] + ampOscPhaseOffsetR)))
 
     # generate stereo signal
     out = np.empty((N,2), dtype=np.float32)
-    for i in prange(N):
+    for i in prange(N): # Use prange
         out[i,0] = np.float32(np.sin(phL[i]) * envL[i] * ampL)
         out[i,1] = np.float32(np.sin(phR[i]) * envR[i] * ampR)
 
     # add glitch bursts
     num_bursts = pos.shape[0]
     if num_bursts > 0:
-        L = burst.size // num_bursts
-        idx = 0
-        for b in range(num_bursts):
-            start = pos[b]
-            for j in range(L):
-                p = start + j
-                if p < N:
-                    v = burst[idx + j]
-                    out[p,0] += v
-                    out[p,1] += v
-            idx += L
-
+        # Ensure burst.size is not zero and divisible by num_bursts if num_bursts > 0
+        # This check also implies burst is not empty.
+        if burst.size == 0 or burst.size % num_bursts != 0:
+             # Handle error: burst size is not compatible with num_bursts
+             # For now, let's skip adding glitches if this condition is met
+             pass # Or raise an error, or log a warning
+        else:
+            L = burst.size // num_bursts
+            if L > 0: # Ensure segment length L is positive
+                idx = 0
+                # This loop for bursts might have issues with prange if modifications overlap.
+                # However, if each burst 'b' writes to distinct 'p' indices, it could be fine.
+                # Given 'pos' are start indices, and 'j' iterates within a burst length 'L',
+                # overlap between different bursts (different 'b') is possible if not handled carefully
+                # (e.g., if pos[b+1] < pos[b] + L).
+                # For simplicity and safety, a sequential loop is often preferred for additions
+                # unless non-overlap is guaranteed or atomic operations are used.
+                # Numba's prange on the outer loop and sequential inner loop is a common pattern.
+                for b in range(num_bursts): # Can be prange if pos ensures no race conditions
+                    start = pos[b]
+                    current_burst_segment = burst[idx : idx + L]
+                    for j in range(L):
+                        p = start + j
+                        if p < N: # Boundary check
+                            # Numba handles atomic operations for += on numpy arrays in parallel loops if needed,
+                            # but it's good to be mindful.
+                            out[p,0] += current_burst_segment[j]
+                            out[p,1] += current_burst_segment[j]
+                    idx += L
     return out
-
 # Transition BB version
 
 def binaural_beat_transition(duration, sample_rate=44100, **params):
@@ -1743,8 +1789,144 @@ def _monaural_beat_stereo_amps_core(
         out[i,1] = np.float32(r)
 
     return out    
+@numba.njit(parallel=True, fastmath=True)
+def _prepare_beats_and_angles(
+    mono: np.ndarray,
+    sample_rate: float,
+    aOD: float, aOF: float, aOP: float,
+    spatial_freq: float,
+    path_radius: float,
+    spatial_phase_off: float
+):
+    """
+    Given a mono waveform, build:
+      • mod_beat[i]   = mono[i] * custom AM envelope (depth aOD, freq aOF, phase aOP)
+      • azimuth[i]    = angle of a circle whose radius is 0.5*(mod_beat+1)*path_radius,
+                        swept at spatial_freq, with an overall offset spatial_phase_off.
+      • elevation[i]  = always zero (we stay horizontal)
+    """
+    N = mono.shape[0]
+    mod_beat   = np.empty(N, dtype=np.float32)
+    azimuth    = np.empty(N, dtype=np.float32)
+    elevation  = np.zeros(N, dtype=np.float32)
+    cum_phase  = spatial_phase_off
+    dt = 1.0 / sample_rate
 
-# Transition Version MB 
+    # 1) Apply custom AM envelope + build mod_beat
+    for i in numba.prange(N):
+        t = i * dt
+        if aOD > 0.0 and aOF > 0.0:
+            env = (1.0 - aOD/2.0) + (aOD/2.0) * math.sin(2*math.pi*aOF*t + aOP)
+        else:
+            env = 1.0
+        mod_beat[i] = mono[i] * env
+
+    # 2) Compute circular path (radius from mod_beat) → azimuth
+    for i in numba.prange(N):
+        cum_phase += 2 * math.pi * spatial_freq * dt
+        r = path_radius * (0.5 * (mod_beat[i] + 1.0))
+        x = r * math.sin(cum_phase)
+        y = r * math.cos(cum_phase)
+        azimuth[i] = math.degrees(math.atan2(x, y))
+
+    return mod_beat, azimuth, elevation
+
+# ────────── Updated wrapper ──────────
+def spatial_angle_modulation_monaural_beat(
+    duration,
+    sample_rate=44100,
+    **params
+):
+    """
+    Same API as before, but now uses Numba for all per-sample math:
+      • ampOscDepth, ampOscFreq, ampOscPhaseOffset
+      • spatialBeatFreq, spatialPhaseOffset
+    """
+    # --- unpack AM params ---
+    aOD = float(params.get('ampOscDepth',       0.0))
+    aOF = float(params.get('ampOscFreq',        0.0))
+    aOP = float(params.get('ampOscPhaseOffset', 0.0))
+
+    # --- prepare core beat args (disable its internal AM) ---
+    beat_params = {
+        'amp_lower_L':   float(params.get('amp_lower_L',   0.5)),
+        'amp_upper_L':   float(params.get('amp_upper_L',   0.5)),
+        'amp_lower_R':   float(params.get('amp_lower_R',   0.5)),
+        'amp_upper_R':   float(params.get('amp_upper_R',   0.5)),
+        'baseFreq':      float(params.get('baseFreq',     200.0)),
+        'beatFreq':      float(params.get('beatFreq',       4.0)),
+        'startPhaseL':   float(params.get('startPhaseL',    0.0)),
+        'startPhaseR':   float(params.get('startPhaseR',    0.0)),
+        'phaseOscFreq':  float(params.get('phaseOscFreq',   0.0)),
+        'phaseOscRange': float(params.get('phaseOscRange',  0.0)),
+        'ampOscDepth':   0.0,   # core’s AM disabled
+        'ampOscFreq':    0.0
+    }
+    beat_freq        = beat_params['beatFreq']
+    spatial_freq     = float(params.get('spatialBeatFreq', beat_freq))
+    spatial_phase_off= float(params.get('spatialPhaseOffset', 0.0))
+
+    # --- SAM controls ---
+    amp           = float(params.get('amp',           0.7))
+    path_radius   = float(params.get('pathRadius',    1.0))
+    frame_dur_ms  = float(params.get('frame_dur_ms',  46.4))
+    overlap_fac   = int(params.get('overlap_factor',   8))
+
+    # --- generate core stereo beat & collapse to mono ---
+    N = int(duration * sample_rate)
+    beat_stereo = monaural_beat_stereo_amps(duration, sample_rate, **beat_params)
+    mono_beat   = np.mean(beat_stereo, axis=1).astype(np.float32)
+
+    # --- call our Numba helper to get mod_beat + az/el arrays ---
+    mod_beat, azimuth_deg, elevation_deg = _prepare_beats_and_angles(
+        mono_beat, sample_rate,
+        aOD, aOF, aOP,
+        spatial_freq, path_radius,
+        spatial_phase_off
+    )
+
+    # --- slam into OLA + HRTF (unchanged) ---
+    if not hasattr(slab, 'HRTF'):
+        raise RuntimeError("slab.HRTF not available.")
+    hrtf = slab.HRTF.kemar()
+    if hrtf.samplerate != sample_rate:
+        sample_rate = int(hrtf.samplerate)
+
+    frame_len = slab.Signal.in_samples(frame_dur_ms / 1000.0, sample_rate)
+    step      = frame_len // overlap_fac
+    if step < 1:
+        raise ValueError("overlap_factor too large.")
+
+    if overlap_fac in (2, 4):
+        window = np.sqrt(np.hanning(frame_len))[:, None]
+    else:
+        window = np.hanning(frame_len)[:, None]
+
+    out_buf = np.zeros((N + frame_len, 2), dtype=np.float64)
+    mono_src = amp * mod_beat
+
+    for start in range(0, N, step):
+        frame = mono_src[start:start+frame_len]
+        L = len(frame)
+        if L == 0:
+            continue
+
+        wf   = frame[:, None] * window[:L]
+        mid  = min(start + step//2, N-1)
+        azi, ele = azimuth_deg[mid], elevation_deg[mid]
+
+        snd  = slab.Sound(wf, samplerate=sample_rate)
+        filt = hrtf.interpolate(azimuth=azi, elevation=ele, method='nearest')
+        out_buf[start:start+L] += filt.apply(snd).data[:L]
+
+    # --- finalize ---
+    out = out_buf[:N]
+    out = np.nan_to_num(out)
+    m  = np.max(np.abs(out))
+    if m > 1.0:
+        out /= (m / 0.98)
+
+    return out.astype(np.float32)
 
 def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, **params):
     # --- Unpack start/end parameters ---
@@ -2571,7 +2753,7 @@ def generate_wav(track_data, output_filename=None):
 
     if max_abs_val > 1e-9: # Avoid division by zero for silent tracks
         # --- *** CHANGED: Increase target level *** ---
-        target_level = 0.1 # Normalize closer to full scale (e.g., -0.4 dBFS)
+        target_level = 0.2 # Normalize closer to full scale (e.g., -0.4 dBFS)
         # --- *** End Change *** ---
         scaling_factor = target_level / max_abs_val
         print(f"Normalizing final track (peak value: {max_abs_val:.4f}) to target level: {target_level}")
