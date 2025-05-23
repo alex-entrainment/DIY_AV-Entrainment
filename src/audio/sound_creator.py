@@ -5,49 +5,11 @@ from scipy.io.wavfile import write
 import math
 import json
 import inspect # Needed to inspect function parameters for GUI
-import os # Needed for path checks in main example
+import os
 import traceback # For detailed error printing
 import numba 
 from numba import jit, prange
 
-# Placeholder for the missing audio_engine module
-# If you have the 'audio_engine.py' file, place it in the same directory.
-# Otherwise, the SAM functions will not work.
-try:
-    # Attempt to import the real audio_engine if available
-    from audio_engine import Node, SAMVoice, VALID_SAM_PATHS
-    AUDIO_ENGINE_AVAILABLE = True
-    print("INFO: audio_engine module loaded successfully.")
-except ImportError:
-    AUDIO_ENGINE_AVAILABLE = False
-    print("WARNING: audio_engine module not found. Spatial Angle Modulation (SAM) functions will not be available.")
-    # Define dummy classes/variables if audio_engine is missing
-    class Node:
-        def __init__(self, *args, **kwargs):
-            # print("WARNING: Using dummy Node class. SAM functionality disabled.")
-            # Store args needed for generate_samples duration calculation
-            # Simplified: Just store duration if provided
-            self.duration = args[0] if args else kwargs.get('duration', 0)
-            pass
-    class SAMVoice:
-        def __init__(self, *args, **kwargs):
-            # print("WARNING: Using dummy SAMVoice class. SAM functionality disabled.")
-            # Store args needed for generate_samples duration calculation
-            self._nodes = kwargs.get('nodes', [])
-            self._sample_rate = kwargs.get('sample_rate', 44100)
-            pass
-        def generate_samples(self):
-            print("WARNING: SAM generate_samples called on dummy class. Returning silence.")
-            # Calculate duration from stored nodes
-            duration = 0
-            if hasattr(self, '_nodes'):
-                # Access duration attribute correctly from dummy Node
-                duration = sum(node.duration for node in self._nodes if hasattr(node, 'duration'))
-            sample_rate = getattr(self, '_sample_rate', 44100)
-            N = int(duration * sample_rate) if duration > 0 else int(1.0 * sample_rate) # Default 1 sec if no duration found
-            return np.zeros((N, 2))
-
-    VALID_SAM_PATHS = ['circle', 'line', 'lissajous', 'figure_eight', 'arc'] # Example paths
 
 # -----------------------------------------------------------------------------
 # Helper functions (Copied from original sc.txt, minor adjustments if needed)
