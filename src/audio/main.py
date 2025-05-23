@@ -1,4 +1,5 @@
 import sys
+from collections import OrderedDict
 import json
 # Make sure sound_creator.py is accessible (in the same directory or Python path)
 import sound_creator # Import the refactored sound generation script
@@ -78,6 +79,10 @@ class TrackEditorApp(QMainWindow):
         file_ops_groupbox = QGroupBox("File")
         file_ops_layout = QVBoxLayout()
         file_ops_groupbox.setLayout(file_ops_layout)
+        # --- New File Button (added above Load JSON) ---
+        self.new_file_button = QPushButton("New File")
+        self.new_file_button.clicked.connect(self.new_file)
+        file_ops_layout.addWidget(self.new_file_button)
         self.load_button = QPushButton("Load JSON")
         self.save_button = QPushButton("Save JSON")
         self.save_as_button = QPushButton("Save JSON As...")
@@ -581,6 +586,14 @@ class TrackEditorApp(QMainWindow):
 
 
     # --- Action Methods (Slots for Buttons) ---
+
+    @pyqtSlot()
+    def new_file(self):
+        self.track_data = self._get_default_track_data()
+        self.current_json_path = None
+        self.refresh_steps_tree()
+        self.setWindowTitle("Binaural Track Editor (PyQt5) - New File")
+
     @pyqtSlot()
     def load_json(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "Load Track JSON", "", "JSON files (*.json);;All files (*.*)")
@@ -1362,7 +1375,7 @@ class VoiceEditorDialog(QDialog):
         self.reference_details_text.clear()
         ref_step_idx = self.reference_step_combo.currentData(); ref_voice_idx = self.reference_voice_combo.currentData()
         details = "Select a Step and Voice for reference."
-        if ref_step_idx is not None and ref_step_idx >= 0 and ref_voice_idx is not None and ref_voice_idx >= 0:
+        if ref_step_idx is not None and ref_step_idx >= 0 and ref_voice_idx is not None and ref_voice_idx >= -1:
             is_editing_same = (not self.is_new_voice and self.step_index == ref_step_idx and self.voice_index == ref_voice_idx)
             if is_editing_same: details = "Reference is the voice currently being edited.\nDetails reflect saved state."
             else:
@@ -1372,7 +1385,11 @@ class VoiceEditorDialog(QDialog):
                     details += f"Function: {voice_data.get('synth_function_name', 'N/A')}\nTransition: {'Yes' if voice_data.get('is_transition', False) else 'No'}\nParameters:\n"
                     params = voice_data.get("params", {})
                     if params:
-                        for k, v in sorted(params.items()): details += f"  {k}: {v:.4g if isinstance(v, float) else v}\n"
+                        for k, v in sorted(params.items()):
+                            details += "  {}: {}\n".format(k,
+                                f"{v:.4g}" if isinstance(v, float) else v
+                            )
+
                     else: details += "  (No parameters defined)\n"
                     env_data = voice_data.get("volume_envelope")
                     if env_data and isinstance(env_data, dict):
@@ -1426,35 +1443,309 @@ class VoiceEditorDialog(QDialog):
         if any(s in name_lower for s in ['dur', 'attack', 'decay', 'release']): return '(secs, >=0)'
         return ''
 
-    def _get_default_params(self, func_name, is_transition):
-        params = {}
-        target_func_name = func_name
-        if is_transition and not func_name.endswith("_transition"):
-            if (func_name + "_transition") in sound_creator.SYNTH_FUNCTIONS: target_func_name = func_name + "_transition"
-        elif not is_transition and func_name.endswith("_transition"):
-            base_name = func_name.replace("_transition", "")
-            if base_name in sound_creator.SYNTH_FUNCTIONS: target_func_name = base_name
-        if target_func_name not in sound_creator.SYNTH_FUNCTIONS: return {}
+    def _get_default_params(self, func_name_from_combo: str, is_transition_mode: bool) -> OrderedDict:
+        """
+        Retrieves an OrderedDict of default parameters for a given synth function.
+        The order of parameters matches their definition in the synth functions.
+
+        Args:
+            func_name_from_combo: The name of the function as selected in the UI.
+                                 This will be mapped to an internal key.
+            is_transition_mode: Boolean indicating if transition parameters are needed.
+
+        Returns:
+            An OrderedDict of parameter names (str) to their default values.
+        """
+
+        # Map UI display names to internal base function keys.
+        # Adjust this map to precisely match your QComboBox item strings.
+        internal_func_key_map = {
+            "Rhythmic Waveshaping": "rhythmic_waveshaping",
+            "Stereo AM Independent": "stereo_am_independent",
+            "Wave Shape Stereo AM": "wave_shape_stereo_am",
+            "Spatial Angle Modulation (SAM Engine)": "spatial_angle_modulation_engine", # Uses Node/SAMVoice directly
+            "Binaural Beat": "binaural_beat",
+            "Monaural Beat Stereo Amps": "monaural_beat_stereo_amps",
+            "Spatial Angle Modulation (Monaural Core)": "spatial_angle_modulation_monaural", # Uses monaural_beat as core
+            "Isochronic Tone": "isochronic_tone",
+            "QAM Beat": "qam_beat",
+            "Hybrid QAM Monaural Beat": "hybrid_qam_monaural_beat",
+            # Add other mappings if your UI names differ from these examples
+        }
         
-        target_func = sound_creator.SYNTH_FUNCTIONS[target_func_name]
-        try:
-            source_code = inspect.getsource(target_func)
-            regex = r"params\.get\(\s*['\"]([^'\"]+)['\"]\s*,\s*(.*?)\s*\)"
-            for match in re.finditer(regex, source_code):
-                param_name, default_value_str = match.group(1), match.group(2).strip().rstrip(',')
-                try:
-                    if default_value_str.lower() == 'true': default_value = True
-                    elif default_value_str.lower() == 'false': default_value = False
-                    elif default_value_str.lower() == 'none': default_value = None
-                    elif default_value_str == 'math.pi/2': default_value = math.pi / 2
-                    elif default_value_str == 'math.pi': default_value = math.pi
-                    else: default_value = ast.literal_eval(default_value_str)
-                except Exception: default_value = 0.0 # Fallback
-                params[param_name] = default_value
-            if 'spatial_angle_modulation' in target_func_name and 'pathShape' not in params and hasattr(sound_creator, 'VALID_SAM_PATHS') and sound_creator.VALID_SAM_PATHS:
-                params['pathShape'] = sound_creator.VALID_SAM_PATHS[0]
-        except Exception as e: print(f"Error parsing source for '{target_func_name}': {e}")
-        return params
+        # Attempt to map the UI name; if not found, assume func_name_from_combo is already an internal base key.
+        base_func_key = internal_func_key_map.get(func_name_from_combo, func_name_from_combo)
+
+        param_definitions = {
+            "rhythmic_waveshaping": {
+                "standard": [
+                    ('amp', 0.25), ('carrierFreq', 200), ('modFreq', 4),
+                    ('modDepth', 1.0), ('shapeAmount', 5.0), ('pan', 0)
+                ],
+                "transition": [ # From rhythmic_waveshaping_transition
+                    ('amp', 0.25), ('startCarrierFreq', 200), ('endCarrierFreq', 80),
+                    ('startModFreq', 12), ('endModFreq', 7.83),
+                    ('startModDepth', 1.0), ('endModDepth', 1.0),
+                    ('startShapeAmount', 5.0), ('endShapeAmount', 5.0), ('pan', 0)
+                ]
+            },
+            "stereo_am_independent": {
+                "standard": [
+                    ('amp', 0.25), ('carrierFreq', 200.0), ('modFreqL', 4.0),
+                    ('modDepthL', 0.8), ('modPhaseL', 0), ('modFreqR', 4.0),
+                    ('modDepthR', 0.8), ('modPhaseR', 0), ('stereo_width_hz', 0.2)
+                ],
+                "transition": [ # From stereo_am_independent_transition
+                    ('amp', 0.25), ('startCarrierFreq', 200), ('endCarrierFreq', 250),
+                    ('startModFreqL', 4), ('endModFreqL', 6),
+                    ('startModDepthL', 0.8), ('endModDepthL', 0.8),
+                    ('startModPhaseL', 0),
+                    ('startModFreqR', 4.1), ('endModFreqR', 5.9),
+                    ('startModDepthR', 0.8), ('endModDepthR', 0.8),
+                    ('startModPhaseR', 0),
+                    ('startStereoWidthHz', 0.2), ('endStereoWidthHz', 0.2)
+                ]
+            },
+            "wave_shape_stereo_am": {
+                "standard": [
+                    ('amp', 0.15), ('carrierFreq', 200), ('shapeModFreq', 4),
+                    ('shapeModDepth', 0.8), ('shapeAmount', 0.5),
+                    ('stereoModFreqL', 4.1), ('stereoModDepthL', 0.8),
+                    ('stereoModPhaseL', 0), ('stereoModFreqR', 4.0),
+                    ('stereoModDepthR', 0.8), ('stereoModPhaseR', math.pi / 2)
+                ],
+                "transition": [ # From wave_shape_stereo_am_transition
+                    ('amp', 0.15), ('startCarrierFreq', 200), ('endCarrierFreq', 100),
+                    ('startShapeModFreq', 4), ('endShapeModFreq', 8),
+                    ('startShapeModDepth', 0.8), ('endShapeModDepth', 0.8),
+                    ('startShapeAmount', 0.5), ('endShapeAmount', 0.5),
+                    ('startStereoModFreqL', 4.1), ('endStereoModFreqL', 6.0),
+                    ('startStereoModDepthL', 0.8), ('endStereoModDepthL', 0.8),
+                    ('startStereoModPhaseL', 0),
+                    ('startStereoModFreqR', 4.0), ('endStereoModFreqR', 6.1),
+                    ('startStereoModDepthR', 0.9), ('endStereoModDepthR', 0.9),
+                    ('startStereoModPhaseR', math.pi / 2)
+                ]
+            },
+            "spatial_angle_modulation_engine": { # Uses Node/SAMVoice directly
+                "standard": [ # From spatial_angle_modulation
+                    ('amp', 0.7), ('carrierFreq', 440.0), ('beatFreq', 4.0),
+                    ('pathShape', 'circle'), ('pathRadius', 1.0),
+                    ('arcStartDeg', 0.0), ('arcEndDeg', 360.0),
+                    ('frame_dur_ms', 46.4), ('overlap_factor', 8)
+                ],
+                "transition": [ # From spatial_angle_modulation_transition
+                    ('amp', 0.7),
+                    ('startCarrierFreq', 440.0), ('endCarrierFreq', 440.0),
+                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startPathShape', 'circle'), ('endPathShape', 'circle'),
+                    ('startPathRadius', 1.0), ('endPathRadius', 1.0),
+                    ('startArcStartDeg', 0.0), ('endArcStartDeg', 0.0),
+                    ('startArcEndDeg', 360.0), ('endArcEndDeg', 360.0),
+                    ('frame_dur_ms', 46.4), ('overlap_factor', 8)
+                ]
+            },
+            "binaural_beat": {
+                "standard": [
+                    ('ampL', 0.5), ('ampR', 0.5), ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('forceMono', False), ('startPhaseL', 0.0), ('startPhaseR', 0.0),
+                    ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0),
+                    ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0),
+                    ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0),
+                    ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0),
+                    ('ampOscPhaseOffsetL', 0.0), ('ampOscPhaseOffsetR', 0.0),
+                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
+                    ('glitchInterval', 0.0), ('glitchDur', 0.0), # Included from commented section
+                    ('glitchNoiseLevel', 0.0), ('glitchFocusWidth', 0.0), ('glitchFocusExp', 0.0)
+                ],
+                "transition": [ # From binaural_beat_transition
+                    ('startAmpL', 0.5), ('endAmpL', 0.5),
+                    ('startAmpR', 0.5), ('endAmpR', 0.5),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
+                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startForceMono', 0.0), ('endForceMono', 0.0),
+                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
+                    ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
+                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
+                    ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
+                    ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0),
+                    ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0),
+                    ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0),
+                    ('startAmpOscFreqR', 0.0), ('endAmpOscFreqR', 0.0),
+                    ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0),
+                    ('startAmpOscPhaseOffsetR', 0.0), ('endAmpOscPhaseOffsetR', 0.0),
+                    ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0),
+                    ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0),
+                    ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0),
+                    ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0),
+                    ('startGlitchInterval', 0.0), ('endGlitchInterval', 0.0),
+                    ('startGlitchDur', 0.0), ('endGlitchDur', 0.0),
+                    ('startGlitchNoiseLevel', 0.0), ('endGlitchNoiseLevel', 0.0),
+                    ('startGlitchFocusWidth', 0.0), ('endGlitchFocusWidth', 0.0),
+                    ('startGlitchFocusExp', 0.0), ('endGlitchFocusExp', 0.0)
+                ]
+            },
+            "monaural_beat_stereo_amps": {
+                "standard": [
+                    ('amp_lower_L', 0.5), ('amp_upper_L', 0.5),
+                    ('amp_lower_R', 0.5), ('amp_upper_R', 0.5),
+                    ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('startPhaseL', 0.0), ('startPhaseR', 0.0),
+                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
+                    ('ampOscDepth', 0.0), ('ampOscFreq', 0.0), ('ampOscPhaseOffset', 0.0)
+                ],
+                "transition": [ # From monaural_beat_stereo_amps_transition
+                    ('start_amp_lower_L', 0.5), ('end_amp_lower_L', 0.5),
+                    ('start_amp_upper_L', 0.5), ('end_amp_upper_L', 0.5),
+                    ('start_amp_lower_R', 0.5), ('end_amp_lower_R', 0.5),
+                    ('start_amp_upper_R', 0.5), ('end_amp_upper_R', 0.5),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
+                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
+                    ('startStartPhaseU', 0.0), ('endStartPhaseU', 0.0), # Note: 'U' from 'startPhaseR'
+                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
+                    ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
+                    ('startAmpOscDepth', 0.0), ('endAmpOscDepth', 0.0),
+                    ('startAmpOscFreq', 0.0), ('endAmpOscFreq', 0.0),
+                    ('startAmpOscPhaseOffset', 0.0), ('endAmpOscPhaseOffset', 0.0)
+                ]
+            },
+            "spatial_angle_modulation_monaural": { # Uses monaural_beat_stereo_amps as core
+                "standard": [ # From spatial_angle_modulation_monaural_beat
+                    ('sam_ampOscDepth', 0.0), ('sam_ampOscFreq', 0.0), ('sam_ampOscPhaseOffset', 0.0),
+                    ('amp_lower_L', 0.5), ('amp_upper_L', 0.5),
+                    ('amp_lower_R', 0.5), ('amp_upper_R', 0.5),
+                    ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('startPhaseL', 0.0), ('startPhaseR', 0.0),
+                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
+                    ('monaural_ampOscDepth', 0.0), ('monaural_ampOscFreq', 0.0),
+                    ('monaural_ampOscPhaseOffset', 0.0),
+                    ('spatialBeatFreq', 4.0), ('spatialPhaseOffset', 0.0),
+                    ('amp', 0.7), ('pathRadius', 1.0),
+                    ('frame_dur_ms', 46.4), ('overlap_factor', 8)
+                ],
+                "transition": [ # From spatial_angle_modulation_monaural_beat_transition
+                    ('start_amp_lower_L', 0.5), ('end_amp_lower_L', 0.5),
+                    ('start_amp_upper_L', 0.5), ('end_amp_upper_L', 0.5),
+                    ('start_amp_lower_R', 0.5), ('end_amp_lower_R', 0.5),
+                    ('start_amp_upper_R', 0.5), ('end_amp_upper_R', 0.5),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
+                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startStartPhaseL_monaural', 0.0), ('endStartPhaseL_monaural', 0.0),
+                    ('startStartPhaseU_monaural', 0.0), ('endStartPhaseU_monaural', 0.0),
+                    ('startPhaseOscFreq_monaural', 0.0), ('endPhaseOscFreq_monaural', 0.0),
+                    ('startPhaseOscRange_monaural', 0.0), ('endPhaseOscRange_monaural', 0.0),
+                    ('startAmpOscDepth_monaural', 0.0), ('endAmpOscDepth_monaural', 0.0),
+                    ('startAmpOscFreq_monaural', 0.0), ('endAmpOscFreq_monaural', 0.0),
+                    ('startAmpOscPhaseOffset_monaural', 0.0), ('endAmpOscPhaseOffset_monaural', 0.0),
+                    ('start_sam_ampOscDepth', 0.0), ('end_sam_ampOscDepth', 0.0),
+                    ('start_sam_ampOscFreq', 0.0), ('end_sam_ampOscFreq', 0.0),
+                    ('start_sam_ampOscPhaseOffset', 0.0), ('end_sam_ampOscPhaseOffset', 0.0),
+                    ('startSpatialBeatFreq', 4.0), ('endSpatialBeatFreq', 4.0),
+                    ('startSpatialPhaseOffset', 0.0), ('endSpatialPhaseOffset', 0.0),
+                    ('startPathRadius', 1.0), ('endPathRadius', 1.0),
+                    ('startAmp', 0.7), ('endAmp', 0.7),
+                    ('frame_dur_ms', 46.4), ('overlap_factor', 8)
+                ]
+            },
+            "isochronic_tone": {
+                "standard": [
+                    ('amp', 0.5), ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0)
+                ],
+                "transition": [ # From isochronic_tone_transition
+                    ('amp', 0.5), ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), # endBaseFreq defaults to start
+                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0), # endBeatFreq defaults to start
+                    ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0)
+                ]
+            },
+            "qam_beat": {
+                "standard": [
+                    ('ampL', 0.5), ('ampR', 0.5),
+                    ('baseFreqL', 200.0), ('baseFreqR', 204.0), # baseFreqL + 4.0
+                    ('qamAmFreqL', 4.0), ('qamAmDepthL', 0.5), ('qamAmPhaseOffsetL', 0.0),
+                    ('qamAmFreqR', 4.0), ('qamAmDepthR', 0.5), ('qamAmPhaseOffsetR', 0.0), # Defaults to L versions
+                    ('startPhaseL', 0.0), ('startPhaseR', 0.0),
+                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0), ('phaseOscPhaseOffset', 0.0)
+                ],
+                "transition": [ # From qam_beat_transition
+                    ('startAmpL', 0.5), ('endAmpL', 0.5),
+                    ('startAmpR', 0.5), ('endAmpR', 0.5),
+                    ('startBaseFreqL', 200.0), ('endBaseFreqL', 200.0),
+                    ('startBaseFreqR', 204.0), ('endBaseFreqR', 204.0), # startBaseFreqL + 4.0
+                    ('startQamAmFreqL', 4.0), ('endQamAmFreqL', 4.0),
+                    ('startQamAmDepthL', 0.5), ('endQamAmDepthL', 0.5),
+                    ('startQamAmPhaseOffsetL', 0.0), ('endQamAmPhaseOffsetL', 0.0),
+                    ('startQamAmFreqR', 4.0), ('endQamAmFreqR', 4.0), # Defaults to L versions
+                    ('startQamAmDepthR', 0.5), ('endQamAmDepthR', 0.5), # Defaults to L versions
+                    ('startQamAmPhaseOffsetR', 0.0), ('endQamAmPhaseOffsetR', 0.0), # Defaults to L versions
+                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
+                    ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
+                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
+                    ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
+                    ('startPhaseOscPhaseOffset', 0.0), ('endPhaseOscPhaseOffset', 0.0)
+                ]
+            },
+            "hybrid_qam_monaural_beat": {
+                "standard": [
+                    ('ampL', 0.5), ('ampR', 0.5),
+                    ('qamCarrierFreqL', 100.0), ('qamAmFreqL', 4.0), ('qamAmDepthL', 0.5),
+                    ('qamAmPhaseOffsetL', 0.0), ('qamStartPhaseL', 0.0),
+                    ('monoCarrierFreqR', 100.0), ('monoBeatFreqInChannelR', 4.0),
+                    ('monoAmDepthR', 0.0), ('monoAmFreqR', 0.0), ('monoAmPhaseOffsetR', 0.0),
+                    ('monoFmRangeR', 0.0), ('monoFmFreqR', 0.0), ('monoFmPhaseOffsetR', 0.0),
+                    ('monoStartPhaseR_Tone1', 0.0), ('monoStartPhaseR_Tone2', 0.0),
+                    ('monoPhaseOscFreqR', 0.0), ('monoPhaseOscRangeR', 0.0), ('monoPhaseOscPhaseOffsetR', 0.0)
+                ],
+                "transition": [ # From hybrid_qam_monaural_beat_transition
+                    ('startAmpL', 0.5), ('endAmpL', 0.5),
+                    ('startAmpR', 0.5), ('endAmpR', 0.5),
+                    ('startQamCarrierFreqL', 100.0), ('endQamCarrierFreqL', 100.0),
+                    ('startQamAmFreqL', 4.0), ('endQamAmFreqL', 4.0),
+                    ('startQamAmDepthL', 0.5), ('endQamAmDepthL', 0.5),
+                    ('startQamAmPhaseOffsetL', 0.0), ('endQamAmPhaseOffsetL', 0.0),
+                    ('startQamStartPhaseL', 0.0), ('endQamStartPhaseL', 0.0),
+                    ('startMonoCarrierFreqR', 100.0), ('endMonoCarrierFreqR', 100.0),
+                    ('startMonoBeatFreqInChannelR', 4.0), ('endMonoBeatFreqInChannelR', 4.0),
+                    ('startMonoAmDepthR', 0.0), ('endMonoAmDepthR', 0.0),
+                    ('startMonoAmFreqR', 0.0), ('endMonoAmFreqR', 0.0),
+                    ('startMonoAmPhaseOffsetR', 0.0), ('endMonoAmPhaseOffsetR', 0.0),
+                    ('startMonoFmRangeR', 0.0), ('endMonoFmRangeR', 0.0),
+                    ('startMonoFmFreqR', 0.0), ('endMonoFmFreqR', 0.0),
+                    ('startMonoFmPhaseOffsetR', 0.0), ('endMonoFmPhaseOffsetR', 0.0),
+                    ('startMonoStartPhaseR_Tone1', 0.0), ('endMonoStartPhaseR_Tone1', 0.0),
+                    ('startMonoStartPhaseR_Tone2', 0.0), ('endMonoStartPhaseR_Tone2', 0.0),
+                    ('startMonoPhaseOscFreqR', 0.0), ('endMonoPhaseOscFreqR', 0.0),
+                    ('startMonoPhaseOscRangeR', 0.0), ('endMonoPhaseOscRangeR', 0.0),
+                    ('startMonoPhaseOscPhaseOffsetR', 0.0), ('endMonoPhaseOscPhaseOffsetR', 0.0)
+                ]
+            }
+        }
+        # --- End of param_definitions ---
+
+        ordered_params = OrderedDict()
+        
+        definition_set = param_definitions.get(base_func_key)
+        if not definition_set:
+            # print(f"Warning: No parameter definitions found for function key '{base_func_key}'. UI name was '{func_name_from_combo}'")
+            return ordered_params # Return empty OrderedDict
+
+        selected_mode_key = "transition" if is_transition_mode else "standard"
+        
+        params_list = definition_set.get(selected_mode_key)
+        if not params_list:
+            # Fallback: if specific mode (e.g. "transition") is missing, try "standard".
+            # This might be useful if a function is marked for transition UI but only has standard params.
+            # print(f"Warning: No '{selected_mode_key}' parameters for '{base_func_key}'. Trying 'standard'.")
+            params_list = definition_set.get("standard")
+            if not params_list:
+                # print(f"Warning: No 'standard' parameters either for '{base_func_key}'.")
+                return ordered_params # Return empty
+
+        for name, default_val in params_list:
+            ordered_params[name] = default_val
+            
+        return ordered_params
 
     @pyqtSlot()
     def save_voice(self):

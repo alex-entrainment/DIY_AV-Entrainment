@@ -1,6 +1,6 @@
 import numpy as np
 import slab
-from scipy.signal import butter, lfilter
+from scipy.signal import butter, lfilter, sosfiltfilt
 from scipy.io.wavfile import write
 import math
 import json
@@ -490,285 +490,9 @@ def trapezoid_envelope_vectorized(t_in_cycle, cycle_len, ramp_percent, gap_perce
     return np.clip(env, 0.0, 1.0) # Ensure output is [0, 1]
 
 
-# --- NEW: Helper function for Flanger (adapted from flanger.py) ---
-
-def _flanger_effect_stereo_continuous(
-        x,
-        sr=44100,
-        max_delay_ms=15.0, # Adjusted default
-        min_delay_ms=1.0,  # Adjusted default
-        rate_hz=0.2,       # Adjusted default for noticeable continuous sweep
-        lfo_start_phase_rad=0.0, # New parameter
-        skip_below_freq=30.0,
-        lowest_freq_mode='notch',
-        dry_mix=0.5,
-        wet_mix=0.5
-    ):
-    """
-    Internal helper to apply a continuously modulating stereo flanger effect.
-    Uses a sine LFO based on rate_hz.
-    """
-    num_samples = x.shape[0]
-    duration_s = num_samples / sr
-
-    # Ensure input is float32 for processing consistency
-    x = x.astype(np.float32)
-
-    #----------------------------------------------------------
-    # (1) Figure out max allowed delay if skipping low comb freqs
-    if skip_below_freq is not None and skip_below_freq > 0:
-        if lowest_freq_mode.lower() == 'peak':
-            max_allowed_delay_s = 1.0 / skip_below_freq
-        else: # 'notch'
-            max_allowed_delay_s = 1.0 / (2.0 * skip_below_freq)
-        max_allowed_delay_ms = 1000.0 * max_allowed_delay_s
-        # Apply the limit: the actual max delay cannot exceed this calculated value
-        actual_max_delay_ms = min(max_delay_ms, max_allowed_delay_ms)
-    else:
-        actual_max_delay_ms = max_delay_ms
-
-    # Ensure min delay is not greater than max delay
-    min_delay_ms = min(min_delay_ms, actual_max_delay_ms)
-    # Prevent zero or negative range
-    actual_max_delay_ms = max(min_delay_ms, actual_max_delay_ms)
-
-
-    #----------------------------------------------------------
-    # (2) Create the continuous LFO PHASE array
-    t_abs = np.linspace(0, duration_s, num_samples, endpoint=False)
-    # Phase = 2 * pi * rate * time + start_phase
-    full_phase_array = 2 * np.pi * rate_hz * t_abs + lfo_start_phase_rad
-
-    #----------------------------------------------------------
-    # (3) Process sample-by-sample with FRACTIONAL DELAY interpolation
-    y = np.zeros_like(x, dtype=np.float32) # Ensure output is float32
-
-    # Pre-calculate delay range and constants
-    delay_range_ms = actual_max_delay_ms - min_delay_ms
-    delay_range_samples = (delay_range_ms / 1000.0) * sr
-    min_delay_samples = (min_delay_ms / 1000.0) * sr
-
-    for n in range(num_samples):
-        ph = full_phase_array[n]
-        # Convert sine wave [-1, 1] to fraction [0, 1] for delay modulation
-        # (sin(ph) + 1) / 2 maps phase to [0, 1] range
-        lfo_mod_signal = (np.sin(ph) + 1.0) * 0.5
-
-        # Calculate delay in samples using pre-calculated ranges
-        delay_in_samps = min_delay_samples + lfo_mod_signal * delay_range_samples
-
-        # Fractional "tap" position in the past
-        tap_float = n - delay_in_samps
-
-        if tap_float < 0:
-            # Not enough history at the start, use dry signal for the delayed part
-            delayed_sample = x[n] # Simplification: feed dry through wet path initially
-        else:
-            # Linear interpolation
-            i0 = int(np.floor(tap_float))
-            frac = tap_float - i0
-            i1 = i0 + 1
-
-            # Boundary check for i1 (ensure lookback doesn't exceed current sample 'n')
-            if i1 > n:
-                 # If i1 goes beyond current sample 'n', clamp to i0
-                 x0 = x[i0]
-                 x1 = x0 # Use x[i0] when i1 is out of bounds
-            else:
-                 # Ensure indices are within bounds of x
-                 i0 = max(0, i0)
-                 i1 = max(0, i1) # Should already be >= i0
-                 i1 = min(n, i1) # Clamp i1 to n as well
-                 x0 = x[i0]
-                 x1 = x[i1]
-
-
-            # Interpolate for both channels
-            delayed_sample = (1.0 - frac) * x0 + frac * x1
-
-        # Mix dry + wet
-        y[n] = dry_mix * x[n] + wet_mix * delayed_sample
-
-    return y
-
 # -----------------------------------------------------------------------------
 # Synth Def translations – Updated to accept duration, sr, and params dict
 # -----------------------------------------------------------------------------
-
-# Each function now takes duration, sample_rate, and **params
-# It calculates N, t_rel, t_abs internally.
-# It returns a stereo (N x 2) NumPy array.
-
-# --- Synth Function Definitions ---
-
-# Example: Basic AM
-
-
-def basic_am(duration, sample_rate=44100, **params):
-    """Basic Amplitude Modulation synth."""
-    # Extract parameters with defaults and ensure correct type
-    amp = float(params.get('amp', 0.25))
-    carrierFreq = float(params.get('carrierFreq', 200))
-    modFreq = float(params.get('modFreq', 4))
-    modDepth = float(params.get('modDepth', 0.8))
-    pan = float(params.get('pan', 0))  # Added pan parameter
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel  # For constant params, relative == absolute for phase
-
-    # Note: ADSR envelope is applied *within* generate_voice_audio if specified there.
-    # This function just generates the core sound.
-    carrier = sine_wave(carrierFreq, t_abs)
-    lfo = sine_wave(modFreq, t_abs)
-    # Modulator maps LFO [-1, 1] to [1 - modDepth, 1]
-    # Original: modulator = np.interp(lfo, [-1, 1], [1 - modDepth, 1])
-    # Correct element-wise approach:
-    modulator = 1.0 - modDepth * (1.0 - lfo) * 0.5
-    output_mono = carrier * modulator * amp # Apply base amp here
-    return pan2(output_mono, pan=pan)
-
-
-def basic_am_transition(duration, sample_rate=44100, **params):
-    """Basic Amplitude Modulation synth with parameter transitions."""
-    # Extract parameters with defaults and ensure correct type
-    amp = float(params.get('amp', 0.25))
-    startCarrierFreq = float(params.get('startCarrierFreq', 200))
-    endCarrierFreq = float(params.get('endCarrierFreq', 100))
-    startModFreq = float(params.get('startModFreq', 4))
-    endModFreq = float(params.get('endModFreq', 8))
-    startModDepth = float(params.get('startModDepth', 0.8))
-    endModDepth = float(params.get('endModDepth', 0.2))
-    pan = float(params.get('pan', 0))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    # Linearly interpolate parameters over the duration
-    currentCarrierFreq = np.linspace(startCarrierFreq, endCarrierFreq, N)
-    currentModFreq = np.linspace(startModFreq, endModFreq, N)
-    currentModDepth = np.linspace(startModDepth, endModDepth, N)
-
-    carrier = sine_wave_varying(currentCarrierFreq, t_abs, sample_rate)
-    lfo = sine_wave_varying(currentModFreq, t_abs, sample_rate)
-
-    # --- FIX APPLIED ---
-    # Original: modulator = np.interp(lfo, [-1, 1], [1 - currentModDepth, 1])
-    modulator = 1.0 - currentModDepth * (1.0 - lfo) * 0.5
-    # --------------------
-
-    # Note: Envelope is applied *within* generate_voice_audio if specified there.
-    output_mono = carrier * modulator * amp # Apply base amp here
-    return pan2(output_mono, pan=pan)
-
-
-def fsam_filter_bank(duration, sample_rate=44100, **params):
-    """Frequency-Selective Amplitude Modulation using filter bank approach."""
-    amp = float(params.get('amp', 0.15))
-    noiseType = int(params.get('noiseType', 1))  # 1=white, 2=pink, 3=brown
-    filterCenterFreq = float(params.get('filterCenterFreq', 1000))
-    filterRQ = float(params.get('filterRQ', 0.5)) # Q = 1/RQ
-    modFreq = float(params.get('modFreq', 4))
-    modDepth = float(params.get('modDepth', 0.8))
-    pan = float(params.get('pan', 0))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    if noiseType == 1:
-        source = np.random.randn(N)
-    elif noiseType == 2:
-        source = pink_noise(N)
-    elif noiseType == 3:
-        source = brown_noise(N)
-    else:
-        source = np.random.randn(N)
-
-    # Ensure filter params are valid
-    filterCenterFreq = max(20.0, filterCenterFreq)  # Min center freq
-    filterQ = 1.0 / max(0.01, filterRQ) if filterRQ > 0 else 100.0 # Calculate Q, avoid division by zero
-
-    bandSignal = bandpass_filter(source, filterCenterFreq, filterQ, sample_rate)
-    restSignal = bandreject_filter(source, filterCenterFreq, filterQ, sample_rate)
-
-    lfo = sine_wave(modFreq, t_abs)
-    # Correct element-wise approach:
-    modulator = 1.0 - modDepth * (1.0 - lfo) * 0.5
-    modulatedBand = bandSignal * modulator
-    output_mono = modulatedBand + restSignal
-
-    # Note: Envelope is applied *within* generate_voice_audio if specified there.
-    output_mono = output_mono * amp # Apply base amp here
-    return pan2(output_mono, pan=pan)
-
-
-def fsam_filter_bank_transition(duration, sample_rate=44100, **params):
-    """Frequency-Selective AM with parameter transitions."""
-    amp = float(params.get('amp', 0.15))
-    noiseType = int(params.get('noiseType', 1))
-    startFilterCenterFreq = float(params.get('startFilterCenterFreq', 1000))
-    endFilterCenterFreq = float(params.get('endFilterCenterFreq', 3000))
-    startFilterRQ = float(params.get('startFilterRQ', 0.5))
-    endFilterRQ = float(params.get('endFilterRQ', 0.1))
-    startModFreq = float(params.get('startModFreq', 4))
-    endModFreq = float(params.get('endModFreq', 12))
-    startModDepth = float(params.get('startModDepth', 0.8))
-    endModDepth = float(params.get('endModDepth', 0.5))
-    pan = float(params.get('pan', 0))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-    t_rel = np.linspace(0, duration, N, endpoint=False)
-    t_abs = t_rel
-
-    # Generate noise source
-    if noiseType == 1:
-        source = np.random.randn(N)
-    elif noiseType == 2:
-        source = pink_noise(N)
-    elif noiseType == 3:
-        source = brown_noise(N)
-    else:
-        source = np.random.randn(N)
-
-    # Interpolate parameters
-    currentFilterCenterFreq = np.linspace(startFilterCenterFreq, endFilterCenterFreq, N)
-    currentFilterRQ = np.linspace(startFilterRQ, endFilterRQ, N)
-    currentModFreq = np.linspace(startModFreq, endModFreq, N)
-    currentModDepth = np.linspace(startModDepth, endModDepth, N)
-
-    # --- Filtering with time-varying parameters is complex. ---
-    # --- Simplification: Filter with START parameters only. ---
-    # --- A more accurate approach would use time-varying filters (e.g., state-variable filter). ---
-    startCenter = max(20.0, startFilterCenterFreq)
-    startQ = 1.0 / max(0.01, startFilterRQ) if startFilterRQ > 0 else 100.0
-    print("Warning: fsam_filter_bank_transition uses filter parameters from the START of the transition only.")
-    bandSignal = bandpass_filter(source, startCenter, startQ, sample_rate)
-    restSignal = bandreject_filter(source, startCenter, startQ, sample_rate)
-    # --- End Simplification ---
-
-    lfo = sine_wave_varying(currentModFreq, t_abs, sample_rate)
-
-    # --- FIX APPLIED ---
-    modulator = 1.0 - currentModDepth * (1.0 - lfo) * 0.5
-    # --------------------
-
-    modulatedBand = bandSignal * modulator
-    output_mono = modulatedBand + restSignal
-
-    # Note: Envelope is applied *within* generate_voice_audio if specified there.
-    output_mono = output_mono * amp # Apply base amp here
-    return pan2(output_mono, pan=pan)
-
 
 def rhythmic_waveshaping(duration, sample_rate=44100, **params):
     """Rhythmic waveshaping using tanh function."""
@@ -847,15 +571,6 @@ def rhythmic_waveshaping_transition(duration, sample_rate=44100, **params):
     # Note: Envelope is applied *within* generate_voice_audio if specified there.
     output_mono = shapedSignal * amp # Apply base amp here
     return pan2(output_mono, pan=pan)
-
-
-# Removed: rhythmic_granular_rate
-
-
-# Removed: additive_phase_mod
-
-
-# Removed: additive_phase_mod_transition
 
 
 def stereo_am_independent(duration, sample_rate=44100, **params):
@@ -1075,211 +790,6 @@ def wave_shape_stereo_am_transition(duration, sample_rate=44100, **params):
     return np.vstack([outputL, outputR]).T
 
 # --- NEW: Flanged Voice Synth Definition ---
-def flanged_voice(duration, sample_rate=44100, **params):
-    """
-    Generates a continuously modulating flanging effect on a noise source.
-    Uses a sine LFO based on rate_hz.
-    """
-    # Extract parameters
-    amp = float(params.get('amp', 0.5)) # Overall amplitude
-    noiseType = int(params.get('noiseType', 2))  # 1=white, 2=pink, 3=brown
-    max_delay_ms = float(params.get('max_delay_ms', 15.0)) # Max LFO delay
-    min_delay_ms = float(params.get('min_delay_ms', 1.0))  # Min LFO delay
-    rate_hz = float(params.get('rate_hz', 0.2)) # Flanger LFO rate (speed)
-    lfo_start_phase_rad = float(params.get('lfo_start_phase_rad', 0.0)) # Starting phase of LFO
-    skip_below_freq = float(params.get('skip_below_freq', 30.0)) # Skip comb frequencies below this
-    lowest_freq_mode = str(params.get('lowest_freq_mode', 'notch')) # 'notch' or 'peak'
-    dry_mix = float(params.get('dry_mix', 0.5)) # Mix level of original signal
-    wet_mix = float(params.get('wet_mix', 0.5)) # Mix level of flanged signal
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-
-    # Generate noise source (mono)
-    if noiseType == 1:
-        source_mono = np.random.randn(N)
-    elif noiseType == 2:
-        source_mono = pink_noise(N)
-    elif noiseType == 3:
-        source_mono = brown_noise(N)
-    else:
-        print(f"Warning: Unknown noiseType {noiseType}. Defaulting to pink noise.")
-        source_mono = pink_noise(N) # Default to pink
-
-    # Ensure source is not completely silent
-    if np.max(np.abs(source_mono)) < 1e-9:
-         print("Warning: Generated noise source is silent for flanger.")
-         return np.zeros((N, 2))
-
-    # Convert mono noise to stereo for the flanger effect input
-    source_stereo = np.vstack([source_mono, source_mono]).T
-
-    # Apply the flanger effect using the internal helper
-    try:
-        flanged_output = _flanger_effect_stereo_continuous(
-            x=source_stereo,
-            sr=sample_rate,
-            max_delay_ms=max_delay_ms,
-            min_delay_ms=min_delay_ms,
-            rate_hz=rate_hz,
-            lfo_start_phase_rad=lfo_start_phase_rad,
-            skip_below_freq=skip_below_freq,
-            lowest_freq_mode=lowest_freq_mode,
-            dry_mix=dry_mix,
-            wet_mix=wet_mix
-        )
-    except Exception as e:
-        print(f"Error during continuous flanger effect processing:")
-        traceback.print_exc()
-        return np.zeros((N, 2)) # Return silence on error
-
-    # Apply overall amplitude AFTER the effect
-    output_stereo = flanged_output * amp
-
-    # Note: Volume envelope (like ADSR/Linen) is applied later in generate_voice_audio.
-    return output_stereo.astype(np.float32) # Ensure final output is float32
-
-
-# --- NEW: Flanged Voice Transition Synth Definition ---
-def flanged_voice_transition(duration, sample_rate=44100, **params):
-    """
-    Generates a flanging effect with linearly transitioning parameters.
-    Uses a continuously modulating sine LFO where rate can also transition.
-    """
-    # Extract start/end parameters
-    startAmp = float(params.get('startAmp', 0.5))
-    endAmp = float(params.get('endAmp', startAmp)) # Default end to start if not provided
-
-    startNoiseType = int(params.get('startNoiseType', 2)) # Use start value only
-
-    startMaxDelayMs = float(params.get('startMaxDelayMs', 15.0))
-    endMaxDelayMs = float(params.get('endMaxDelayMs', startMaxDelayMs))
-    startMinDelayMs = float(params.get('startMinDelayMs', 1.0))
-    endMinDelayMs = float(params.get('endMinDelayMs', startMinDelayMs))
-
-    startRateHz = float(params.get('startRateHz', 0.2))
-    endRateHz = float(params.get('endRateHz', startRateHz))
-
-    startLfoPhaseRad = float(params.get('startLfoPhaseRad', 0.0)) # Use start value only
-
-    startSkipBelowFreq = float(params.get('startSkipBelowFreq', 30.0))
-    endSkipBelowFreq = float(params.get('endSkipBelowFreq', startSkipBelowFreq))
-    startLowestFreqMode = str(params.get('startLowestFreqMode', 'notch')) # Use start value only
-
-    startDryMix = float(params.get('startDryMix', 0.5))
-    endDryMix = float(params.get('endDryMix', startDryMix))
-    startWetMix = float(params.get('startWetMix', 0.5))
-    endWetMix = float(params.get('endWetMix', startWetMix))
-
-    N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-
-    # --- Generate Noise Source (based on start type) ---
-    if startNoiseType == 1:
-        source_mono = np.random.randn(N)
-    elif startNoiseType == 2:
-        source_mono = pink_noise(N)
-    elif startNoiseType == 3:
-        source_mono = brown_noise(N)
-    else:
-        print(f"Warning: Unknown startNoiseType {startNoiseType}. Defaulting to pink noise.")
-        source_mono = pink_noise(N)
-
-    if np.max(np.abs(source_mono)) < 1e-9:
-        print("Warning: Generated noise source is silent for flanger transition.")
-        return np.zeros((N, 2))
-
-    source_stereo = np.vstack([source_mono, source_mono]).T.astype(np.float32)
-
-    # --- Interpolate Parameters ---
-    currentAmp = np.linspace(startAmp, endAmp, N)
-    currentMaxDelayMs = np.linspace(startMaxDelayMs, endMaxDelayMs, N)
-    currentMinDelayMs = np.linspace(startMinDelayMs, endMinDelayMs, N)
-    currentRateHz = np.linspace(startRateHz, endRateHz, N)
-    currentSkipBelowFreq = np.linspace(startSkipBelowFreq, endSkipBelowFreq, N)
-    currentDryMix = np.linspace(startDryMix, endDryMix, N)
-    currentWetMix = np.linspace(startWetMix, endWetMix, N)
-
-    # Ensure min_delay <= max_delay and handle skip_freq limit dynamically
-    # Vectorize calculations for efficiency
-    currentMinDelayMs = np.minimum(currentMinDelayMs, currentMaxDelayMs)
-    currentMaxDelayMs = np.maximum(currentMinDelayMs, currentMaxDelayMs) # Ensure max >= min after potential adjustments
-
-    max_allowed_delay_ms = np.full(N, np.inf) # Initialize with no limit
-    valid_skip_mask = currentSkipBelowFreq > 0
-    if np.any(valid_skip_mask):
-        if startLowestFreqMode.lower() == 'peak':
-             max_allowed_delay_ms[valid_skip_mask] = 1000.0 / currentSkipBelowFreq[valid_skip_mask]
-        else: # 'notch'
-             max_allowed_delay_ms[valid_skip_mask] = 1000.0 / (2.0 * currentSkipBelowFreq[valid_skip_mask])
-
-    actualMaxDelayMs = np.minimum(currentMaxDelayMs, max_allowed_delay_ms)
-    # Re-ensure min <= max after applying skip limit
-    actualMinDelayMs = np.minimum(currentMinDelayMs, actualMaxDelayMs)
-    actualMaxDelayMs = np.maximum(actualMinDelayMs, actualMaxDelayMs)
-
-
-    # --- Calculate Time-Varying LFO Phase ---
-    # Phase is integral of angular frequency (2*pi*rate)
-    # Use cumsum for discrete integration: phase[n] = start_phase + sum(2*pi*rate[i]*dt for i=0 to n-1)
-    dt = 1.0 / sample_rate
-    inst_angular_freq = 2 * np.pi * currentRateHz
-    phase_increment = inst_angular_freq * dt
-    # Add start phase to the first element, then cumsum includes it
-    phase_lfo = np.cumsum(phase_increment) + startLfoPhaseRad - phase_increment[0] # Adjust start phase offset for cumsum
-
-
-    # --- Sample-by-Sample Processing (Inlined & Adapted) ---
-    y = np.zeros_like(source_stereo, dtype=np.float32)
-
-    # Pre-calculate delay ranges in samples (now arrays)
-    delay_range_samples = (actualMaxDelayMs - actualMinDelayMs) / 1000.0 * sample_rate
-    min_delay_samples = actualMinDelayMs / 1000.0 * sample_rate
-
-    # Ensure non-negative ranges
-    delay_range_samples = np.maximum(0, delay_range_samples)
-    min_delay_samples = np.maximum(0, min_delay_samples)
-
-
-    for n in range(N):
-        ph = phase_lfo[n]
-        lfo_mod_signal = (np.sin(ph) + 1.0) * 0.5
-
-        # Calculate delay in samples for this time step n
-        delay_in_samps = min_delay_samples[n] + lfo_mod_signal * delay_range_samples[n]
-
-        # Fractional "tap" position in the past
-        tap_float = n - delay_in_samps
-
-        if tap_float < 0:
-            delayed_sample = source_stereo[n] # Use dry signal when history is insufficient
-        else:
-            # Linear interpolation
-            i0 = int(np.floor(tap_float))
-            frac = tap_float - i0
-            i1 = i0 + 1
-
-            if i1 > n:
-                x0 = source_stereo[max(0, i0)] # Ensure index >= 0
-                x1 = x0
-            else:
-                i0 = max(0, i0)
-                i1 = max(0, i1)
-                x0 = source_stereo[i0]
-                x1 = source_stereo[i1]
-
-            delayed_sample = (1.0 - frac) * x0 + frac * x1
-
-        # Mix dry + wet using interpolated values for this time step
-        y[n] = currentDryMix[n] * source_stereo[n] + currentWetMix[n] * delayed_sample
-
-    # Apply overall interpolated amplitude
-    output_stereo = y * currentAmp[:, np.newaxis] # Apply amp using broadcasting
-
-    # Note: Volume envelope is applied later in generate_voice_audio.
-    return output_stereo.astype(np.float32)
 
 def spatial_angle_modulation(duration, sample_rate=44100, **params):
     """Spatial Angle Modulation using external audio_engine module."""
@@ -1405,15 +915,9 @@ def spatial_angle_modulation_transition(duration, sample_rate=44100, **params):
         N = int(sample_rate * duration)
         return np.zeros((N, 2))
 
-from scipy.signal import butter, sosfiltfilt
 
 
-import numpy as np
-import numba
 
-# -----------------------------------------------------------------------------
-# Core JIT-compiled function for binaural_beat
-# -----------------------------------------------------------------------------
 def binaural_beat(duration, sample_rate=44100, **params):
     # --- Unpack synthesis parameters ---
     ampL = float(params.get('ampL', 0.5))
@@ -1423,8 +927,6 @@ def binaural_beat(duration, sample_rate=44100, **params):
     force_mono = bool(params.get('forceMono', False))
     startL = float(params.get('startPhaseL', 0.0)) # in radians
     startR = float(params.get('startPhaseR', 0.0)) # in radians
-    pOF = float(params.get('phaseOscFreq', 0.0))
-    pOR = float(params.get('phaseOscRange', 0.0)) # in radians
     aODL = float(params.get('ampOscDepthL', 0.0))
     aOFL = float(params.get('ampOscFreqL', 0.0))
     aODR = float(params.get('ampOscDepthR', 0.0))
@@ -1433,66 +935,76 @@ def binaural_beat(duration, sample_rate=44100, **params):
     fOFL = float(params.get('freqOscFreqL', 0.0))
     fORR = float(params.get('freqOscRangeR', 0.0))
     fOFR = float(params.get('freqOscFreqR', 0.0))
-
-    # --- NEW: Unpack amplitude oscillation phase offset parameters ---
-    # These are expected to be in radians
     ampOscPhaseOffsetL = float(params.get('ampOscPhaseOffsetL', 0.0))
     ampOscPhaseOffsetR = float(params.get('ampOscPhaseOffsetR', 0.0))
+    pOF = float(params.get('phaseOscFreq', 0.0))
+    pOR = float(params.get('phaseOscRange', 0.0)) # in radians
 
-    # --- Unpack glitch parameters ---
-    glitchInterval   = float(params.get('glitchInterval',   0.0)) # 3.5
-    glitchDur        = float(params.get('glitchDur',        0.0)) # 0.5
-    glitchNoiseLevel = float(params.get('glitchNoiseLevel', 0.0)) # 0.25ish
-    glitchFocusWidth = float(params.get('glitchFocusWidth', 0.0)) # 100 - 200
-    glitchFocusExp   = float(params.get('glitchFocusExp',   0.0)) # 2-4
+    # --- UNCOMMENT IF "GLITCH/CHIRP" EFFECT NEEDED OR DESIRED
+    # --- Unpack glitch parameters --- 
+    # glitchInterval   = float(params.get('glitchInterval',   0.0))
+    # glitchDur        = float(params.get('glitchDur',        0.0))
+    # glitchNoiseLevel = float(params.get('glitchNoiseLevel', 0.0))
+    # glitchFocusWidth = float(params.get('glitchFocusWidth', 0.0))
+    # glitchFocusExp   = float(params.get('glitchFocusExp',   0.0))
 
     N = int(duration * sample_rate)
+    #
+    # # --- Precompute glitch bursts in NumPy ---
+    # positions = []
+    # bursts = []
+    # if glitchInterval > 0 and glitchDur > 0 and glitchNoiseLevel > 0 and N > 0:
+    #     full_n = int(glitchDur * sample_rate)
+    #     if full_n > 0:
+    #         repeats = int(duration / glitchInterval)
+    #         for k in range(1, repeats + 1):
+    #             t_end   = k * glitchInterval
+    #             t_start = max(0.0, t_end - glitchDur)
+    #             i0 = int(t_start * sample_rate)
+    #             i1 = i0 + full_n
+    #             if i1 > N:
+    #                 continue
+    #
+    #             white = np.random.standard_normal(full_n)
+    #             S = np.fft.rfft(white)
+    #             freqs_denominator = full_n if full_n != 0 else 1
+    #             freqs = np.arange(S.size) * (sample_rate / freqs_denominator)
+    #
+    #             if glitchFocusWidth == 0:
+    #                 gauss = np.ones_like(freqs)
+    #             else:
+    #                 gauss = np.exp(-0.5 * ((freqs - baseF) / glitchFocusWidth) ** glitchFocusExp)
+    #
+    #             shaped = np.fft.irfft(S * gauss, n=full_n)
+    #             max_abs_shaped = np.max(np.abs(shaped))
+    #             if max_abs_shaped < 1e-16:
+    #                 shaped_normalized = np.zeros_like(shaped)
+    #             else:
+    #                 shaped_normalized = shaped / max_abs_shaped
+    #             ramp = np.linspace(0.0, 1.0, full_n, endpoint=True)
+    #             burst_samples = (shaped_normalized * ramp * glitchNoiseLevel).astype(np.float32)
+    #
+    #             positions.append(i0)
+    #             bursts.append(burst_samples)
+    #
+    # if bursts:
+    #     pos_arr   = np.array(positions, dtype=np.int32)
+    #     # Ensure all burst_samples have the same length if concatenating or handle individually
+    #     # For simplicity, assuming all burst_samples are concatenated correctly if generated
+    #     if any(b.ndim == 0 or b.size == 0 for b in bursts): # check for empty or scalar arrays
+    #         burst_arr = np.empty(0, dtype=np.float32)
+    #         pos_arr = np.empty(0, dtype=np.int32) # Clear positions if bursts are problematic
+    #     else:
+    #         try:
+    #             burst_arr = np.concatenate(bursts)
+    #         except ValueError: # Handle cases where concatenation might fail (e.g. varying dimensions beyond the first)
+    #              # Fallback: if concatenation fails, create empty burst array or handle error appropriately
+    #             burst_arr = np.empty(0, dtype=np.float32)
+    #             pos_arr = np.empty(0, dtype=np.int32)
+    #
 
-    # --- Precompute glitch bursts in NumPy ---
-    positions = []
-    bursts = []
-    if glitchInterval > 0 and glitchDur > 0 and glitchNoiseLevel > 0 and N > 0: # Added N > 0 check
-        full_n = int(glitchDur * sample_rate)
-        if full_n > 0: # Ensure full_n is positive
-            repeats = int(duration / glitchInterval)
-            for k in range(1, repeats + 1):
-                t_end   = k * glitchInterval
-                t_start = max(0.0, t_end - glitchDur)
-                i0 = int(t_start * sample_rate)
-                i1 = i0 + full_n
-                if i1 > N:
-                    continue
-
-                white = np.random.standard_normal(full_n)
-                S = np.fft.rfft(white)
-                # Ensure freqs calculation doesn't divide by zero if full_n is somehow zero
-                freqs_denominator = full_n if full_n != 0 else 1
-                freqs = np.arange(S.size) * (sample_rate / freqs_denominator)
-
-                # Ensure glitchFocusWidth is not zero to avoid division by zero
-                if glitchFocusWidth == 0:
-                    gauss = np.ones_like(freqs) # Or handle as an error/default
-                else:
-                    gauss = np.exp(-0.5 * ((freqs - baseF) / glitchFocusWidth) ** glitchFocusExp)
-
-                shaped = np.fft.irfft(S * gauss, n=full_n)
-                max_abs_shaped = np.max(np.abs(shaped))
-                if max_abs_shaped < 1e-16: # Avoid division by very small number or zero
-                    shaped_normalized = np.zeros_like(shaped)
-                else:
-                    shaped_normalized = shaped / max_abs_shaped
-                ramp = np.linspace(0.0, 1.0, full_n, endpoint=True)
-                burst_samples = (shaped_normalized * ramp * glitchNoiseLevel).astype(np.float32)
-
-                positions.append(i0)
-                bursts.append(burst_samples)
-
-    if bursts:
-        pos_arr   = np.array(positions, dtype=np.int32)
-        burst_arr = np.concatenate(bursts)
-    else:
-        pos_arr   = np.empty(0, dtype=np.int32)
-        burst_arr = np.empty(0, dtype=np.float32)
+    pos_arr   = np.empty(0, dtype=np.int32)
+    burst_arr = np.empty(0, dtype=np.float32)
 
     return _binaural_beat_core(
         N,
@@ -1501,7 +1013,6 @@ def binaural_beat(duration, sample_rate=44100, **params):
         ampL, ampR, baseF, beatF, force_mono,
         startL, startR, pOF, pOR,
         aODL, aOFL, aODR, aOFR,
-        # --- NEW: Pass amplitude oscillation phase offset parameters ---
         ampOscPhaseOffsetL, ampOscPhaseOffsetR,
         fORL, fOFL, fORR, fOFR,
         pos_arr, burst_arr
@@ -1513,204 +1024,408 @@ def _binaural_beat_core(
     ampL, ampR, baseF, beatF, force_mono,
     startL, startR, pOF, pOR,
     aODL, aOFL, aODR, aOFR,
-    # --- NEW: Add amplitude oscillation phase offset parameters to signature ---
     ampOscPhaseOffsetL, ampOscPhaseOffsetR,
     fORL, fOFL, fORR, fOFR,
-    pos,    # int32[:] start indices
-    burst   # float32[:] concatenated glitch samples
+    pos,   # int32[:] start indices
+    burst  # float32[:] concatenated glitch samples
 ):
-    # time vector
+    if N <= 0 :
+        return np.zeros((0,2), dtype=np.float32)
+        
     t = np.empty(N, dtype=np.float64)
-    dt = duration / N if N > 0 else 0.0 # Prevent division by zero if N is 0
-    for i in prange(N): # Use prange if Numba is in parallel mode
+    dt = duration / N if N > 0 else 0.0
+    for i in numba.prange(N): # Use prange for parallel
         t[i] = i * dt
 
-    # instantaneous frequencies
     halfB = beatF / 2.0
     fL_base = baseF - halfB
     fR_base = baseF + halfB
     instL = np.empty(N, dtype=np.float64)
     instR = np.empty(N, dtype=np.float64)
-    for i in prange(N): # Use prange
+    for i in numba.prange(N): # Use prange
         vibL = (fORL/2.0) * np.sin(2*np.pi*fOFL*t[i])
         vibR = (fORR/2.0) * np.sin(2*np.pi*fOFR*t[i])
         instL[i] = max(0.0, fL_base + vibL)
         instR[i] = max(0.0, fR_base + vibR)
+    
     if force_mono or beatF == 0.0:
-        for i in prange(N): # Use prange
+        for i in numba.prange(N): # Use prange
             instL[i] = baseF
             instR[i] = baseF
 
-    # phase accumulation (sequential, cannot be parallelized with current approach)
     phL = np.empty(N, dtype=np.float64)
     phR = np.empty(N, dtype=np.float64)
     curL = startL
     curR = startR
-    # This loop must be sequential due to curL and curR dependencies
-    for i in range(N): # Cannot use prange here
+    for i in range(N): # Sequential loop
         curL += 2 * np.pi * instL[i] * dt
         curR += 2 * np.pi * instR[i] * dt
         phL[i] = curL
         phR[i] = curR
 
-    # phase modulation
-    if pOF != 0.0 or pOR != 0.0: # Check if phase oscillation is active
-        for i in prange(N): # Use prange
-            # Ensure pOF is not zero before using it in np.sin to avoid issues,
-            # though the outer if should catch pOF == 0 if pOR is also 0.
-            # The (pOR/2.0) term handles the amplitude of this modulation.
+    if pOF != 0.0 or pOR != 0.0:
+        for i in numba.prange(N): # Use prange
             dphi = (pOR/2.0) * np.sin(2*np.pi*pOF*t[i])
             phL[i] -= dphi
             phR[i] += dphi
 
-    # amplitude envelopes
     envL = np.empty(N, dtype=np.float64)
     envR = np.empty(N, dtype=np.float64)
-    for i in prange(N): # Use prange
-        # --- MODIFIED: Include phase offsets for amplitude modulation ---
-        # The phase offset is added inside the np.sin function.
-        # It's assumed ampOscPhaseOffsetL and ampOscPhaseOffsetR are in radians.
+    for i in numba.prange(N): # Use prange
         envL[i] = 1.0 - aODL * (0.5*(1.0 + np.sin(2*np.pi*aOFL*t[i] + ampOscPhaseOffsetL)))
         envR[i] = 1.0 - aODR * (0.5*(1.0 + np.sin(2*np.pi*aOFR*t[i] + ampOscPhaseOffsetR)))
 
-    # generate stereo signal
     out = np.empty((N,2), dtype=np.float32)
-    for i in prange(N): # Use prange
+    for i in numba.prange(N): # Use prange
         out[i,0] = np.float32(np.sin(phL[i]) * envL[i] * ampL)
         out[i,1] = np.float32(np.sin(phR[i]) * envR[i] * ampR)
 
-    # add glitch bursts
     num_bursts = pos.shape[0]
-    if num_bursts > 0:
-        # Ensure burst.size is not zero and divisible by num_bursts if num_bursts > 0
-        # This check also implies burst is not empty.
-        if burst.size == 0 or burst.size % num_bursts != 0:
-             # Handle error: burst size is not compatible with num_bursts
-             # For now, let's skip adding glitches if this condition is met
-             pass # Or raise an error, or log a warning
-        else:
+    if num_bursts > 0 and burst.size > 0: # ensure burst is not empty
+        # Ensure burst.size is divisible by num_bursts.
+        # This check implies burst is not empty and pos is not empty.
+        if burst.size % num_bursts == 0 :
             L = burst.size // num_bursts
             if L > 0: # Ensure segment length L is positive
                 idx = 0
-                # This loop for bursts might have issues with prange if modifications overlap.
-                # However, if each burst 'b' writes to distinct 'p' indices, it could be fine.
-                # Given 'pos' are start indices, and 'j' iterates within a burst length 'L',
-                # overlap between different bursts (different 'b') is possible if not handled carefully
-                # (e.g., if pos[b+1] < pos[b] + L).
-                # For simplicity and safety, a sequential loop is often preferred for additions
-                # unless non-overlap is guaranteed or atomic operations are used.
-                # Numba's prange on the outer loop and sequential inner loop is a common pattern.
-                for b in range(num_bursts): # Can be prange if pos ensures no race conditions
-                    start = pos[b]
+                # This loop should be sequential if bursts can overlap or write to the same output indices.
+                # If pos guarantees no overlap, then outer loop b can be prange.
+                # Assuming pos are sorted and bursts don't overlap for safety in parallel context.
+                # However, a sequential loop is safer unless overlap is explicitly managed.
+                # For now, using sequential for the outer loop over bursts.
+                for b in range(num_bursts): # Changed from prange to range for safety with additions
+                    start_idx = pos[b]
                     current_burst_segment = burst[idx : idx + L]
                     for j in range(L):
-                        p = start + j
+                        p = start_idx + j
                         if p < N: # Boundary check
-                            # Numba handles atomic operations for += on numpy arrays in parallel loops if needed,
-                            # but it's good to be mindful.
+                            # Numba does not automatically make += atomic in all contexts.
+                            # For safety, this part is tricky with prange on `b` if `pos` allows overlaps.
                             out[p,0] += current_burst_segment[j]
                             out[p,1] += current_burst_segment[j]
                     idx += L
     return out
-# Transition BB version
 
+# -----------------------------------------------------------------------------
+# Transition BB version - UPDATED
+# -----------------------------------------------------------------------------
 def binaural_beat_transition(duration, sample_rate=44100, **params):
     # --- Unpack start/end parameters ---
-    startAmpL     = float(params.get('startAmpL',     params.get('ampL',       0.5)))
-    endAmpL       = float(params.get('endAmpL',       startAmpL))
-    startAmpR     = float(params.get('startAmpR',     params.get('ampR',       0.5)))
-    endAmpR       = float(params.get('endAmpR',       startAmpR))
-    startBaseF    = float(params.get('startBaseFreq', params.get('baseFreq', 200.0)))
-    endBaseF      = float(params.get('endBaseFreq',   startBaseF))
-    startBeatF    = float(params.get('startBeatFreq', params.get('beatFreq',   4.0)))
-    endBeatF      = float(params.get('endBeatFreq',   startBeatF))
+    startAmpL = float(params.get('startAmpL', params.get('ampL', 0.5)))
+    endAmpL = float(params.get('endAmpL', startAmpL))
+    startAmpR = float(params.get('startAmpR', params.get('ampR', 0.5)))
+    endAmpR = float(params.get('endAmpR', startAmpR))
+    startBaseF = float(params.get('startBaseFreq', params.get('baseFreq', 200.0)))
+    endBaseF = float(params.get('endBaseFreq', startBaseF))
+    startBeatF = float(params.get('startBeatFreq', params.get('beatFreq', 4.0)))
+    endBeatF = float(params.get('endBeatFreq', startBeatF))
+
+    # New transitional parameters from binaural_beat
+    startForceMono = float(params.get('startForceMono', params.get('forceMono', 0.0))) # 0.0 for False, 1.0 for True
+    endForceMono = float(params.get('endForceMono', startForceMono))
+    startStartPhaseL = float(params.get('startStartPhaseL', params.get('startPhaseL', 0.0)))
+    endStartPhaseL = float(params.get('endStartPhaseL', startStartPhaseL))
+    startStartPhaseR = float(params.get('startStartPhaseR', params.get('startPhaseR', 0.0)))
+    endStartPhaseR = float(params.get('endStartPhaseR', startStartPhaseR))
+    
+    startPOF = float(params.get('startPhaseOscFreq', params.get('phaseOscFreq', 0.0)))
+    endPOF = float(params.get('endPhaseOscFreq', startPOF))
+    startPOR = float(params.get('startPhaseOscRange', params.get('phaseOscRange', 0.0)))
+    endPOR = float(params.get('endPhaseOscRange', startPOR))
+
+    startAODL = float(params.get('startAmpOscDepthL', params.get('ampOscDepthL', 0.0)))
+    endAODL = float(params.get('endAmpOscDepthL', startAODL))
+    startAOFL = float(params.get('startAmpOscFreqL', params.get('ampOscFreqL', 0.0)))
+    endAOFL = float(params.get('endAmpOscFreqL', startAOFL))
+    startAODR = float(params.get('startAmpOscDepthR', params.get('ampOscDepthR', 0.0)))
+    endAODR = float(params.get('endAmpOscDepthR', startAODR))
+    startAOFR = float(params.get('startAmpOscFreqR', params.get('ampOscFreqR', 0.0)))
+    endAOFR = float(params.get('endAmpOscFreqR', startAOFR))
+
+    startAmpOscPhaseOffsetL = float(params.get('startAmpOscPhaseOffsetL', params.get('ampOscPhaseOffsetL', 0.0)))
+    endAmpOscPhaseOffsetL = float(params.get('endAmpOscPhaseOffsetL', startAmpOscPhaseOffsetL))
+    startAmpOscPhaseOffsetR = float(params.get('startAmpOscPhaseOffsetR', params.get('ampOscPhaseOffsetR', 0.0)))
+    endAmpOscPhaseOffsetR = float(params.get('endAmpOscPhaseOffsetR', startAmpOscPhaseOffsetR))
+
+    startFORL = float(params.get('startFreqOscRangeL', params.get('freqOscRangeL', 0.0)))
+    endFORL = float(params.get('endFreqOscRangeL', startFORL))
+    startFOFL = float(params.get('startFreqOscFreqL', params.get('freqOscFreqL', 0.0)))
+    endFOFL = float(params.get('endFreqOscFreqL', startFOFL))
+    startFORR = float(params.get('startFreqOscRangeR', params.get('freqOscRangeR', 0.0)))
+    endFORR = float(params.get('endFreqOscRangeR', startFORR))
+    startFOFR = float(params.get('startFreqOscFreqR', params.get('freqOscFreqR', 0.0)))
+    endFOFR = float(params.get('endFreqOscFreqR', startFOFR))
+
+    # Glitch parameters (using average for pre-computation)
+    s_glitchInterval = float(params.get('startGlitchInterval', params.get('glitchInterval', 0.0)))
+    e_glitchInterval = float(params.get('endGlitchInterval', s_glitchInterval))
+    avg_glitchInterval = (s_glitchInterval + e_glitchInterval) / 2.0
+
+    s_glitchDur = float(params.get('startGlitchDur', params.get('glitchDur', 0.0)))
+    e_glitchDur = float(params.get('endGlitchDur', s_glitchDur))
+    avg_glitchDur = (s_glitchDur + e_glitchDur) / 2.0
+    
+    s_glitchNoiseLevel = float(params.get('startGlitchNoiseLevel', params.get('glitchNoiseLevel', 0.0)))
+    e_glitchNoiseLevel = float(params.get('endGlitchNoiseLevel', s_glitchNoiseLevel))
+    avg_glitchNoiseLevel = (s_glitchNoiseLevel + e_glitchNoiseLevel) / 2.0
+
+    s_glitchFocusWidth = float(params.get('startGlitchFocusWidth', params.get('glitchFocusWidth', 0.0)))
+    e_glitchFocusWidth = float(params.get('endGlitchFocusWidth', s_glitchFocusWidth))
+    avg_glitchFocusWidth = (s_glitchFocusWidth + e_glitchFocusWidth) / 2.0
+    
+    s_glitchFocusExp = float(params.get('startGlitchFocusExp', params.get('glitchFocusExp', 0.0)))
+    e_glitchFocusExp = float(params.get('endGlitchFocusExp', s_glitchFocusExp))
+    avg_glitchFocusExp = (s_glitchFocusExp + e_glitchFocusExp) / 2.0
 
     N = int(duration * sample_rate)
+
+    # --- Precompute glitch bursts using average parameters ---
+    positions = []
+    bursts = []
+    # Use the average base frequency for glitch shaping if it's also transitional
+    # For simplicity, using startBaseF here, or could use (startBaseF + endBaseF) / 2
+    glitch_shaping_base_freq = (startBaseF + endBaseF) / 2.0
+
+    if avg_glitchInterval > 0 and avg_glitchDur > 0 and avg_glitchNoiseLevel > 0 and N > 0:
+        full_n = int(avg_glitchDur * sample_rate)
+        if full_n > 0:
+            repeats = int(duration / avg_glitchInterval) if avg_glitchInterval > 0 else 0
+            for k in range(1, repeats + 1):
+                t_end   = k * avg_glitchInterval
+                t_start = max(0.0, t_end - avg_glitchDur)
+                i0 = int(t_start * sample_rate)
+                i1 = i0 + full_n
+                if i1 > N:
+                    continue
+
+                white = np.random.standard_normal(full_n)
+                S = np.fft.rfft(white)
+                freqs_denominator = full_n if full_n != 0 else 1
+                freqs = np.arange(S.size) * (sample_rate / freqs_denominator)
+
+                if avg_glitchFocusWidth == 0:
+                    gauss = np.ones_like(freqs)
+                else:
+                    gauss = np.exp(-0.5 * ((freqs - glitch_shaping_base_freq) / avg_glitchFocusWidth) ** avg_glitchFocusExp)
+                
+                shaped = np.fft.irfft(S * gauss, n=full_n)
+                max_abs_shaped = np.max(np.abs(shaped))
+                if max_abs_shaped < 1e-16:
+                    shaped_normalized = np.zeros_like(shaped)
+                else:
+                    shaped_normalized = shaped / max_abs_shaped
+                ramp = np.linspace(0.0, 1.0, full_n, endpoint=True)
+                burst_samples = (shaped_normalized * ramp * avg_glitchNoiseLevel).astype(np.float32)
+                
+                positions.append(i0)
+                bursts.append(burst_samples)
+    
+    if bursts:
+        pos_arr   = np.array(positions, dtype=np.int32)
+        if any(b.ndim == 0 or b.size == 0 for b in bursts):
+            burst_arr = np.empty(0, dtype=np.float32)
+            pos_arr = np.empty(0, dtype=np.int32)
+        else:
+            try:
+                burst_arr = np.concatenate(bursts)
+            except ValueError:
+                burst_arr = np.empty(0, dtype=np.float32)
+                pos_arr = np.empty(0, dtype=np.int32)
+    else:
+        pos_arr   = np.empty(0, dtype=np.int32)
+        burst_arr = np.empty(0, dtype=np.float32)
+
     return _binaural_beat_transition_core(
         N, float(duration), float(sample_rate),
         startAmpL, endAmpL, startAmpR, endAmpR,
-        startBaseF, endBaseF, startBeatF, endBeatF
+        startBaseF, endBaseF, startBeatF, endBeatF,
+        startForceMono, endForceMono,
+        startStartPhaseL, endStartPhaseL, startStartPhaseR, endStartPhaseR,
+        startPOF, endPOF, startPOR, endPOR,
+        startAODL, endAODL, startAOFL, endAOFL,
+        startAODR, endAODR, startAOFR, endAOFR,
+        startAmpOscPhaseOffsetL, endAmpOscPhaseOffsetL,
+        startAmpOscPhaseOffsetR, endAmpOscPhaseOffsetR,
+        startFORL, endFORL, startFOFL, endFOFL,
+        startFORR, endFORR, startFOFR, endFOFR,
+        pos_arr, burst_arr # Pass pre-calculated glitches
     )
 
 @numba.njit(parallel=True, fastmath=True)
 def _binaural_beat_transition_core(
     N, duration, sample_rate,
     startAmpL, endAmpL, startAmpR, endAmpR,
-    startBaseF, endBaseF, startBeatF, endBeatF
+    startBaseF, endBaseF, startBeatF, endBeatF,
+    startForceMono, endForceMono,
+    startStartPhaseL, endStartPhaseL, startStartPhaseR, endStartPhaseR,
+    startPOF, endPOF, startPOR, endPOR,
+    startAODL, endAODL, startAOFL, endAOFL,
+    startAODR, endAODR, startAOFR, endAOFR,
+    startAmpOscPhaseOffsetL, endAmpOscPhaseOffsetL,
+    startAmpOscPhaseOffsetR, endAmpOscPhaseOffsetR,
+    startFORL, endFORL, startFOFL, endFOFL,
+    startFORR, endFORR, startFOFR, endFOFR,
+    pos, burst # Glitch arrays (static for this core run)
 ):
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
 
     dt = duration / N
-    # Preallocate
-    ampL = np.empty(N, np.float64)
-    ampR = np.empty(N, np.float64)
+    
+    t_arr = np.empty(N, np.float64)
+    ampL_arr = np.empty(N, np.float64)
+    ampR_arr = np.empty(N, np.float64)
+    baseF_arr = np.empty(N, np.float64)
+    beatF_arr = np.empty(N, np.float64)
+    force_mono_arr = np.empty(N, np.float64) # Interpolate as float
+
+    pOF_arr = np.empty(N, np.float64)
+    pOR_arr = np.empty(N, np.float64)
+    aODL_arr = np.empty(N, np.float64)
+    aOFL_arr = np.empty(N, np.float64)
+    aODR_arr = np.empty(N, np.float64)
+    aOFR_arr = np.empty(N, np.float64)
+    ampOscPhaseOffsetL_arr = np.empty(N, np.float64)
+    ampOscPhaseOffsetR_arr = np.empty(N, np.float64)
+    fORL_arr = np.empty(N, np.float64)
+    fOFL_arr = np.empty(N, np.float64)
+    fORR_arr = np.empty(N, np.float64)
+    fOFR_arr = np.empty(N, np.float64)
+    
     instL = np.empty(N, np.float64)
     instR = np.empty(N, np.float64)
 
-    # Linear interpolation of parameters + inst freq
-    for i in prange(N):
+    # Linear interpolation of parameters
+    for i in numba.prange(N):
         alpha = i / (N - 1) if N > 1 else 0.0
-        aL = startAmpL + (endAmpL - startAmpL) * alpha
-        aR = startAmpR + (endAmpR - startAmpR) * alpha
-        baseF = startBaseF + (endBaseF - startBaseF) * alpha
-        beatF = startBeatF + (endBeatF - startBeatF) * alpha
-        ampL[i] = aL
-        ampR[i] = aR
-        half = beatF * 0.5
-        instL[i] = baseF - half
-        instR[i] = baseF + half
+        t_arr[i] = i * dt
+        
+        ampL_arr[i] = startAmpL + (endAmpL - startAmpL) * alpha
+        ampR_arr[i] = startAmpR + (endAmpR - startAmpR) * alpha
+        baseF_arr[i] = startBaseF + (endBaseF - startBaseF) * alpha
+        beatF_arr[i] = startBeatF + (endBeatF - startBeatF) * alpha
+        force_mono_arr[i] = startForceMono + (endForceMono - startForceMono) * alpha
 
-    # clamp non-negative freqs
-    for i in prange(N):
-        if instL[i] < 0.0: instL[i] = 0.0
-        if instR[i] < 0.0: instR[i] = 0.0
+        pOF_arr[i] = startPOF + (endPOF - startPOF) * alpha
+        pOR_arr[i] = startPOR + (endPOR - startPOR) * alpha
+        aODL_arr[i] = startAODL + (endAODL - startAODL) * alpha
+        aOFL_arr[i] = startAOFL + (endAOFL - startAOFL) * alpha
+        aODR_arr[i] = startAODR + (endAODR - startAODR) * alpha
+        aOFR_arr[i] = startAOFR + (endAOFR - startAOFR) * alpha
+        ampOscPhaseOffsetL_arr[i] = startAmpOscPhaseOffsetL + (endAmpOscPhaseOffsetL - startAmpOscPhaseOffsetL) * alpha
+        ampOscPhaseOffsetR_arr[i] = startAmpOscPhaseOffsetR + (endAmpOscPhaseOffsetR - startAmpOscPhaseOffsetR) * alpha
+        fORL_arr[i] = startFORL + (endFORL - startFORL) * alpha
+        fOFL_arr[i] = startFOFL + (endFOFL - startFOFL) * alpha
+        fORR_arr[i] = startFORR + (endFORR - startFORR) * alpha
+        fOFR_arr[i] = startFOFR + (endFOFR - startFOFR) * alpha
 
-    # phase accumulation
+        # Instantaneous frequencies
+        halfB_i = beatF_arr[i] * 0.5
+        fL_base_i = baseF_arr[i] - halfB_i
+        fR_base_i = baseF_arr[i] + halfB_i
+
+        vibL_i = (fORL_arr[i]/2.0) * np.sin(2*np.pi*fOFL_arr[i]*t_arr[i])
+        vibR_i = (fORR_arr[i]/2.0) * np.sin(2*np.pi*fOFR_arr[i]*t_arr[i])
+        
+        instL_candidate = fL_base_i + vibL_i
+        instR_candidate = fR_base_i + vibR_i
+
+        instL[i] = instL_candidate if instL_candidate > 0.0 else 0.0
+        instR[i] = instR_candidate if instR_candidate > 0.0 else 0.0
+        
+        if force_mono_arr[i] > 0.5 or beatF_arr[i] == 0.0: # Apply force_mono
+            instL[i] = baseF_arr[i]
+            instR[i] = baseF_arr[i]
+            if instL[i] < 0.0: instL[i] = 0.0 # Ensure baseF is not negative
+            if instR[i] < 0.0: instR[i] = 0.0
+
+
+    # Phase accumulation (sequential)
     phL = np.empty(N, np.float64)
     phR = np.empty(N, np.float64)
-    curL = 0.0
-    curR = 0.0
-    for i in range(N):
+    # Interpolate start phases (initial phase for the accumulation)
+    # For phase, the start/end is for the *initial* phase value, not a rate of change of start phase.
+    curL = startStartPhaseL # Use the start of the transition for the initial phase value
+    curR = startStartPhaseR # Use the start of the transition for the initial phase value
+
+    current_start_phase_L = startStartPhaseL
+    current_start_phase_R = startStartPhaseR
+    curL = startStartPhaseL
+    curR = startStartPhaseR
+
+    for i in range(N): # Sequential loop
         curL += 2.0 * np.pi * instL[i] * dt
         curR += 2.0 * np.pi * instR[i] * dt
         phL[i] = curL
         phR[i] = curR
 
-    # generate output
-    out = np.empty((N, 2), dtype=np.float32)
-    for i in prange(N):
-        out[i, 0] = np.float32(np.sin(phL[i]) * ampL[i])
-        out[i, 1] = np.float32(np.sin(phR[i]) * ampR[i])
+    # Phase modulation
+    for i in numba.prange(N): # Parallel (as it's per sample based on already calculated t_arr and pOF/pOR_arr)
+        if pOF_arr[i] != 0.0 or pOR_arr[i] != 0.0:
+            dphi = (pOR_arr[i]/2.0) * np.sin(2*np.pi*pOF_arr[i]*t_arr[i])
+            phL[i] -= dphi
+            phR[i] += dphi
+            
+    # Amplitude envelopes
+    envL = np.empty(N, np.float64)
+    envR = np.empty(N, np.float64)
+    for i in numba.prange(N): # Parallel
+        envL[i] = 1.0 - aODL_arr[i] * (0.5*(1.0 + np.sin(2*np.pi*aOFL_arr[i]*t_arr[i] + ampOscPhaseOffsetL_arr[i])))
+        envR[i] = 1.0 - aODR_arr[i] * (0.5*(1.0 + np.sin(2*np.pi*aOFR_arr[i]*t_arr[i] + ampOscPhaseOffsetR_arr[i])))
 
+    # Generate output
+    out = np.empty((N, 2), dtype=np.float32)
+    for i in numba.prange(N): # Parallel
+        out[i, 0] = np.float32(np.sin(phL[i]) * envL[i] * ampL_arr[i])
+        out[i, 1] = np.float32(np.sin(phR[i]) * envR[i] * ampR_arr[i])
+
+    # Add glitch bursts (using the static pos and burst arrays)
+    num_bursts = pos.shape[0]
+    if num_bursts > 0 and burst.size > 0:
+        if burst.size % num_bursts == 0:
+            L_glitch = burst.size // num_bursts
+            if L_glitch > 0:
+                idx = 0
+                for b in range(num_bursts): # Sequential for safety
+                    start_idx = pos[b]
+                    current_burst_segment = burst[idx : idx + L_glitch]
+                    for j in range(L_glitch):
+                        p = start_idx + j
+                        if p < N:
+                            out[p,0] += current_burst_segment[j]
+                            out[p,1] += current_burst_segment[j]
+                    idx += L_glitch
     return out
 
 
+# -----------------------------------------------------------------------------
+# Monaural Beats Stereo Amplitudes control
+# -----------------------------------------------------------------------------
 def monaural_beat_stereo_amps(duration, sample_rate=44100, **params):
-    # --- Unpack synthesis parameters ---
-    amp_l_L   = float(params.get('amp_lower_L', 0.5))
-    amp_u_L   = float(params.get('amp_upper_L', 0.5))
-    amp_l_R   = float(params.get('amp_lower_R', 0.5))
-    amp_u_R   = float(params.get('amp_upper_R', 0.5))
-    baseF     = float(params.get('baseFreq',    200.0))
-    beatF     = float(params.get('beatFreq',      4.0))
-    start_l   = float(params.get('startPhaseL',  0.0))
-    start_u   = float(params.get('startPhaseR',  0.0))
-    phiF      = float(params.get('phaseOscFreq', 0.0))
-    phiR      = float(params.get('phaseOscRange',0.0))
-    aOD       = float(params.get('ampOscDepth',  0.0))
-    aOF       = float(params.get('ampOscFreq',   0.0))
+    amp_l_L  = float(params.get('amp_lower_L', 0.5))
+    amp_u_L  = float(params.get('amp_upper_L', 0.5))
+    amp_l_R  = float(params.get('amp_lower_R', 0.5))
+    amp_u_R  = float(params.get('amp_upper_R', 0.5))
+    baseF    = float(params.get('baseFreq',    200.0))
+    beatF    = float(params.get('beatFreq',      4.0))
+    start_l  = float(params.get('startPhaseL',  0.0)) # Corresponds to lower frequency component
+    start_u  = float(params.get('startPhaseR',  0.0)) # Corresponds to upper frequency component (was startPhaseR)
+    phiF     = float(params.get('phaseOscFreq', 0.0))
+    phiR     = float(params.get('phaseOscRange',0.0))
+    aOD      = float(params.get('ampOscDepth',  0.0))
+    aOF      = float(params.get('ampOscFreq',   0.0))
+    # New: ampOscPhaseOffset for monaural (applies to both L and R mixed signal)
+    aOP      = float(params.get('ampOscPhaseOffset', 0.0))
+
 
     N = int(duration * sample_rate)
     return _monaural_beat_stereo_amps_core(
-        N,
-        float(duration),
-        float(sample_rate),
+        N, float(duration), float(sample_rate),
         amp_l_L, amp_u_L, amp_l_R, amp_u_R,
         baseF, beatF,
         start_l, start_u,
         phiF, phiR,
-        aOD, aOF
+        aOD, aOF, aOP
     )
 
 @numba.njit(parallel=True, fastmath=True)
@@ -1718,218 +1433,89 @@ def _monaural_beat_stereo_amps_core(
     N, duration, sample_rate,
     amp_l_L, amp_u_L, amp_l_R, amp_u_R,
     baseF, beatF,
-    start_l, start_u,
-    phiF, phiR,
-    aOD, aOF
+    start_l, start_u, # start phases for lower and upper components
+    phiF, phiR,       # phase oscillation freq and range
+    aOD, aOF, aOP     # amplitude oscillation depth, freq, phase offset
 ):
-    # time base
+    if N <= 0:
+        return np.zeros((0,2), dtype=np.float32)
+
     t = np.empty(N, dtype=np.float64)
     dt = duration / N if N > 0 else 0.0
-    for i in prange(N):
+    for i in numba.prange(N):
         t[i] = i * dt
 
-    # carrier freqs
     halfB = beatF / 2.0
-    f_l = max(0.0, baseF - halfB)
-    f_u = max(0.0, baseF + halfB)
-
-    # phase accumulation (sequential)
+    f_l = baseF - halfB
+    f_u = baseF + halfB
+    if f_l < 0.0: f_l = 0.0
+    if f_u < 0.0: f_u = 0.0
+    
     ph_l = np.empty(N, dtype=np.float64)
     ph_u = np.empty(N, dtype=np.float64)
     cur_l = start_l
     cur_u = start_u
-    for i in range(N):
+    for i in range(N): # Sequential
         cur_l += 2 * np.pi * f_l * dt
         cur_u += 2 * np.pi * f_u * dt
         ph_l[i] = cur_l
         ph_u[i] = cur_u
 
-    # phase modulation
     if phiF != 0.0 or phiR != 0.0:
-        for i in prange(N):
+        for i in numba.prange(N):
             dphi = (phiR/2.0) * np.sin(2*np.pi*phiF*t[i])
             ph_l[i] -= dphi
             ph_u[i] += dphi
 
-    # generate sine waves
     s_l = np.empty(N, dtype=np.float64)
     s_u = np.empty(N, dtype=np.float64)
-    for i in prange(N):
+    for i in numba.prange(N):
         s_l[i] = np.sin(ph_l[i])
         s_u[i] = np.sin(ph_u[i])
 
-    # mix into channels
     mix_L = np.empty(N, dtype=np.float64)
     mix_R = np.empty(N, dtype=np.float64)
-    for i in prange(N):
+    for i in numba.prange(N):
         mix_L[i] = s_l[i] * amp_l_L + s_u[i] * amp_u_L
         mix_R[i] = s_l[i] * amp_l_R + s_u[i] * amp_u_R
 
-    # amplitude modulation
-    depth = aOD
-    if depth < 0.0: depth = 0.0
-    if depth > 2.0: depth = 2.0
+    # Amplitude modulation (using aOD, aOF, and new aOP)
+    # The original code had depth clamping, let's make aOD behave like ampOscDepthL/R (0-1 usual range for depth)
+    # (1.0 - aOD * (0.5 * (1 + sin(...)))) means aOD=0 -> factor 1, aOD=1 -> factor 0.5 to 1.5 around 1
+    # Let's use: env_factor = 1.0 - aOD * (0.5 * (1.0 + np.sin(2*np.pi*aOF*t[i] + aOP)))
+    # Or, if aOD is meant like the previous `depth` (0-2):
+    # m = (1.0 - aOD/2.0) + (aOD/2.0)*np.sin(2*np.pi*aOF*t[i] + aOP)
+    # Let's use the latter form as it was in the original code for aOD.
+    # Clamping aOD (depth) to 0-2 as before
+    current_aOD = aOD
+    if current_aOD < 0.0: current_aOD = 0.0
+    if current_aOD > 2.0: current_aOD = 2.0
 
-    if depth != 0.0 and aOF != 0.0:
-        for i in prange(N):
-            m = (1.0 - depth/2.0) + (depth/2.0)*np.sin(2*np.pi*aOF*t[i])
-            mix_L[i] *= m
-            mix_R[i] *= m
-
-    # build output and clip
+    if current_aOD != 0.0 and aOF != 0.0:
+        for i in numba.prange(N):
+            # Original form: m = (1.0 - depth/2.0) + (depth/2.0)*np.sin(2*np.pi*aOF*t[i])
+            # Adding aOP:
+            mod_val = (1.0 - current_aOD/2.0) + (current_aOD/2.0) * np.sin(2*np.pi*aOF*t[i] + aOP)
+            mix_L[i] *= mod_val
+            mix_R[i] *= mod_val
+            
     out = np.empty((N,2), dtype=np.float32)
-    for i in prange(N):
-        l = mix_L[i]
-        if l > 1.0: l = 1.0
-        elif l < -1.0: l = -1.0
-        r = mix_R[i]
-        if r > 1.0: r = 1.0
-        elif r < -1.0: r = -1.0
-        out[i,0] = np.float32(l)
-        out[i,1] = np.float32(r)
-
-    return out    
-@numba.njit(parallel=True, fastmath=True)
-def _prepare_beats_and_angles(
-    mono: np.ndarray,
-    sample_rate: float,
-    aOD: float, aOF: float, aOP: float,
-    spatial_freq: float,
-    path_radius: float,
-    spatial_phase_off: float
-):
-    """
-    Given a mono waveform, build:
-      • mod_beat[i]   = mono[i] * custom AM envelope (depth aOD, freq aOF, phase aOP)
-      • azimuth[i]    = angle of a circle whose radius is 0.5*(mod_beat+1)*path_radius,
-                        swept at spatial_freq, with an overall offset spatial_phase_off.
-      • elevation[i]  = always zero (we stay horizontal)
-    """
-    N = mono.shape[0]
-    mod_beat   = np.empty(N, dtype=np.float32)
-    azimuth    = np.empty(N, dtype=np.float32)
-    elevation  = np.zeros(N, dtype=np.float32)
-    cum_phase  = spatial_phase_off
-    dt = 1.0 / sample_rate
-
-    # 1) Apply custom AM envelope + build mod_beat
     for i in numba.prange(N):
-        t = i * dt
-        if aOD > 0.0 and aOF > 0.0:
-            env = (1.0 - aOD/2.0) + (aOD/2.0) * math.sin(2*math.pi*aOF*t + aOP)
-        else:
-            env = 1.0
-        mod_beat[i] = mono[i] * env
+        l_val = mix_L[i]
+        if l_val > 1.0: l_val = 1.0
+        elif l_val < -1.0: l_val = -1.0
+        r_val = mix_R[i]
+        if r_val > 1.0: r_val = 1.0
+        elif r_val < -1.0: r_val = -1.0
+        out[i,0] = np.float32(l_val)
+        out[i,1] = np.float32(r_val)
 
-    # 2) Compute circular path (radius from mod_beat) → azimuth
-    for i in numba.prange(N):
-        cum_phase += 2 * math.pi * spatial_freq * dt
-        r = path_radius * (0.5 * (mod_beat[i] + 1.0))
-        x = r * math.sin(cum_phase)
-        y = r * math.cos(cum_phase)
-        azimuth[i] = math.degrees(math.atan2(x, y))
+    return out
 
-    return mod_beat, azimuth, elevation
-
-# ────────── Updated wrapper ──────────
-def spatial_angle_modulation_monaural_beat(
-    duration,
-    sample_rate=44100,
-    **params
-):
-    """
-    Same API as before, but now uses Numba for all per-sample math:
-      • ampOscDepth, ampOscFreq, ampOscPhaseOffset
-      • spatialBeatFreq, spatialPhaseOffset
-    """
-    # --- unpack AM params ---
-    aOD = float(params.get('ampOscDepth',       0.0))
-    aOF = float(params.get('ampOscFreq',        0.0))
-    aOP = float(params.get('ampOscPhaseOffset', 0.0))
-
-    # --- prepare core beat args (disable its internal AM) ---
-    beat_params = {
-        'amp_lower_L':   float(params.get('amp_lower_L',   0.5)),
-        'amp_upper_L':   float(params.get('amp_upper_L',   0.5)),
-        'amp_lower_R':   float(params.get('amp_lower_R',   0.5)),
-        'amp_upper_R':   float(params.get('amp_upper_R',   0.5)),
-        'baseFreq':      float(params.get('baseFreq',     200.0)),
-        'beatFreq':      float(params.get('beatFreq',       4.0)),
-        'startPhaseL':   float(params.get('startPhaseL',    0.0)),
-        'startPhaseR':   float(params.get('startPhaseR',    0.0)),
-        'phaseOscFreq':  float(params.get('phaseOscFreq',   0.0)),
-        'phaseOscRange': float(params.get('phaseOscRange',  0.0)),
-        'ampOscDepth':   0.0,   # core’s AM disabled
-        'ampOscFreq':    0.0
-    }
-    beat_freq        = beat_params['beatFreq']
-    spatial_freq     = float(params.get('spatialBeatFreq', beat_freq))
-    spatial_phase_off= float(params.get('spatialPhaseOffset', 0.0))
-
-    # --- SAM controls ---
-    amp           = float(params.get('amp',           0.7))
-    path_radius   = float(params.get('pathRadius',    1.0))
-    frame_dur_ms  = float(params.get('frame_dur_ms',  46.4))
-    overlap_fac   = int(params.get('overlap_factor',   8))
-
-    # --- generate core stereo beat & collapse to mono ---
-    N = int(duration * sample_rate)
-    beat_stereo = monaural_beat_stereo_amps(duration, sample_rate, **beat_params)
-    mono_beat   = np.mean(beat_stereo, axis=1).astype(np.float32)
-
-    # --- call our Numba helper to get mod_beat + az/el arrays ---
-    mod_beat, azimuth_deg, elevation_deg = _prepare_beats_and_angles(
-        mono_beat, sample_rate,
-        aOD, aOF, aOP,
-        spatial_freq, path_radius,
-        spatial_phase_off
-    )
-
-    # --- slam into OLA + HRTF (unchanged) ---
-    if not hasattr(slab, 'HRTF'):
-        raise RuntimeError("slab.HRTF not available.")
-    hrtf = slab.HRTF.kemar()
-    if hrtf.samplerate != sample_rate:
-        sample_rate = int(hrtf.samplerate)
-
-    frame_len = slab.Signal.in_samples(frame_dur_ms / 1000.0, sample_rate)
-    step      = frame_len // overlap_fac
-    if step < 1:
-        raise ValueError("overlap_factor too large.")
-
-    if overlap_fac in (2, 4):
-        window = np.sqrt(np.hanning(frame_len))[:, None]
-    else:
-        window = np.hanning(frame_len)[:, None]
-
-    out_buf = np.zeros((N + frame_len, 2), dtype=np.float64)
-    mono_src = amp * mod_beat
-
-    for start in range(0, N, step):
-        frame = mono_src[start:start+frame_len]
-        L = len(frame)
-        if L == 0:
-            continue
-
-        wf   = frame[:, None] * window[:L]
-        mid  = min(start + step//2, N-1)
-        azi, ele = azimuth_deg[mid], elevation_deg[mid]
-
-        snd  = slab.Sound(wf, samplerate=sample_rate)
-        filt = hrtf.interpolate(azimuth=azi, elevation=ele, method='nearest')
-        out_buf[start:start+L] += filt.apply(snd).data[:L]
-
-    # --- finalize ---
-    out = out_buf[:N]
-    out = np.nan_to_num(out)
-    m  = np.max(np.abs(out))
-    if m > 1.0:
-        out /= (m / 0.98)
-
-    return out.astype(np.float32)
-
+# -----------------------------------------------------------------------------
+# Monaural Beats Stereo Amps Transition - UPDATED
+# -----------------------------------------------------------------------------
 def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, **params):
-    # --- Unpack start/end parameters ---
     s_ll = float(params.get('start_amp_lower_L', params.get('amp_lower_L', 0.5)))
     e_ll = float(params.get('end_amp_lower_L',   s_ll))
     s_ul = float(params.get('start_amp_upper_L', params.get('amp_upper_L', 0.5)))
@@ -1943,81 +1529,467 @@ def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, **params):
     sBt  = float(params.get('startBeatFreq',     params.get('beatFreq',      4.0)))
     eBt  = float(params.get('endBeatFreq',       sBt))
 
+    # New transitional parameters from monaural_beat_stereo_amps
+    sStartPhaseL = float(params.get('startStartPhaseL', params.get('startPhaseL', 0.0)))
+    eStartPhaseL = float(params.get('endStartPhaseL', sStartPhaseL))
+    sStartPhaseU = float(params.get('startStartPhaseU', params.get('startPhaseR', 0.0))) # Was startPhaseR
+    eStartPhaseU = float(params.get('endStartPhaseU', sStartPhaseU))
+
+    sPhiF = float(params.get('startPhaseOscFreq', params.get('phaseOscFreq', 0.0)))
+    ePhiF = float(params.get('endPhaseOscFreq', sPhiF))
+    sPhiR = float(params.get('startPhaseOscRange', params.get('phaseOscRange', 0.0)))
+    ePhiR = float(params.get('endPhaseOscRange', sPhiR))
+
+    sAOD = float(params.get('startAmpOscDepth', params.get('ampOscDepth', 0.0)))
+    eAOD = float(params.get('endAmpOscDepth', sAOD))
+    sAOF = float(params.get('startAmpOscFreq', params.get('ampOscFreq', 0.0)))
+    eAOF = float(params.get('endAmpOscFreq', sAOF))
+    sAOP = float(params.get('startAmpOscPhaseOffset', params.get('ampOscPhaseOffset', 0.0))) # New
+    eAOP = float(params.get('endAmpOscPhaseOffset', sAOP))
+
+
     N = int(duration * sample_rate)
     return _monaural_beat_stereo_amps_transition_core(
         N, float(duration), float(sample_rate),
         s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,
-        sBF, eBF, sBt, eBt
+        sBF, eBF, sBt, eBt,
+        sStartPhaseL, eStartPhaseL, sStartPhaseU, eStartPhaseU,
+        sPhiF, ePhiF, sPhiR, ePhiR,
+        sAOD, eAOD, sAOF, eAOF, sAOP, eAOP
     )
 
 @numba.njit(parallel=True, fastmath=True)
 def _monaural_beat_stereo_amps_transition_core(
     N, duration, sample_rate,
-    s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,
-    sBF, eBF, sBt, eBt
+    s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur, # Amplitudes
+    sBF, eBF, sBt, eBt,                             # Frequencies
+    sSPL, eSPL, sSPU, eSPU,                         # Start Phases (lower, upper)
+    sPhiF, ePhiF, sPhiR, ePhiR,                     # Phase Osc
+    sAOD, eAOD, sAOF, eAOF, sAOP, eAOP              # Amp Osc
 ):
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
 
     dt = duration / N
-    # Preallocate arrays
-    t = np.empty(N, np.float64)
-    ll = np.empty(N, np.float64)
-    ul = np.empty(N, np.float64)
-    lr = np.empty(N, np.float64)
-    ur = np.empty(N, np.float64)
-    f_lower = np.empty(N, np.float64)
-    f_upper = np.empty(N, np.float64)
+    
+    t_arr = np.empty(N, np.float64)
+    amp_ll_arr = np.empty(N, np.float64)
+    amp_ul_arr = np.empty(N, np.float64)
+    amp_lr_arr = np.empty(N, np.float64)
+    amp_ur_arr = np.empty(N, np.float64)
+    baseF_arr = np.empty(N, np.float64)
+    beatF_arr = np.empty(N, np.float64)
+    
+    f_lower_arr = np.empty(N, np.float64)
+    f_upper_arr = np.empty(N, np.float64)
 
-    # Time and parameter interpolation
-    for i in prange(N):
-        t[i] = i * dt
+    phiF_arr = np.empty(N, np.float64)
+    phiR_arr = np.empty(N, np.float64)
+    aOD_arr = np.empty(N, np.float64)
+    aOF_arr = np.empty(N, np.float64)
+    aOP_arr = np.empty(N, np.float64)
+
+
+    for i in numba.prange(N):
+        t_arr[i] = i * dt
         alpha = i / (N - 1) if N > 1 else 0.0
-        ll[i] = s_ll + (e_ll - s_ll) * alpha
-        ul[i] = s_ul + (e_ul - s_ul) * alpha
-        lr[i] = s_lr + (e_lr - s_lr) * alpha
-        ur[i] = s_ur + (e_ur - s_ur) * alpha
-        baseF = sBF + (eBF - sBF) * alpha
-        beatF = sBt + (eBt - sBt) * alpha
-        half    = beatF * 0.5
-        f_lower[i] = baseF - half
-        f_upper[i] = baseF + half
+        
+        amp_ll_arr[i] = s_ll + (e_ll - s_ll) * alpha
+        amp_ul_arr[i] = s_ul + (e_ul - s_ul) * alpha
+        amp_lr_arr[i] = s_lr + (e_lr - s_lr) * alpha
+        amp_ur_arr[i] = s_ur + (e_ur - s_ur) * alpha
+        baseF_arr[i] = sBF + (eBF - sBF) * alpha
+        beatF_arr[i] = sBt + (eBt - sBt) * alpha
+        
+        halfB_i = beatF_arr[i] * 0.5
+        f_l_cand = baseF_arr[i] - halfB_i
+        f_u_cand = baseF_arr[i] + halfB_i
+        
+        f_lower_arr[i] = f_l_cand if f_l_cand > 0.0 else 0.0
+        f_upper_arr[i] = f_u_cand if f_u_cand > 0.0 else 0.0
 
-    # clamp non-negative freqs
-    for i in prange(N):
-        if f_lower[i] < 0.0: f_lower[i] = 0.0
-        if f_upper[i] < 0.0: f_upper[i] = 0.0
+        phiF_arr[i] = sPhiF + (ePhiF - sPhiF) * alpha
+        phiR_arr[i] = sPhiR + (ePhiR - sPhiR) * alpha
+        aOD_arr[i] = sAOD + (eAOD - sAOD) * alpha
+        aOF_arr[i] = sAOF + (eAOF - sAOF) * alpha
+        aOP_arr[i] = sAOP + (eAOP - sAOP) * alpha
 
-    # phase accumulation
+
     ph_l = np.empty(N, np.float64)
     ph_u = np.empty(N, np.float64)
-    cur_l = 0.0
-    cur_u = 0.0
-    for i in range(N):
-        cur_l += 2.0 * np.pi * f_lower[i] * dt
-        cur_u += 2.0 * np.pi * f_upper[i] * dt
+    # Interpolate initial phases. For now, use the start values as fixed initial phases.
+    cur_l = sSPL # Start phase for lower component at the beginning of this transition segment
+    cur_u = sSPU # Start phase for upper component
+    
+    for i in range(N): # Sequential
+        cur_l += 2.0 * np.pi * f_lower_arr[i] * dt
+        cur_u += 2.0 * np.pi * f_upper_arr[i] * dt
         ph_l[i] = cur_l
         ph_u[i] = cur_u
 
-    # generate sine carriers
-    s_l = np.sin(ph_l)
-    s_u = np.sin(ph_u)
+    for i in numba.prange(N): # Parallel
+        if phiF_arr[i] != 0.0 or phiR_arr[i] != 0.0:
+            dphi = (phiR_arr[i]/2.0) * np.sin(2*np.pi*phiF_arr[i]*t_arr[i])
+            ph_l[i] -= dphi
+            ph_u[i] += dphi
 
-    # mix into stereo
+    s_l_wav = np.empty(N, np.float64)
+    s_u_wav = np.empty(N, np.float64)
+    for i in numba.prange(N):
+        s_l_wav[i] = np.sin(ph_l[i])
+        s_u_wav[i] = np.sin(ph_u[i])
+
+    mix_L = np.empty(N, dtype=np.float64)
+    mix_R = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        mix_L[i] = s_l_wav[i] * amp_ll_arr[i] + s_u_wav[i] * amp_ul_arr[i]
+        mix_R[i] = s_l_wav[i] * amp_lr_arr[i] + s_u_wav[i] * amp_ur_arr[i]
+
+    for i in numba.prange(N):
+        current_aOD_i = aOD_arr[i]
+        if current_aOD_i < 0.0: current_aOD_i = 0.0
+        if current_aOD_i > 2.0: current_aOD_i = 2.0
+
+        if current_aOD_i != 0.0 and aOF_arr[i] != 0.0:
+            mod_val = (1.0 - current_aOD_i/2.0) + \
+                      (current_aOD_i/2.0) * np.sin(2*np.pi*aOF_arr[i]*t_arr[i] + aOP_arr[i])
+            mix_L[i] *= mod_val
+            mix_R[i] *= mod_val
+
     out = np.empty((N, 2), dtype=np.float32)
-    for i in prange(N):
-        l = s_l[i] * ll[i] + s_u[i] * ul[i]
-        r = s_l[i] * lr[i] + s_u[i] * ur[i]
-        # clamp
-        if l > 1.0: l = 1.0
-        elif l < -1.0: l = -1.0
-        if r > 1.0: r = 1.0
-        elif r < -1.0: r = -1.0
-        out[i, 0] = np.float32(l)
-        out[i, 1] = np.float32(r)
-
+    for i in numba.prange(N):
+        l_val = mix_L[i]
+        if l_val > 1.0: l_val = 1.0
+        elif l_val < -1.0: l_val = -1.0
+        r_val = mix_R[i]
+        if r_val > 1.0: r_val = 1.0
+        elif r_val < -1.0: r_val = -1.0
+        out[i, 0] = np.float32(l_val)
+        out[i, 1] = np.float32(r_val)
+        
     return out
 
+# -----------------------------------------------------------------------------
+# Spatial Angle Modulation - _prepare_beats_and_angles (Corrected)
+# -----------------------------------------------------------------------------
+@numba.njit(parallel=True, fastmath=True)
+def _prepare_beats_and_angles( # Corrected version
+    mono: np.ndarray,
+    sample_rate: float,
+    aOD: float, aOF: float, aOP: float,      # AM for this stage
+    spatial_freq: float,
+    path_radius: float,
+    spatial_phase_off: float                 # Initial phase offset for spatial rotation
+):
+    N = mono.shape[0]
+    if N == 0:
+        return (np.empty(0, dtype=np.float32),
+                np.empty(0, dtype=np.float32),
+                np.zeros(0, dtype=np.float32))
+
+    mod_beat  = np.empty(N, dtype=np.float32)
+    azimuth   = np.empty(N, dtype=np.float32)
+    elevation = np.zeros(N, dtype=np.float32) # Elevation is kept at zero
+    
+    dt = 1.0 / sample_rate
+
+    # 1) Apply custom AM envelope + build mod_beat
+    for i in numba.prange(N):
+        t = i * dt
+        if aOD > 0.0 and aOF > 0.0: # Original condition was aOD > 0 and aOF > 0
+            # Using (1-D/2) + (D/2)*sin form for AM to be consistent if aOD is 0-2
+            # If aOD is 0-1 (like other ampOscDepths), then:
+            # env = 1.0 - aOD * (0.5 * (1.0 + math.sin(2*math.pi*aOF*t + aOP)))
+            # Assuming aOD here is also depth 0-2 like in monaural
+            clamped_aOD = min(max(aOD, 0.0), 2.0)
+            env = (1.0 - clamped_aOD/2.0) + (clamped_aOD/2.0) * math.sin(2*math.pi*aOF*t + aOP)
+        else:
+            env = 1.0
+        mod_beat[i] = mono[i] * env # mono is already float32
+
+    # 2) Compute circular path (radius from mod_beat) → azimuth
+    # Corrected phase calculation for parallel loop (spatial_freq is constant here)
+    for i in numba.prange(N):
+        t_i = i * dt
+        # Calculate phase at time t_i directly
+        current_spatial_phase_at_t = spatial_phase_off + (2 * math.pi * spatial_freq * t_i)
+        
+        r = path_radius * (0.5 * (mod_beat[i] + 1.0)) # mod_beat is [-1, 1], so (mod_beat+1)/2 is [0,1]
+        
+        # Cartesian coordinates for HRTF lookup (y is often 'forward' in HRTF)
+        # X = R * sin(angle) (side)
+        # Y = R * cos(angle) (front/back)
+        # atan2(x,y) means angle relative to positive Y axis, clockwise if X is positive.
+        x_coord = r * math.sin(current_spatial_phase_at_t)
+        y_coord = r * math.cos(current_spatial_phase_at_t)
+        
+        azimuth[i] = math.degrees(math.atan2(x_coord, y_coord))
+
+    return mod_beat, azimuth, elevation
+
+# -----------------------------------------------------------------------------
+# Spatial Angle Modulation - Non-Transition Version (uses corrected _prepare_beats_and_angles)
+# -----------------------------------------------------------------------------
+def spatial_angle_modulation_monaural_beat(
+    duration,
+    sample_rate=44100,
+    **params
+):
+    # --- unpack AM params for this specific stage ---
+    # These are applied *after* the monaural beat generation's own AM
+    sam_aOD = float(params.get('sam_ampOscDepth', params.get('ampOscDepth', 0.0))) # prefix with sam_ to avoid conflict
+    sam_aOF = float(params.get('sam_ampOscFreq', params.get('ampOscFreq', 0.0)))
+    sam_aOP = float(params.get('sam_ampOscPhaseOffset', params.get('ampOscPhaseOffset', 0.0)))
+
+    # --- prepare core beat args (can have its own AM) ---
+    beat_params = {
+        'amp_lower_L':   float(params.get('amp_lower_L',   0.5)),
+        'amp_upper_L':   float(params.get('amp_upper_L',   0.5)),
+        'amp_lower_R':   float(params.get('amp_lower_R',   0.5)),
+        'amp_upper_R':   float(params.get('amp_upper_R',   0.5)),
+        'baseFreq':      float(params.get('baseFreq',      200.0)),
+        'beatFreq':      float(params.get('beatFreq',        4.0)),
+        'startPhaseL':   float(params.get('startPhaseL',    0.0)),
+        'startPhaseR':   float(params.get('startPhaseR',    0.0)), # for upper component
+        'phaseOscFreq':  float(params.get('phaseOscFreq',  0.0)),
+        'phaseOscRange': float(params.get('phaseOscRange', 0.0)),
+        'ampOscDepth':   float(params.get('monaural_ampOscDepth', 0.0)), # AM for monaural beat
+        'ampOscFreq':    float(params.get('monaural_ampOscFreq', 0.0)),
+        'ampOscPhaseOffset': float(params.get('monaural_ampOscPhaseOffset', 0.0)) # AM Phase for monaural
+    }
+    beat_freq         = beat_params['beatFreq']
+    spatial_freq      = float(params.get('spatialBeatFreq', beat_freq)) # Default to beatFreq
+    spatial_phase_off = float(params.get('spatialPhaseOffset', 0.0)) # Radians
+
+    # --- SAM controls ---
+    amp               = float(params.get('amp', 0.7)) # Overall amplitude for HRTF input
+    path_radius       = float(params.get('pathRadius', 1.0)) # Normalized radius factor
+    frame_dur_ms      = float(params.get('frame_dur_ms', 46.4))
+    overlap_fac       = int(params.get('overlap_factor',   8))
+
+    N = int(duration * sample_rate)
+    if N <= 0:
+        return np.zeros((0,2), dtype=np.float32)
+
+    # Generate core stereo beat & collapse to mono
+    beat_stereo = monaural_beat_stereo_amps(duration, sample_rate, **beat_params)
+    mono_beat   = np.mean(beat_stereo, axis=1).astype(np.float32)
+
+    # Call Numba helper to get mod_beat + az/el arrays
+    mod_beat, azimuth_deg, elevation_deg = _prepare_beats_and_angles(
+        mono_beat, float(sample_rate),
+        sam_aOD, sam_aOF, sam_aOP, # SAM-specific AM params
+        spatial_freq, path_radius,
+        spatial_phase_off
+    )
+
+    # --- OLA + HRTF (assuming slab and HRTF are available and configured) ---
+    stereo_out = np.zeros((N, 2), dtype=np.float32)
+    stereo_out[:, 0] = mod_beat * amp
+    stereo_out[:, 1] = mod_beat * amp # Simple mono duplicate
+    max_val = np.max(np.abs(stereo_out))
+    if max_val > 1.0:
+       stereo_out /= (max_val / 0.98)
+    return stereo_out
+
+
+# -----------------------------------------------------------------------------
+# Spatial Angle Modulation - Core for Transition (_prepare_beats_and_angles_transition_core) - NEW
+# -----------------------------------------------------------------------------
+@numba.njit(parallel=True, fastmath=True)
+def _prepare_beats_and_angles_transition_core(
+    mono_input: np.ndarray, # Already transitional mono beat
+    sample_rate: float,
+    sAOD: float, eAOD: float,       # Start/End SAM Amplitude Osc Depth
+    sAOF: float, eAOF: float,       # Start/End SAM Amplitude Osc Freq
+    sAOP: float, eAOP: float,       # Start/End SAM Amplitude Osc Phase Offset
+    sSpatialFreq: float, eSpatialFreq: float,
+    sPathRadius: float, ePathRadius: float,
+    sSpatialPhaseOff: float, eSpatialPhaseOff: float # Start/End for initial spatial phase
+):
+    N = mono_input.shape[0]
+    if N == 0:
+        return (np.empty(0, dtype=np.float32),
+                np.empty(0, dtype=np.float32),
+                np.zeros(0, dtype=np.float32))
+
+    mod_beat    = np.empty(N, dtype=np.float32)
+    azimuth_deg = np.empty(N, dtype=np.float32)
+    elevation_deg = np.zeros(N, dtype=np.float32) # Elevation is kept at zero
+    
+    actual_spatial_phase = np.empty(N, dtype=np.float64) # For storing accumulated phase
+
+    dt = 1.0 / sample_rate
+
+    # Loop 1 (parallel): Interpolate AM params and calculate mod_beat
+    for i in numba.prange(N):
+        alpha = i / (N - 1) if N > 1 else 0.0
+        t_i = i * dt
+
+        current_aOD = sAOD + (eAOD - sAOD) * alpha
+        current_aOF = sAOF + (eAOF - sAOF) * alpha
+        current_aOP = sAOP + (eAOP - sAOP) * alpha
+        
+        env_factor = 1.0
+        if current_aOD > 0.0 and current_aOF > 0.0: # Assuming depth 0-2
+            clamped_aOD_i = min(max(current_aOD, 0.0), 2.0)
+            env_factor = (1.0 - clamped_aOD_i/2.0) + \
+                         (clamped_aOD_i/2.0) * math.sin(2*math.pi*current_aOF*t_i + current_aOP)
+        mod_beat[i] = mono_input[i] * env_factor
+
+    # Loop 2 (sequential): Interpolate spatial freq and accumulate spatial phase
+    # The 'spatial_phase_off' transition is for the initial phase offset value.
+    initial_phase_offset_val = sSpatialPhaseOff + (eSpatialPhaseOff - sSpatialPhaseOff) * 0.0 # Value at alpha=0
+    
+    current_phase_val = initial_phase_offset_val 
+    if N > 0:
+      actual_spatial_phase[0] = current_phase_val
+
+    for i in range(N): # Must be sequential due to phase accumulation
+        alpha = i / (N - 1) if N > 1 else 0.0
+        current_sf_i = sSpatialFreq + (eSpatialFreq - sSpatialFreq) * alpha
+        
+        if i > 0: # Accumulate phase
+            current_phase_val += (2 * math.pi * current_sf_i * dt)
+            actual_spatial_phase[i] = current_phase_val
+        elif i == 0: # Already set for i=0 if N>0
+             actual_spatial_phase[i] = current_phase_val
+
+
+    # Loop 3 (parallel): Interpolate path radius and calculate azimuth
+    for i in numba.prange(N):
+        alpha = i / (N - 1) if N > 1 else 0.0
+        current_path_r = sPathRadius + (ePathRadius - sPathRadius) * alpha
+        
+        r_factor = current_path_r * (0.5 * (mod_beat[i] + 1.0))
+        
+        x_coord = r_factor * math.sin(actual_spatial_phase[i])
+        y_coord = r_factor * math.cos(actual_spatial_phase[i])
+        azimuth_deg[i] = math.degrees(math.atan2(x_coord, y_coord))
+        
+    return mod_beat, azimuth_deg, elevation_deg
+
+
+# -----------------------------------------------------------------------------
+# Spatial Angle Modulation - Transition Version - NEW
+# -----------------------------------------------------------------------------
+def spatial_angle_modulation_monaural_beat_transition(
+    duration,
+    sample_rate=44100,
+    **params
+):
+    N = int(duration * sample_rate)
+    if N <= 0:
+        return np.zeros((0,2), dtype=np.float32)
+
+    # --- Parameters for the underlying monaural_beat_stereo_amps_transition ---
+    s_ll = float(params.get('start_amp_lower_L', params.get('amp_lower_L', 0.5)))
+    e_ll = float(params.get('end_amp_lower_L',   s_ll))
+    s_ul = float(params.get('start_amp_upper_L', params.get('amp_upper_L', 0.5)))
+    e_ul = float(params.get('end_amp_upper_L',   s_ul))
+    s_lr = float(params.get('start_amp_lower_R', params.get('amp_lower_R', 0.5)))
+    e_lr = float(params.get('end_amp_lower_R',   s_lr))
+    s_ur = float(params.get('start_amp_upper_R', params.get('amp_upper_R', 0.5)))
+    e_ur = float(params.get('end_amp_upper_R',   s_ur))
+    sBF  = float(params.get('startBaseFreq',     params.get('baseFreq',    200.0)))
+    eBF  = float(params.get('endBaseFreq',       sBF))
+    sBt  = float(params.get('startBeatFreq',     params.get('beatFreq',      4.0)))
+    eBt  = float(params.get('endBeatFreq',       sBt))
+    sSPL_mono = float(params.get('startStartPhaseL_monaural', params.get('startPhaseL', 0.0)))
+    eSPL_mono = float(params.get('endStartPhaseL_monaural', sSPL_mono))
+    sSPU_mono = float(params.get('startStartPhaseU_monaural', params.get('startPhaseR', 0.0)))
+    eSPU_mono = float(params.get('endStartPhaseU_monaural', sSPU_mono))
+    sPhiF_mono = float(params.get('startPhaseOscFreq_monaural', params.get('phaseOscFreq', 0.0)))
+    ePhiF_mono = float(params.get('endPhaseOscFreq_monaural', sPhiF_mono))
+    sPhiR_mono = float(params.get('startPhaseOscRange_monaural', params.get('phaseOscRange', 0.0)))
+    ePhiR_mono = float(params.get('endPhaseOscRange_monaural', sPhiR_mono))
+    sAOD_mono = float(params.get('startAmpOscDepth_monaural', params.get('monaural_ampOscDepth', 0.0)))
+    eAOD_mono = float(params.get('endAmpOscDepth_monaural', sAOD_mono))
+    sAOF_mono = float(params.get('startAmpOscFreq_monaural', params.get('monaural_ampOscFreq', 0.0)))
+    eAOF_mono = float(params.get('endAmpOscFreq_monaural', sAOF_mono))
+    sAOP_mono = float(params.get('startAmpOscPhaseOffset_monaural', params.get('monaural_ampOscPhaseOffset', 0.0)))
+    eAOP_mono = float(params.get('endAmpOscPhaseOffset_monaural', sAOP_mono))
+
+
+    monaural_trans_params = {
+        'start_amp_lower_L': s_ll, 'end_amp_lower_L': e_ll,
+        'start_amp_upper_L': s_ul, 'end_amp_upper_L': e_ul,
+        'start_amp_lower_R': s_lr, 'end_amp_lower_R': e_lr,
+        'start_amp_upper_R': s_ur, 'end_amp_upper_R': e_ur,
+        'startBaseFreq': sBF, 'endBaseFreq': eBF,
+        'startBeatFreq': sBt, 'endBeatFreq': eBt,
+        'startStartPhaseL': sSPL_mono, 'endStartPhaseL': eSPL_mono,
+        'startStartPhaseU': sSPU_mono, 'endStartPhaseU': eSPU_mono,
+        'startPhaseOscFreq': sPhiF_mono, 'endPhaseOscFreq': ePhiF_mono,
+        'startPhaseOscRange': sPhiR_mono, 'endPhaseOscRange': ePhiR_mono,
+        'startAmpOscDepth': sAOD_mono, 'endAmpOscDepth': eAOD_mono,
+        'startAmpOscFreq': sAOF_mono, 'endAmpOscFreq': eAOF_mono,
+        'startAmpOscPhaseOffset': sAOP_mono, 'endAmpOscPhaseOffset': eAOP_mono,
+    }
+
+    # --- Parameters for the SAM stage AM and spatialization (transitional) ---
+    sSamAOD = float(params.get('start_sam_ampOscDepth', params.get('sam_ampOscDepth', 0.0)))
+    eSamAOD = float(params.get('end_sam_ampOscDepth', sSamAOD))
+    sSamAOF = float(params.get('start_sam_ampOscFreq', params.get('sam_ampOscFreq', 0.0)))
+    eSamAOF = float(params.get('end_sam_ampOscFreq', sSamAOF))
+    sSamAOP = float(params.get('start_sam_ampOscPhaseOffset', params.get('sam_ampOscPhaseOffset', 0.0)))
+    eSamAOP = float(params.get('end_sam_ampOscPhaseOffset', sSamAOP))
+
+    default_spatial_freq = (sBt + eBt) / 2.0 # Default to average beatFreq
+    sSpatialFreq = float(params.get('startSpatialBeatFreq', params.get('spatialBeatFreq', default_spatial_freq)))
+    eSpatialFreq = float(params.get('endSpatialBeatFreq', sSpatialFreq))
+    
+    sSpatialPhaseOff = float(params.get('startSpatialPhaseOffset', params.get('spatialPhaseOffset', 0.0)))
+    eSpatialPhaseOff = float(params.get('endSpatialPhaseOffset', sSpatialPhaseOff))
+
+    sPathRadius = float(params.get('startPathRadius', params.get('pathRadius', 1.0)))
+    ePathRadius = float(params.get('endPathRadius', sPathRadius))
+
+    # --- SAM controls (non-transitional for OLA) ---
+    sAmp = float(params.get('startAmp', params.get('amp', 0.7))) # Overall amplitude for HRTF input
+    eAmp = float(params.get('endAmp', sAmp))
+    # For OLA, amp is applied per frame. We can interpolate it if needed, or use an average.
+    # For now, let's use interpolated amp for mono_src
+    
+    frame_dur_ms = float(params.get('frame_dur_ms', 46.4))
+    overlap_fac  = int(params.get('overlap_factor',   8))
+
+
+    # 1. Generate transitional monaural beat
+    trans_beat_stereo = monaural_beat_stereo_amps_transition(duration, sample_rate, **monaural_trans_params)
+    trans_mono_beat   = np.mean(trans_beat_stereo, axis=1).astype(np.float32)
+
+    # 2. Call the new transitional _prepare_beats_and_angles_transition_core
+    trans_mod_beat, trans_azimuth_deg, trans_elevation_deg = \
+        _prepare_beats_and_angles_transition_core(
+            trans_mono_beat, float(sample_rate),
+            sSamAOD, eSamAOD, sSamAOF, eSamAOF, sSamAOP, eSamAOP,
+            sSpatialFreq, eSpatialFreq,
+            sPathRadius, ePathRadius,
+            sSpatialPhaseOff, eSpatialPhaseOff
+        )
+    
+    # 3. OLA + HRTF processing (using transitional mod_beat and azimuth)
+    # This part remains Python-based.
+    # Placeholder for slab integration - replace with actual calls.
+    # try:
+    #     import slab
+    # except ImportError:
+    #     print("Slab library not found. HRTF processing will be skipped for transition function.")
+    # ...etc
+
+    print("spatial_angle_modulation_monaural_beat_transition: HRTF processing part is illustrative.")
+    # Fallback: return a simple stereo mix of trans_mod_beat with interpolated amp
+    final_amp_coeffs = np.linspace(sAmp, eAmp, N, dtype=np.float32) if N > 0 else np.array([], dtype=np.float32)
+    
+    temp_out = np.zeros((N, 2), dtype=np.float32)
+    if N > 0:
+       temp_out[:, 0] = trans_mod_beat * final_amp_coeffs
+       temp_out[:, 1] = trans_mod_beat * final_amp_coeffs
+    
+    max_v = np.max(np.abs(temp_out)) if N > 0 and temp_out.size > 0 else 0.0
+    if max_v > 1.0: temp_out /= (max_v / 0.98)
+    return temp_out
 
 
 def isochronic_tone(duration, sample_rate=44100, **params):
@@ -2147,66 +2119,699 @@ def isochronic_tone_transition(duration, sample_rate=44100, **params):
 
     return audio.astype(np.float32)
 
+# -----------------------------------------------------------------------------
+# Quadrature Amplitude Modulation (QAM) 
+# -----------------------------------------------------------------------------
 
-# --- Flanger (Example - Assuming it exists and is complex) ---
-# Placeholder - Replace with your actual flanger implementation if needed
-def _flanger_effect_stereo_continuous(*args, **kwargs):
-     print("Warning: _flanger_effect_stereo_continuous is a placeholder.")
-     # Need N samples to return correct shape silence
-     duration = kwargs.get('duration', 1.0)
-     sample_rate = kwargs.get('sample_rate', 44100)
-     N = int(duration * sample_rate)
-     return np.zeros((N, 2))
 
-def flanged_voice(duration, sample_rate=44100, **params):
-    print("Warning: flanged_voice is using a placeholder effect.")
-    # Example: Generate noise and apply placeholder flanger
-    amp = float(params.get('amp', 0.5))
-    noiseType = int(params.get('noiseType', 1)) # 1=W, 2=P, 3=B (example)
+# --- Filter design and application (from your qam.py, not Numba compatible) ---
+def design_filter(filter_type, cutoff, fs, order=4):
+    """
+    Designs a Butterworth filter.
+    Args:
+        filter_type (str): 'highpass', 'lowpass', 'bandpass', 'bandstop'.
+        cutoff (float or list): Cutoff frequency or frequencies.
+        fs (float): Sampling frequency.
+        order (int): Filter order.
+    Returns:
+        ndarray: Second-order sections representation of the filter.
+    """
+    nyq = 0.5 * fs
+    norm_cutoff = np.array(cutoff) / nyq if isinstance(cutoff, (list, tuple)) else cutoff / nyq
+    return butter(order, norm_cutoff, btype=filter_type, output='sos')
+
+def apply_filters(signal_segment, fs):
+    """
+    Applies pre-defined high-pass and low-pass filters to a signal segment.
+    Args:
+        signal_segment (np.ndarray): Input signal (1D).
+        fs (float): Sampling frequency.
+    Returns:
+        np.ndarray: Filtered signal.
+    """
+    if signal_segment.ndim == 0 or signal_segment.size == 0:
+        return signal_segment # Return empty or scalar if no data to filter
+    if fs <= 0: # Invalid sampling rate
+        return signal_segment
+    
+    # Define cutoff frequencies ensuring they are valid
+    hp_cutoff = 30.0
+    lp_cutoff = fs * 0.5 * 0.9 
+
+    if hp_cutoff <= 0 or hp_cutoff >= fs / 2: # Invalid high-pass cutoff
+        pass # Skip high-pass if invalid
+    else:
+        sos_hp = design_filter('highpass', hp_cutoff, fs)
+        signal_segment = sosfiltfilt(sos_hp, signal_segment)
+
+    if lp_cutoff <= 0 or lp_cutoff >= fs / 2: # Invalid low-pass cutoff
+        pass # Skip low-pass if invalid
+    else:
+        sos_lp = design_filter('lowpass', lp_cutoff, fs)
+        signal_segment = sosfiltfilt(sos_lp, signal_segment)
+        
+    return signal_segment
+
+# -----------------------------------------------------------------------------
+# QAM Beat
+# -----------------------------------------------------------------------------
+def qam_beat(duration, sample_rate=44100, **params):
+    """
+    Generates a QAM-based binaural beat.
+    Each channel's carrier is amplitude modulated.
+    Optional phase oscillation can be applied between channels.
+    """
+    # --- Unpack synthesis parameters ---
+    ampL = float(params.get('ampL', 0.5))
+    ampR = float(params.get('ampR', 0.5))
+    
+    baseFreqL = float(params.get('baseFreqL', 200.0)) 
+    baseFreqR = float(params.get('baseFreqR', baseFreqL + 4.0)) 
+
+    qamAmFreqL = float(params.get('qamAmFreqL', 4.0)) 
+    qamAmDepthL = float(params.get('qamAmDepthL', 0.5)) 
+    qamAmPhaseOffsetL = float(params.get('qamAmPhaseOffsetL', 0.0))
+
+    qamAmFreqR = float(params.get('qamAmFreqR', qamAmFreqL)) 
+    qamAmDepthR = float(params.get('qamAmDepthR', qamAmDepthL)) 
+    qamAmPhaseOffsetR = float(params.get('qamAmPhaseOffsetR', qamAmPhaseOffsetL))
+
+    startPhaseL = float(params.get('startPhaseL', 0.0)) 
+    startPhaseR = float(params.get('startPhaseR', 0.0)) 
+
+    phaseOscFreq = float(params.get('phaseOscFreq', 0.0))
+    phaseOscRange = float(params.get('phaseOscRange', 0.0)) 
+    phaseOscPhaseOffset = float(params.get('phaseOscPhaseOffset', 0.0))
 
     N = int(duration * sample_rate)
-    if N <= 0: return np.zeros((0, 2))
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
 
-    # Generate base noise (simplified placeholders)
-    if noiseType == 1: # White
-        noise_mono = (np.random.rand(N) * 2 - 1) * amp
-    elif noiseType == 2: # Pink (very basic approximation)
-        # This is NOT a proper pink noise generator, just placeholder
-        b = [0.049922035, -0.095993537, 0.050612699, -0.004408786]
-        a = [1, -2.494956002, 2.017265875, -0.522189400]
-        # Pad white noise for filter transient
-        wn = np.random.randn(N + len(a))
-        # Apply filter (requires scipy.signal.lfilter)
-        # For now, just use white noise as placeholder if scipy not imported
-        try:
-           from scipy.signal import lfilter
-           filtered_noise = lfilter(b, a, wn)[len(a):] # Apply filter and remove transient
-           noise_mono = filtered_noise / np.max(np.abs(filtered_noise)) * amp if np.max(np.abs(filtered_noise)) > 0 else np.zeros(N)
-        except ImportError:
-            print("Warning: SciPy not found, using white noise for pink noise placeholder.")
-            noise_mono = (np.random.rand(N) * 2 - 1) * amp
+    # Call Numba core function
+    raw_signal = _qam_beat_core(
+        N, duration, float(sample_rate),
+        ampL, ampR,
+        baseFreqL, baseFreqR,
+        qamAmFreqL, qamAmDepthL, qamAmPhaseOffsetL,
+        qamAmFreqR, qamAmDepthR, qamAmPhaseOffsetR,
+        startPhaseL, startPhaseR,
+        phaseOscFreq, phaseOscRange, phaseOscPhaseOffset
+    )
 
-    elif noiseType == 3: # Brown (basic approximation)
-        wn = (np.random.rand(N) * 2 - 1)
-        noise_mono = np.cumsum(wn)
-        noise_mono = noise_mono / np.max(np.abs(noise_mono)) * amp if np.max(np.abs(noise_mono)) > 0 else np.zeros(N)
+    if raw_signal.size > 0 :
+        filtered_L = apply_filters(raw_signal[:, 0].copy(), float(sample_rate))
+        filtered_R = apply_filters(raw_signal[:, 1].copy(), float(sample_rate))
+        return np.ascontiguousarray(np.vstack((filtered_L, filtered_R)).T.astype(np.float32))
     else:
-        noise_mono = np.zeros(N)
+        return raw_signal
 
-    # Apply placeholder flanger effect
-    # Pass necessary params from the input 'params' dict
-    flanger_params = {k: v for k, v in params.items() if k not in ['amp', 'noiseType']} # Pass other params
-    flanger_params['duration'] = duration # Ensure duration/sr are passed if needed
-    flanger_params['sample_rate'] = sample_rate
-    audio_stereo = _flanger_effect_stereo_continuous(noise_mono, **flanger_params)
 
-    # Ensure output is stereo float32
-    if audio_stereo.ndim == 1:
-        audio_stereo = np.column_stack((audio_stereo, audio_stereo))
-    elif audio_stereo.shape[1] == 1:
-         audio_stereo = np.column_stack((audio_stereo[:,0], audio_stereo[:,0]))
+@numba.njit(parallel=True, fastmath=True)
+def _qam_beat_core(
+    N, duration_float, sample_rate_float,
+    ampL, ampR,
+    baseFreqL, baseFreqR,
+    qamAmFreqL, qamAmDepthL, qamAmPhaseOffsetL,
+    qamAmFreqR, qamAmDepthR, qamAmPhaseOffsetR,
+    startPhaseL, startPhaseR,
+    phaseOscFreq, phaseOscRange, phaseOscPhaseOffset
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
 
-    return audio_stereo.astype(np.float32)
+    t_arr = np.empty(N, dtype=np.float64)
+    dt = duration_float / N
+    for i in numba.prange(N):
+        t_arr[i] = i * dt
+
+    phL_carrier = np.empty(N, dtype=np.float64)
+    phR_carrier = np.empty(N, dtype=np.float64)
+    
+    currentPhaseL = startPhaseL
+    currentPhaseR = startPhaseR
+    for i in range(N): 
+        phL_carrier[i] = currentPhaseL
+        phR_carrier[i] = currentPhaseR
+        currentPhaseL += 2 * np.pi * baseFreqL * dt
+        currentPhaseR += 2 * np.pi * baseFreqR * dt
+        
+    if phaseOscFreq != 0.0 or phaseOscRange != 0.0:
+        for i in numba.prange(N):
+            d_phi = (phaseOscRange / 2.0) * np.sin(2 * np.pi * phaseOscFreq * t_arr[i] + phaseOscPhaseOffset)
+            phL_carrier[i] -= d_phi
+            phR_carrier[i] += d_phi
+
+    envL = np.empty(N, dtype=np.float64)
+    envR = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if qamAmFreqL != 0.0 and qamAmDepthL != 0.0:
+            envL[i] = 1.0 + qamAmDepthL * np.cos(2 * np.pi * qamAmFreqL * t_arr[i] + qamAmPhaseOffsetL)
+        else:
+            envL[i] = 1.0
+        
+        if qamAmFreqR != 0.0 and qamAmDepthR != 0.0:
+            envR[i] = 1.0 + qamAmDepthR * np.cos(2 * np.pi * qamAmFreqR * t_arr[i] + qamAmPhaseOffsetR)
+        else:
+            envR[i] = 1.0
+
+    out = np.empty((N, 2), dtype=np.float32)
+    for i in numba.prange(N):
+        sigL = envL[i] * np.cos(phL_carrier[i])
+        sigR = envR[i] * np.cos(phR_carrier[i])
+        
+        out[i, 0] = np.float32(sigL * ampL)
+        out[i, 1] = np.float32(sigR * ampR)
+
+    return out
+
+
+# -----------------------------------------------------------------------------
+# QAM Beat Transition
+# -----------------------------------------------------------------------------
+def qam_beat_transition(duration, sample_rate=44100, **params):
+    """
+    Generates a QAM-based binaural beat with parameters linearly interpolated over the duration.
+    """
+    s_ampL = float(params.get('startAmpL', params.get('ampL', 0.5)))
+    e_ampL = float(params.get('endAmpL', s_ampL))
+    s_ampR = float(params.get('startAmpR', params.get('ampR', 0.5)))
+    e_ampR = float(params.get('endAmpR', s_ampR))
+
+    s_baseFreqL = float(params.get('startBaseFreqL', params.get('baseFreqL', 200.0)))
+    e_baseFreqL = float(params.get('endBaseFreqL', s_baseFreqL))
+    s_baseFreqR = float(params.get('startBaseFreqR', params.get('baseFreqR', s_baseFreqL + 4.0)))
+    e_baseFreqR = float(params.get('endBaseFreqR', s_baseFreqR))
+
+    s_qamAmFreqL = float(params.get('startQamAmFreqL', params.get('qamAmFreqL', 4.0)))
+    e_qamAmFreqL = float(params.get('endQamAmFreqL', s_qamAmFreqL))
+    s_qamAmFreqR = float(params.get('startQamAmFreqR', params.get('qamAmFreqR', s_qamAmFreqL)))
+    e_qamAmFreqR = float(params.get('endQamAmFreqR', s_qamAmFreqR))
+
+    s_qamAmDepthL = float(params.get('startQamAmDepthL', params.get('qamAmDepthL', 0.5)))
+    e_qamAmDepthL = float(params.get('endQamAmDepthL', s_qamAmDepthL))
+    s_qamAmDepthR = float(params.get('startQamAmDepthR', params.get('qamAmDepthR', s_qamAmDepthL)))
+    e_qamAmDepthR = float(params.get('endQamAmDepthR', s_qamAmDepthR))
+
+    s_qamAmPhaseOffsetL = float(params.get('startQamAmPhaseOffsetL', params.get('qamAmPhaseOffsetL', 0.0)))
+    e_qamAmPhaseOffsetL = float(params.get('endQamAmPhaseOffsetL', s_qamAmPhaseOffsetL))
+    s_qamAmPhaseOffsetR = float(params.get('startQamAmPhaseOffsetR', params.get('qamAmPhaseOffsetR', s_qamAmPhaseOffsetL)))
+    e_qamAmPhaseOffsetR = float(params.get('endQamAmPhaseOffsetR', s_qamAmPhaseOffsetR))
+
+    s_startPhaseL = float(params.get('startStartPhaseL', params.get('startPhaseL', 0.0)))
+    e_startPhaseL = float(params.get('endStartPhaseL', s_startPhaseL)) 
+    s_startPhaseR = float(params.get('startStartPhaseR', params.get('startPhaseR', 0.0)))
+    e_startPhaseR = float(params.get('endStartPhaseR', s_startPhaseR))
+
+    s_phaseOscFreq = float(params.get('startPhaseOscFreq', params.get('phaseOscFreq', 0.0)))
+    e_phaseOscFreq = float(params.get('endPhaseOscFreq', s_phaseOscFreq))
+    s_phaseOscRange = float(params.get('startPhaseOscRange', params.get('phaseOscRange', 0.0)))
+    e_phaseOscRange = float(params.get('endPhaseOscRange', s_phaseOscRange))
+    s_phaseOscPhaseOffset = float(params.get('startPhaseOscPhaseOffset', params.get('phaseOscPhaseOffset', 0.0)))
+    e_phaseOscPhaseOffset = float(params.get('endPhaseOscPhaseOffset', s_phaseOscPhaseOffset))
+
+    N = int(duration * sample_rate)
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    raw_signal = _qam_beat_transition_core(
+        N, float(duration), float(sample_rate),
+        s_ampL, e_ampL, s_ampR, e_ampR,
+        s_baseFreqL, e_baseFreqL, s_baseFreqR, e_baseFreqR,
+        s_qamAmFreqL, e_qamAmFreqL, s_qamAmDepthL, e_qamAmDepthL, s_qamAmPhaseOffsetL, e_qamAmPhaseOffsetL,
+        s_qamAmFreqR, e_qamAmFreqR, s_qamAmDepthR, e_qamAmDepthR, s_qamAmPhaseOffsetR, e_qamAmPhaseOffsetR,
+        s_startPhaseL, e_startPhaseL, s_startPhaseR, e_startPhaseR, 
+        s_phaseOscFreq, e_phaseOscFreq, s_phaseOscRange, e_phaseOscRange, s_phaseOscPhaseOffset, e_phaseOscPhaseOffset
+    )
+    
+    if raw_signal.size > 0:
+        filtered_L = apply_filters(raw_signal[:, 0].copy(), float(sample_rate))
+        filtered_R = apply_filters(raw_signal[:, 1].copy(), float(sample_rate))
+        return np.ascontiguousarray(np.vstack((filtered_L, filtered_R)).T.astype(np.float32))
+    else:
+        return raw_signal
+
+
+@numba.njit(parallel=True, fastmath=True)
+def _qam_beat_transition_core(
+    N, duration_float, sample_rate_float,
+    s_ampL, e_ampL, s_ampR, e_ampR,
+    s_baseFreqL, e_baseFreqL, s_baseFreqR, e_baseFreqR,
+    s_qamAmFreqL, e_qamAmFreqL, s_qamAmDepthL, e_qamAmDepthL, s_qamAmPhaseOffsetL, e_qamAmPhaseOffsetL,
+    s_qamAmFreqR, e_qamAmFreqR, s_qamAmDepthR, e_qamAmDepthR, s_qamAmPhaseOffsetR, e_qamAmPhaseOffsetR,
+    s_startPhaseL_init, e_startPhaseL_init, s_startPhaseR_init, e_startPhaseR_init, 
+    s_phaseOscFreq, e_phaseOscFreq, s_phaseOscRange, e_phaseOscRange, s_phaseOscPhaseOffset, e_phaseOscPhaseOffset
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    t_arr = np.empty(N, dtype=np.float64)
+    alpha_arr = np.empty(N, dtype=np.float64) 
+    dt = duration_float / N
+    for i in numba.prange(N):
+        t_arr[i] = i * dt
+        alpha_arr[i] = i / (N - 1) if N > 1 else 0.0
+
+    ampL_arr = np.empty(N, dtype=np.float64)
+    ampR_arr = np.empty(N, dtype=np.float64)
+    baseFreqL_arr = np.empty(N, dtype=np.float64)
+    baseFreqR_arr = np.empty(N, dtype=np.float64)
+    qamAmFreqL_arr = np.empty(N, dtype=np.float64)
+    qamAmDepthL_arr = np.empty(N, dtype=np.float64)
+    qamAmPhaseOffsetL_arr = np.empty(N, dtype=np.float64)
+    qamAmFreqR_arr = np.empty(N, dtype=np.float64)
+    qamAmDepthR_arr = np.empty(N, dtype=np.float64)
+    qamAmPhaseOffsetR_arr = np.empty(N, dtype=np.float64)
+    phaseOscFreq_arr = np.empty(N, dtype=np.float64)
+    phaseOscRange_arr = np.empty(N, dtype=np.float64)
+    phaseOscPhaseOffset_arr = np.empty(N, dtype=np.float64)
+    
+    for i in numba.prange(N):
+        alpha = alpha_arr[i]
+        ampL_arr[i] = s_ampL + (e_ampL - s_ampL) * alpha
+        ampR_arr[i] = s_ampR + (e_ampR - s_ampR) * alpha
+        baseFreqL_arr[i] = s_baseFreqL + (e_baseFreqL - s_baseFreqL) * alpha
+        baseFreqR_arr[i] = s_baseFreqR + (e_baseFreqR - s_baseFreqR) * alpha
+        qamAmFreqL_arr[i] = s_qamAmFreqL + (e_qamAmFreqL - s_qamAmFreqL) * alpha
+        qamAmDepthL_arr[i] = s_qamAmDepthL + (e_qamAmDepthL - s_qamAmDepthL) * alpha
+        qamAmPhaseOffsetL_arr[i] = s_qamAmPhaseOffsetL + (e_qamAmPhaseOffsetL - s_qamAmPhaseOffsetL) * alpha
+        qamAmFreqR_arr[i] = s_qamAmFreqR + (e_qamAmFreqR - s_qamAmFreqR) * alpha
+        qamAmDepthR_arr[i] = s_qamAmDepthR + (e_qamAmDepthR - s_qamAmDepthR) * alpha
+        qamAmPhaseOffsetR_arr[i] = s_qamAmPhaseOffsetR + (e_qamAmPhaseOffsetR - s_qamAmPhaseOffsetR) * alpha
+        phaseOscFreq_arr[i] = s_phaseOscFreq + (e_phaseOscFreq - s_phaseOscFreq) * alpha
+        phaseOscRange_arr[i] = s_phaseOscRange + (e_phaseOscRange - s_phaseOscRange) * alpha
+        phaseOscPhaseOffset_arr[i] = s_phaseOscPhaseOffset + (e_phaseOscPhaseOffset - s_phaseOscPhaseOffset) * alpha
+
+    phL_carrier = np.empty(N, dtype=np.float64)
+    phR_carrier = np.empty(N, dtype=np.float64)
+    
+    currentPhaseL = s_startPhaseL_init 
+    currentPhaseR = s_startPhaseR_init
+    for i in range(N): 
+        phL_carrier[i] = currentPhaseL
+        phR_carrier[i] = currentPhaseR
+        currentPhaseL += 2 * np.pi * baseFreqL_arr[i] * dt
+        currentPhaseR += 2 * np.pi * baseFreqR_arr[i] * dt
+        
+    for i in numba.prange(N):
+        if phaseOscFreq_arr[i] != 0.0 or phaseOscRange_arr[i] != 0.0:
+            d_phi = (phaseOscRange_arr[i] / 2.0) * np.sin(2 * np.pi * phaseOscFreq_arr[i] * t_arr[i] + phaseOscPhaseOffset_arr[i])
+            phL_carrier[i] -= d_phi
+            phR_carrier[i] += d_phi
+
+    envL_arr = np.empty(N, dtype=np.float64)
+    envR_arr = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if qamAmFreqL_arr[i] != 0.0 and qamAmDepthL_arr[i] != 0.0:
+            envL_arr[i] = 1.0 + qamAmDepthL_arr[i] * np.cos(2 * np.pi * qamAmFreqL_arr[i] * t_arr[i] + qamAmPhaseOffsetL_arr[i])
+        else:
+            envL_arr[i] = 1.0
+        
+        if qamAmFreqR_arr[i] != 0.0 and qamAmDepthR_arr[i] != 0.0:
+            envR_arr[i] = 1.0 + qamAmDepthR_arr[i] * np.cos(2 * np.pi * qamAmFreqR_arr[i] * t_arr[i] + qamAmPhaseOffsetR_arr[i])
+        else:
+            envR_arr[i] = 1.0
+
+    out = np.empty((N, 2), dtype=np.float32)
+    for i in numba.prange(N):
+        sigL = envL_arr[i] * np.cos(phL_carrier[i])
+        sigR = envR_arr[i] * np.cos(phR_carrier[i])
+        
+        out[i, 0] = np.float32(sigL * ampL_arr[i])
+        out[i, 1] = np.float32(sigR * ampR_arr[i])
+
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Hybrid QAM (Left) - Monaural (Right) Beat
+# -----------------------------------------------------------------------------
+def hybrid_qam_monaural_beat(duration, sample_rate=44100, **params):
+    """
+    Generates a hybrid signal:
+    Left Channel: QAM-style modulated signal.
+    Right Channel: Monaural beat with its own AM, FM, and phase oscillation.
+    """
+    ampL = float(params.get('ampL', 0.5)) 
+    ampR = float(params.get('ampR', 0.5)) 
+
+    qam_L_carrierFreq = float(params.get('qamCarrierFreqL', 100.0)) 
+    qam_L_amFreq = float(params.get('qamAmFreqL', 4.0))
+    qam_L_amDepth = float(params.get('qamAmDepthL', 0.5)) 
+    qam_L_amPhaseOffset = float(params.get('qamAmPhaseOffsetL', 0.0)) 
+    qam_L_startPhase = float(params.get('qamStartPhaseL', 0.0)) 
+
+    mono_R_carrierFreq = float(params.get('monoCarrierFreqR', 100.0)) 
+    mono_R_beatFreqInChannel = float(params.get('monoBeatFreqInChannelR', 4.0)) 
+
+    mono_R_amDepth = float(params.get('monoAmDepthR', 0.0)) 
+    mono_R_amFreq = float(params.get('monoAmFreqR', 0.0))
+    mono_R_amPhaseOffset = float(params.get('monoAmPhaseOffsetR', 0.0)) 
+
+    mono_R_fmRange = float(params.get('monoFmRangeR', 0.0)) 
+    mono_R_fmFreq = float(params.get('monoFmFreqR', 0.0)) 
+    mono_R_fmPhaseOffset = float(params.get('monoFmPhaseOffsetR', 0.0)) 
+
+    mono_R_startPhaseTone1 = float(params.get('monoStartPhaseR_Tone1', 0.0)) 
+    mono_R_startPhaseTone2 = float(params.get('monoStartPhaseR_Tone2', 0.0)) 
+    
+    mono_R_phaseOscFreq = float(params.get('monoPhaseOscFreqR', 0.0))
+    mono_R_phaseOscRange = float(params.get('monoPhaseOscRangeR', 0.0)) 
+    mono_R_phaseOscPhaseOffset = float(params.get('monoPhaseOscPhaseOffsetR', 0.0)) 
+
+    N = int(duration * sample_rate)
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    raw_signal = _hybrid_qam_monaural_beat_core(
+        N, float(duration), float(sample_rate),
+        ampL, ampR,
+        qam_L_carrierFreq, qam_L_amFreq, qam_L_amDepth, qam_L_amPhaseOffset, qam_L_startPhase,
+        mono_R_carrierFreq, mono_R_beatFreqInChannel,
+        mono_R_amDepth, mono_R_amFreq, mono_R_amPhaseOffset,
+        mono_R_fmRange, mono_R_fmFreq, mono_R_fmPhaseOffset,
+        mono_R_startPhaseTone1, mono_R_startPhaseTone2,
+        mono_R_phaseOscFreq, mono_R_phaseOscRange, mono_R_phaseOscPhaseOffset
+    )
+
+    if raw_signal.size > 0:
+        filtered_L = apply_filters(raw_signal[:, 0].copy(), float(sample_rate))
+        filtered_R = apply_filters(raw_signal[:, 1].copy(), float(sample_rate))
+        return np.ascontiguousarray(np.vstack((filtered_L, filtered_R)).T.astype(np.float32))
+    else:
+        return raw_signal
+
+
+@numba.njit(parallel=True, fastmath=True)
+def _hybrid_qam_monaural_beat_core(
+    N, duration_float, sample_rate_float,
+    ampL, ampR,
+    qam_L_carrierFreq, qam_L_amFreq, qam_L_amDepth, qam_L_amPhaseOffset, qam_L_startPhase,
+    mono_R_carrierFreq_base, mono_R_beatFreqInChannel, 
+    mono_R_amDepth, mono_R_amFreq, mono_R_amPhaseOffset,
+    mono_R_fmRange, mono_R_fmFreq, mono_R_fmPhaseOffset,
+    mono_R_startPhaseTone1, mono_R_startPhaseTone2,
+    mono_R_phaseOscFreq, mono_R_phaseOscRange, mono_R_phaseOscPhaseOffset
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    t_arr = np.empty(N, dtype=np.float64)
+    dt = duration_float / N
+    for i in numba.prange(N):
+        t_arr[i] = i * dt
+
+    out = np.empty((N, 2), dtype=np.float32)
+
+    ph_qam_L_carrier = np.empty(N, dtype=np.float64)
+    currentPhaseQAM_L = qam_L_startPhase
+    for i in range(N): 
+        ph_qam_L_carrier[i] = currentPhaseQAM_L
+        currentPhaseQAM_L += 2 * np.pi * qam_L_carrierFreq * dt 
+
+    env_qam_L = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if qam_L_amFreq != 0.0 and qam_L_amDepth != 0.0:
+            env_qam_L[i] = 1.0 + qam_L_amDepth * np.cos(2 * np.pi * qam_L_amFreq * t_arr[i] + qam_L_amPhaseOffset)
+        else:
+            env_qam_L[i] = 1.0
+        
+        sig_qam_L = env_qam_L[i] * np.cos(ph_qam_L_carrier[i])
+        out[i, 0] = np.float32(sig_qam_L * ampL)
+
+    mono_R_carrierFreq_inst = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if mono_R_fmFreq != 0.0 and mono_R_fmRange != 0.0:
+            fm_mod_signal = (mono_R_fmRange / 2.0) * np.sin(2 * np.pi * mono_R_fmFreq * t_arr[i] + mono_R_fmPhaseOffset)
+            mono_R_carrierFreq_inst[i] = mono_R_carrierFreq_base + fm_mod_signal
+        else:
+            mono_R_carrierFreq_inst[i] = mono_R_carrierFreq_base
+        if mono_R_carrierFreq_inst[i] < 0: mono_R_carrierFreq_inst[i] = 0.0
+
+    half_mono_beat_R = mono_R_beatFreqInChannel / 2.0
+    mono_R_freqTone1_inst = np.empty(N, dtype=np.float64)
+    mono_R_freqTone2_inst = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        mono_R_freqTone1_inst[i] = mono_R_carrierFreq_inst[i] - half_mono_beat_R
+        mono_R_freqTone2_inst[i] = mono_R_carrierFreq_inst[i] + half_mono_beat_R
+        if mono_R_freqTone1_inst[i] < 0: mono_R_freqTone1_inst[i] = 0.0
+        if mono_R_freqTone2_inst[i] < 0: mono_R_freqTone2_inst[i] = 0.0
+
+    ph_mono_R_tone1 = np.empty(N, dtype=np.float64)
+    ph_mono_R_tone2 = np.empty(N, dtype=np.float64)
+    currentPhaseMonoR1 = mono_R_startPhaseTone1
+    currentPhaseMonoR2 = mono_R_startPhaseTone2
+    for i in range(N): 
+        ph_mono_R_tone1[i] = currentPhaseMonoR1
+        ph_mono_R_tone2[i] = currentPhaseMonoR2
+        currentPhaseMonoR1 += 2 * np.pi * mono_R_freqTone1_inst[i] * dt
+        currentPhaseMonoR2 += 2 * np.pi * mono_R_freqTone2_inst[i] * dt
+
+    if mono_R_phaseOscFreq != 0.0 or mono_R_phaseOscRange != 0.0:
+        for i in numba.prange(N):
+            d_phi_mono = (mono_R_phaseOscRange / 2.0) * np.sin(2 * np.pi * mono_R_phaseOscFreq * t_arr[i] + mono_R_phaseOscPhaseOffset)
+            ph_mono_R_tone1[i] -= d_phi_mono
+            ph_mono_R_tone2[i] += d_phi_mono
+            
+    s_mono_R_tone1 = np.empty(N, dtype=np.float64)
+    s_mono_R_tone2 = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        s_mono_R_tone1[i] = np.sin(ph_mono_R_tone1[i])
+        s_mono_R_tone2[i] = np.sin(ph_mono_R_tone2[i])
+    
+    summed_mono_R = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        summed_mono_R[i] = s_mono_R_tone1[i] + s_mono_R_tone2[i] 
+
+    env_mono_R = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if mono_R_amFreq != 0.0 and mono_R_amDepth != 0.0:
+            clamped_am_depth_R = max(0.0, min(1.0, mono_R_amDepth)) 
+            env_mono_R[i] = 1.0 - clamped_am_depth_R * (0.5 * (1.0 + np.sin(2 * np.pi * mono_R_amFreq * t_arr[i] + mono_R_amPhaseOffset)))
+        else:
+            env_mono_R[i] = 1.0
+        
+        out[i, 1] = np.float32(summed_mono_R[i] * env_mono_R[i] * ampR)
+
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Hybrid QAM-Monaural Beat Transition
+# -----------------------------------------------------------------------------
+def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, **params):
+    """
+    Generates a hybrid QAM-Monaural beat with parameters linearly interpolated.
+    """
+    s_ampL = float(params.get('startAmpL', params.get('ampL', 0.5)))
+    e_ampL = float(params.get('endAmpL', s_ampL))
+    s_ampR = float(params.get('startAmpR', params.get('ampR', 0.5)))
+    e_ampR = float(params.get('endAmpR', s_ampR))
+
+    s_qam_L_carrierFreq = float(params.get('startQamCarrierFreqL', params.get('qamCarrierFreqL', 100.0)))
+    e_qam_L_carrierFreq = float(params.get('endQamCarrierFreqL', s_qam_L_carrierFreq))
+    s_qam_L_amFreq = float(params.get('startQamAmFreqL', params.get('qamAmFreqL', 4.0)))
+    e_qam_L_amFreq = float(params.get('endQamAmFreqL', s_qam_L_amFreq))
+    s_qam_L_amDepth = float(params.get('startQamAmDepthL', params.get('qamAmDepthL', 0.5)))
+    e_qam_L_amDepth = float(params.get('endQamAmDepthL', s_qam_L_amDepth))
+    s_qam_L_amPhaseOffset = float(params.get('startQamAmPhaseOffsetL', params.get('qamAmPhaseOffsetL', 0.0)))
+    e_qam_L_amPhaseOffset = float(params.get('endQamAmPhaseOffsetL', s_qam_L_amPhaseOffset))
+    s_qam_L_startPhase = float(params.get('startQamStartPhaseL', params.get('qamStartPhaseL', 0.0)))
+    e_qam_L_startPhase = float(params.get('endQamStartPhaseL', s_qam_L_startPhase)) 
+
+    s_mono_R_carrierFreq = float(params.get('startMonoCarrierFreqR', params.get('monoCarrierFreqR', 100.0)))
+    e_mono_R_carrierFreq = float(params.get('endMonoCarrierFreqR', s_mono_R_carrierFreq))
+    s_mono_R_beatFreqInChannel = float(params.get('startMonoBeatFreqInChannelR', params.get('monoBeatFreqInChannelR', 4.0)))
+    e_mono_R_beatFreqInChannel = float(params.get('endMonoBeatFreqInChannelR', s_mono_R_beatFreqInChannel))
+    
+    s_mono_R_amDepth = float(params.get('startMonoAmDepthR', params.get('monoAmDepthR', 0.0)))
+    e_mono_R_amDepth = float(params.get('endMonoAmDepthR', s_mono_R_amDepth))
+    s_mono_R_amFreq = float(params.get('startMonoAmFreqR', params.get('monoAmFreqR', 0.0)))
+    e_mono_R_amFreq = float(params.get('endMonoAmFreqR', s_mono_R_amFreq))
+    s_mono_R_amPhaseOffset = float(params.get('startMonoAmPhaseOffsetR', params.get('monoAmPhaseOffsetR', 0.0)))
+    e_mono_R_amPhaseOffset = float(params.get('endMonoAmPhaseOffsetR', s_mono_R_amPhaseOffset))
+
+    s_mono_R_fmRange = float(params.get('startMonoFmRangeR', params.get('monoFmRangeR', 0.0)))
+    e_mono_R_fmRange = float(params.get('endMonoFmRangeR', s_mono_R_fmRange))
+    s_mono_R_fmFreq = float(params.get('startMonoFmFreqR', params.get('monoFmFreqR', 0.0)))
+    e_mono_R_fmFreq = float(params.get('endMonoFmFreqR', s_mono_R_fmFreq))
+    s_mono_R_fmPhaseOffset = float(params.get('startMonoFmPhaseOffsetR', params.get('monoFmPhaseOffsetR', 0.0)))
+    e_mono_R_fmPhaseOffset = float(params.get('endMonoFmPhaseOffsetR', s_mono_R_fmPhaseOffset))
+
+    s_mono_R_startPhaseTone1 = float(params.get('startMonoStartPhaseR_Tone1', params.get('monoStartPhaseR_Tone1', 0.0)))
+    e_mono_R_startPhaseTone1 = float(params.get('endMonoStartPhaseR_Tone1', s_mono_R_startPhaseTone1))
+    s_mono_R_startPhaseTone2 = float(params.get('startMonoStartPhaseR_Tone2', params.get('monoStartPhaseR_Tone2', 0.0)))
+    e_mono_R_startPhaseTone2 = float(params.get('endMonoStartPhaseR_Tone2', s_mono_R_startPhaseTone2))
+
+    s_mono_R_phaseOscFreq = float(params.get('startMonoPhaseOscFreqR', params.get('monoPhaseOscFreqR', 0.0)))
+    e_mono_R_phaseOscFreq = float(params.get('endMonoPhaseOscFreqR', s_mono_R_phaseOscFreq))
+    s_mono_R_phaseOscRange = float(params.get('startMonoPhaseOscRangeR', params.get('monoPhaseOscRangeR', 0.0)))
+    e_mono_R_phaseOscRange = float(params.get('endMonoPhaseOscRangeR', s_mono_R_phaseOscRange))
+    s_mono_R_phaseOscPhaseOffset = float(params.get('startMonoPhaseOscPhaseOffsetR', params.get('monoPhaseOscPhaseOffsetR', 0.0)))
+    e_mono_R_phaseOscPhaseOffset = float(params.get('endMonoPhaseOscPhaseOffsetR', s_mono_R_phaseOscPhaseOffset))
+
+    N = int(duration * sample_rate)
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    raw_signal = _hybrid_qam_monaural_beat_transition_core(
+        N, float(duration), float(sample_rate),
+        s_ampL, e_ampL, s_ampR, e_ampR,
+        s_qam_L_carrierFreq, e_qam_L_carrierFreq, s_qam_L_amFreq, e_qam_L_amFreq, 
+        s_qam_L_amDepth, e_qam_L_amDepth, s_qam_L_amPhaseOffset, e_qam_L_amPhaseOffset, 
+        s_qam_L_startPhase, e_qam_L_startPhase,
+        s_mono_R_carrierFreq, e_mono_R_carrierFreq, s_mono_R_beatFreqInChannel, e_mono_R_beatFreqInChannel,
+        s_mono_R_amDepth, e_mono_R_amDepth, s_mono_R_amFreq, e_mono_R_amFreq, 
+        s_mono_R_amPhaseOffset, e_mono_R_amPhaseOffset,
+        s_mono_R_fmRange, e_mono_R_fmRange, s_mono_R_fmFreq, e_mono_R_fmFreq, 
+        s_mono_R_fmPhaseOffset, e_mono_R_fmPhaseOffset,
+        s_mono_R_startPhaseTone1, e_mono_R_startPhaseTone1, s_mono_R_startPhaseTone2, e_mono_R_startPhaseTone2,
+        s_mono_R_phaseOscFreq, e_mono_R_phaseOscFreq, s_mono_R_phaseOscRange, e_mono_R_phaseOscRange,
+        s_mono_R_phaseOscPhaseOffset, e_mono_R_phaseOscPhaseOffset
+    )
+
+    if raw_signal.size > 0:
+        filtered_L = apply_filters(raw_signal[:, 0].copy(), float(sample_rate))
+        filtered_R = apply_filters(raw_signal[:, 1].copy(), float(sample_rate))
+        return np.ascontiguousarray(np.vstack((filtered_L, filtered_R)).T.astype(np.float32))
+    else:
+        return raw_signal
+
+
+@numba.njit(parallel=True, fastmath=True)
+def _hybrid_qam_monaural_beat_transition_core(
+    N, duration_float, sample_rate_float,
+    s_ampL, e_ampL, s_ampR, e_ampR,
+    s_qam_L_carrierFreq, e_qam_L_carrierFreq, s_qam_L_amFreq, e_qam_L_amFreq, 
+    s_qam_L_amDepth, e_qam_L_amDepth, s_qam_L_amPhaseOffset, e_qam_L_amPhaseOffset, 
+    s_qam_L_startPhase_init, e_qam_L_startPhase_init, 
+    s_mono_R_carrierFreq_base, e_mono_R_carrierFreq_base, s_mono_R_beatFreqInChannel, e_mono_R_beatFreqInChannel,
+    s_mono_R_amDepth, e_mono_R_amDepth, s_mono_R_amFreq, e_mono_R_amFreq, 
+    s_mono_R_amPhaseOffset, e_mono_R_amPhaseOffset,
+    s_mono_R_fmRange, e_mono_R_fmRange, s_mono_R_fmFreq, e_mono_R_fmFreq, 
+    s_mono_R_fmPhaseOffset, e_mono_R_fmPhaseOffset,
+    s_mono_R_startPhaseTone1_init, e_mono_R_startPhaseTone1_init, 
+    s_mono_R_startPhaseTone2_init, e_mono_R_startPhaseTone2_init,
+    s_mono_R_phaseOscFreq, e_mono_R_phaseOscFreq, s_mono_R_phaseOscRange, e_mono_R_phaseOscRange,
+    s_mono_R_phaseOscPhaseOffset, e_mono_R_phaseOscPhaseOffset
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    t_arr = np.empty(N, dtype=np.float64)
+    alpha_arr = np.empty(N, dtype=np.float64)
+    dt = duration_float / N
+    for i in numba.prange(N):
+        t_arr[i] = i * dt
+        alpha_arr[i] = i / (N - 1) if N > 1 else 0.0
+
+    out = np.empty((N, 2), dtype=np.float32)
+
+    ampL_val_arr = np.empty(N, dtype=np.float64)
+    qam_L_carrierFreq_arr = np.empty(N, dtype=np.float64)
+    qam_L_amFreq_arr = np.empty(N, dtype=np.float64)
+    qam_L_amDepth_arr = np.empty(N, dtype=np.float64)
+    qam_L_amPhaseOffset_arr = np.empty(N, dtype=np.float64)
+    
+    for i in numba.prange(N):
+        alpha = alpha_arr[i]
+        ampL_val_arr[i] = s_ampL + (e_ampL - s_ampL) * alpha
+        qam_L_carrierFreq_arr[i] = s_qam_L_carrierFreq + (e_qam_L_carrierFreq - s_qam_L_carrierFreq) * alpha
+        qam_L_amFreq_arr[i] = s_qam_L_amFreq + (e_qam_L_amFreq - s_qam_L_amFreq) * alpha
+        qam_L_amDepth_arr[i] = s_qam_L_amDepth + (e_qam_L_amDepth - s_qam_L_amDepth) * alpha
+        qam_L_amPhaseOffset_arr[i] = s_qam_L_amPhaseOffset + (e_qam_L_amPhaseOffset - s_qam_L_amPhaseOffset) * alpha
+
+    ph_qam_L_carrier = np.empty(N, dtype=np.float64)
+    currentPhaseQAM_L = s_qam_L_startPhase_init 
+    for i in range(N): 
+        ph_qam_L_carrier[i] = currentPhaseQAM_L
+        currentPhaseQAM_L += 2 * np.pi * qam_L_carrierFreq_arr[i] * dt
+
+    env_qam_L_arr = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if qam_L_amFreq_arr[i] != 0.0 and qam_L_amDepth_arr[i] != 0.0:
+            env_qam_L_arr[i] = 1.0 + qam_L_amDepth_arr[i] * np.cos(2 * np.pi * qam_L_amFreq_arr[i] * t_arr[i] + qam_L_amPhaseOffset_arr[i])
+        else:
+            env_qam_L_arr[i] = 1.0
+        sig_qam_L = env_qam_L_arr[i] * np.cos(ph_qam_L_carrier[i])
+        out[i, 0] = np.float32(sig_qam_L * ampL_val_arr[i])
+
+    ampR_val_arr = np.empty(N, dtype=np.float64)
+    mono_R_carrierFreq_base_arr = np.empty(N, dtype=np.float64)
+    mono_R_beatFreqInChannel_arr = np.empty(N, dtype=np.float64)
+    mono_R_amDepth_arr = np.empty(N, dtype=np.float64)
+    mono_R_amFreq_arr = np.empty(N, dtype=np.float64)
+    mono_R_amPhaseOffset_arr = np.empty(N, dtype=np.float64)
+    mono_R_fmRange_arr = np.empty(N, dtype=np.float64)
+    mono_R_fmFreq_arr = np.empty(N, dtype=np.float64)
+    mono_R_fmPhaseOffset_arr = np.empty(N, dtype=np.float64)
+    mono_R_phaseOscFreq_arr = np.empty(N, dtype=np.float64)
+    mono_R_phaseOscRange_arr = np.empty(N, dtype=np.float64)
+    mono_R_phaseOscPhaseOffset_arr = np.empty(N, dtype=np.float64)
+
+    for i in numba.prange(N):
+        alpha = alpha_arr[i]
+        ampR_val_arr[i] = s_ampR + (e_ampR - s_ampR) * alpha
+        mono_R_carrierFreq_base_arr[i] = s_mono_R_carrierFreq_base + (e_mono_R_carrierFreq_base - s_mono_R_carrierFreq_base) * alpha
+        mono_R_beatFreqInChannel_arr[i] = s_mono_R_beatFreqInChannel + (e_mono_R_beatFreqInChannel - s_mono_R_beatFreqInChannel) * alpha
+        mono_R_amDepth_arr[i] = s_mono_R_amDepth + (e_mono_R_amDepth - s_mono_R_amDepth) * alpha
+        mono_R_amFreq_arr[i] = s_mono_R_amFreq + (e_mono_R_amFreq - s_mono_R_amFreq) * alpha
+        mono_R_amPhaseOffset_arr[i] = s_mono_R_amPhaseOffset + (e_mono_R_amPhaseOffset - s_mono_R_amPhaseOffset) * alpha
+        mono_R_fmRange_arr[i] = s_mono_R_fmRange + (e_mono_R_fmRange - s_mono_R_fmRange) * alpha
+        mono_R_fmFreq_arr[i] = s_mono_R_fmFreq + (e_mono_R_fmFreq - s_mono_R_fmFreq) * alpha
+        mono_R_fmPhaseOffset_arr[i] = s_mono_R_fmPhaseOffset + (e_mono_R_fmPhaseOffset - s_mono_R_fmPhaseOffset) * alpha
+        mono_R_phaseOscFreq_arr[i] = s_mono_R_phaseOscFreq + (e_mono_R_phaseOscFreq - s_mono_R_phaseOscFreq) * alpha
+        mono_R_phaseOscRange_arr[i] = s_mono_R_phaseOscRange + (e_mono_R_phaseOscRange - s_mono_R_phaseOscRange) * alpha
+        mono_R_phaseOscPhaseOffset_arr[i] = s_mono_R_phaseOscPhaseOffset + (e_mono_R_phaseOscPhaseOffset - s_mono_R_phaseOscPhaseOffset) * alpha
+        
+    mono_R_carrierFreq_inst_arr = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if mono_R_fmFreq_arr[i] != 0.0 and mono_R_fmRange_arr[i] != 0.0:
+            fm_mod = (mono_R_fmRange_arr[i] / 2.0) * np.sin(2 * np.pi * mono_R_fmFreq_arr[i] * t_arr[i] + mono_R_fmPhaseOffset_arr[i])
+            mono_R_carrierFreq_inst_arr[i] = mono_R_carrierFreq_base_arr[i] + fm_mod
+        else:
+            mono_R_carrierFreq_inst_arr[i] = mono_R_carrierFreq_base_arr[i]
+        if mono_R_carrierFreq_inst_arr[i] < 0: mono_R_carrierFreq_inst_arr[i] = 0.0
+
+    mono_R_freqTone1_inst_arr = np.empty(N, dtype=np.float64)
+    mono_R_freqTone2_inst_arr = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        half_beat = mono_R_beatFreqInChannel_arr[i] / 2.0
+        mono_R_freqTone1_inst_arr[i] = mono_R_carrierFreq_inst_arr[i] - half_beat
+        mono_R_freqTone2_inst_arr[i] = mono_R_carrierFreq_inst_arr[i] + half_beat
+        if mono_R_freqTone1_inst_arr[i] < 0: mono_R_freqTone1_inst_arr[i] = 0.0
+        if mono_R_freqTone2_inst_arr[i] < 0: mono_R_freqTone2_inst_arr[i] = 0.0
+
+    ph_mono_R_tone1 = np.empty(N, dtype=np.float64)
+    ph_mono_R_tone2 = np.empty(N, dtype=np.float64)
+    currentPhaseMonoR1 = s_mono_R_startPhaseTone1_init
+    currentPhaseMonoR2 = s_mono_R_startPhaseTone2_init
+    for i in range(N): 
+        ph_mono_R_tone1[i] = currentPhaseMonoR1
+        ph_mono_R_tone2[i] = currentPhaseMonoR2
+        currentPhaseMonoR1 += 2 * np.pi * mono_R_freqTone1_inst_arr[i] * dt
+        currentPhaseMonoR2 += 2 * np.pi * mono_R_freqTone2_inst_arr[i] * dt
+
+    if np.any(mono_R_phaseOscFreq_arr != 0.0) or np.any(mono_R_phaseOscRange_arr != 0.0): 
+        for i in numba.prange(N):
+            if mono_R_phaseOscFreq_arr[i] !=0.0 or mono_R_phaseOscRange_arr[i] != 0.0:
+                d_phi_mono = (mono_R_phaseOscRange_arr[i] / 2.0) * np.sin(2 * np.pi * mono_R_phaseOscFreq_arr[i] * t_arr[i] + mono_R_phaseOscPhaseOffset_arr[i])
+                ph_mono_R_tone1[i] -= d_phi_mono
+                ph_mono_R_tone2[i] += d_phi_mono
+    
+    summed_mono_R_arr = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        summed_mono_R_arr[i] = np.sin(ph_mono_R_tone1[i]) + np.sin(ph_mono_R_tone2[i])
+
+    env_mono_R_arr = np.empty(N, dtype=np.float64)
+    for i in numba.prange(N):
+        if mono_R_amFreq_arr[i] != 0.0 and mono_R_amDepth_arr[i] != 0.0:
+            clamped_depth = max(0.0, min(1.0, mono_R_amDepth_arr[i]))
+            env_mono_R_arr[i] = 1.0 - clamped_depth * (0.5 * (1.0 + np.sin(2 * np.pi * mono_R_amFreq_arr[i] * t_arr[i] + mono_R_amPhaseOffset_arr[i])))
+        else:
+            env_mono_R_arr[i] = 1.0
+        out[i, 1] = np.float32(summed_mono_R_arr[i] * env_mono_R_arr[i] * ampR_val_arr[i])
+
+    return out
 
 
 # -----------------------------------------------------------------------------
@@ -2272,7 +2877,7 @@ _EXCLUDED_FUNCTION_NAMES = [
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
     'load_track_from_json', 'save_track_to_json', 'generate_wav', 'get_synth_params',
     'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
-    'butter', 'lfilter', 'write', 'ensure_stereo',
+    'butter', 'lfilter', 'write', 'ensure_stereo', 'apply_filters', 'design_filter', 
     # Standard library functions that might be imported
     'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
@@ -2785,77 +3390,4 @@ def generate_wav(track_data, output_filename=None):
         print(f"Error writing WAV file {output_filename}:")
         traceback.print_exc()
         return False
-# -----------------------------------------------------------------------------
-# Example Usage (if script is run directly)
-# -----------------------------------------------------------------------------
-if __name__ == '__main__':
-    print("Running sound_creator.py directly.")
-    print("This script defines audio generation functions and logic.")
-    print("Run track_editor_gui.py to use the graphical interface.")
 
-    # Example: Create and save a default JSON if it doesn't exist
-    default_json_file = 'default_track_with_flanger.json' # New name for testing
-    if not os.path.exists(default_json_file):
-        print(f"Creating a simple default JSON file: {default_json_file}")
-        default_data = {
-            "global_settings": {
-                 "sample_rate": 44100,
-                 "crossfade_duration": 1.0, # Longer crossfade for smoother flanger test
-                 "output_filename": "test_flanger_output.wav"
-            },
-            "steps": [
-                 {
-                     "duration": 10.0, # Longer duration to hear flanger sweep
-                     "voices": [
-                         {
-                             "synth_function_name": "flanged_voice", # Test new flanger
-                             "is_transition": False,
-                             "params": {
-                                 "amp": 0.6,
-                                 "noiseType": 2, # Pink noise
-                                 "max_delay_ms": 15.0, # Shorter max delay
-                                 "min_delay_ms": 0.5,
-                                 "rate_hz": 0.1, # Faster LFO for testing
-                                 "start_frac": 0.25, # Peak
-                                 "end_frac": 0.75, # Trough
-                                 "begin_hold_time_s": 1.0, # Hold at start
-                                 "end_hold_time_s": 1.0, # Hold at end
-                                 "skip_below_freq": 30.0,
-                                 "lowest_freq_mode": 'notch',
-                                 "dry_mix": 0.6,
-                                 "wet_mix": 0.4,
-                                 "reverse": False
-                             },
-                             "volume_envelope": {"type": "linen", "params": {"attack": 1.0, "release": 1.0}}
-                         }
-                     ]
-                 },
-                 {
-                     "duration": 5.0,
-                     "voices": [
-                         {
-                             "synth_function_name": "binaural_beat",
-                             "is_transition": False,
-                             "params": {"amp": 0.4, "baseFreq": 100, "beatFreq": 3},
-                             "volume_envelope": None
-                         }
-                     ]
-                 }
-            ]
-        }
-        if save_track_to_json(default_data, default_json_file):
-             print("\nAttempting to load and generate the test track...")
-             track_definition = load_track_from_json(default_json_file)
-             if track_definition:
-                  generate_wav(track_definition)
-             else:
-                  print("Failed to load track definition after saving.")
-    else:
-        print(f"Default file '{default_json_file}' already exists.")
-        # Optionally load and generate here for testing
-        print("\nAttempting to load and generate existing test track...")
-        track_definition = load_track_from_json(default_json_file)
-        if track_definition:
-           generate_wav(track_definition)
-        else:
-           print("Failed to load existing track definition.")
