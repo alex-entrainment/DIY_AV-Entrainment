@@ -1,7 +1,6 @@
 import sys
 from collections import OrderedDict
 import json
-# Make sure sound_creator.py is accessible (in the same directory or Python path)
 import sound_creator # Import the refactored sound generation script
 import inspect
 import os
