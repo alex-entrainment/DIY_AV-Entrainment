@@ -1460,41 +1460,57 @@ class VoiceEditorDialog(QDialog):
         # Adjust this map to precisely match your QComboBox item strings.
         internal_func_key_map = {
             "Rhythmic Waveshaping": "rhythmic_waveshaping",
+            "Rhythmic Waveshaping Transition": "rhythmic_waveshaping_transition",
             "Stereo AM Independent": "stereo_am_independent",
+            "Stereo AM Independent Transition": "stereo_am_independent_transition",
             "Wave Shape Stereo AM": "wave_shape_stereo_am",
+            "Wave Shape Stereo AM Transition": "wave_shape_stereo_am_transition",
             "Spatial Angle Modulation (SAM Engine)": "spatial_angle_modulation_engine", # Uses Node/SAMVoice directly
+            "Spatial Angle Modulation (SAM Engine Transition)": "spatial_angle_modulation_engine_transition",
             "Binaural Beat": "binaural_beat",
+            "Binaural Beat Transition": "binaural_beat_transition",
             "Monaural Beat Stereo Amps": "monaural_beat_stereo_amps",
+            "Monaural Beat Stereo Amps Transition": "monaural_beat_stereo_amps_transition",
             "Spatial Angle Modulation (Monaural Core)": "spatial_angle_modulation_monaural", # Uses monaural_beat as core
+            "Spatial Angle Modulation (Monaural Core Transition)": "spatial_angle_modulation_monaural_transition",
             "Isochronic Tone": "isochronic_tone",
-            "QAM Beat": "qam_beat",
+            "Isochronic Tone Transition": "isochronic_tone_transition",
+            "QAM Beat": "qam_beat", # Ensure this mapping is correct for your UI
+            "QAM Beat Transition": "qam_beat_transition",
             "Hybrid QAM Monaural Beat": "hybrid_qam_monaural_beat",
+            "Hybrid QAM Monaural Beat Transition": "hybrid_qam_monaural_beat_transition",
             # Add other mappings if your UI names differ from these examples
         }
         
         # Attempt to map the UI name; if not found, assume func_name_from_combo is already an internal base key.
         base_func_key = internal_func_key_map.get(func_name_from_combo, func_name_from_combo)
 
+        # !!! IMPORTANT !!!
+        # The param_definitions dictionary below needs to be comprehensive and accurate
+        # for ALL your synth functions. The entry for "qam_beat" has been updated
+        # based on the provided qam_beat.py. You must verify and update entries
+        # for all other functions (rhythmic_waveshaping, stereo_am_independent, etc.)
+        # by inspecting their respective files in the synth_functions folder.
         param_definitions = {
-            "rhythmic_waveshaping": {
+            "rhythmic_waveshaping": { # This is an example, ensure it's correct
                 "standard": [
                     ('amp', 0.25), ('carrierFreq', 200), ('modFreq', 4),
                     ('modDepth', 1.0), ('shapeAmount', 5.0), ('pan', 0)
                 ],
-                "transition": [ # From rhythmic_waveshaping_transition
+                "transition": [ 
                     ('amp', 0.25), ('startCarrierFreq', 200), ('endCarrierFreq', 80),
                     ('startModFreq', 12), ('endModFreq', 7.83),
                     ('startModDepth', 1.0), ('endModDepth', 1.0),
                     ('startShapeAmount', 5.0), ('endShapeAmount', 5.0), ('pan', 0)
                 ]
             },
-            "stereo_am_independent": {
+            "stereo_am_independent": { # This is an example, ensure it's correct
                 "standard": [
                     ('amp', 0.25), ('carrierFreq', 200.0), ('modFreqL', 4.0),
                     ('modDepthL', 0.8), ('modPhaseL', 0), ('modFreqR', 4.0),
                     ('modDepthR', 0.8), ('modPhaseR', 0), ('stereo_width_hz', 0.2)
                 ],
-                "transition": [ # From stereo_am_independent_transition
+                "transition": [
                     ('amp', 0.25), ('startCarrierFreq', 200), ('endCarrierFreq', 250),
                     ('startModFreqL', 4), ('endModFreqL', 6),
                     ('startModDepthL', 0.8), ('endModDepthL', 0.8),
@@ -1505,7 +1521,7 @@ class VoiceEditorDialog(QDialog):
                     ('startStereoWidthHz', 0.2), ('endStereoWidthHz', 0.2)
                 ]
             },
-            "wave_shape_stereo_am": {
+            "wave_shape_stereo_am": { # This is an example, ensure it's correct
                 "standard": [
                     ('amp', 0.15), ('carrierFreq', 200), ('shapeModFreq', 4),
                     ('shapeModDepth', 0.8), ('shapeAmount', 0.5),
@@ -1513,7 +1529,7 @@ class VoiceEditorDialog(QDialog):
                     ('stereoModPhaseL', 0), ('stereoModFreqR', 4.0),
                     ('stereoModDepthR', 0.8), ('stereoModPhaseR', math.pi / 2)
                 ],
-                "transition": [ # From wave_shape_stereo_am_transition
+                "transition": [
                     ('amp', 0.15), ('startCarrierFreq', 200), ('endCarrierFreq', 100),
                     ('startShapeModFreq', 4), ('endShapeModFreq', 8),
                     ('startShapeModDepth', 0.8), ('endShapeModDepth', 0.8),
@@ -1526,14 +1542,14 @@ class VoiceEditorDialog(QDialog):
                     ('startStereoModPhaseR', math.pi / 2)
                 ]
             },
-            "spatial_angle_modulation_engine": { # Uses Node/SAMVoice directly
-                "standard": [ # From spatial_angle_modulation
+            "spatial_angle_modulation_engine": { # This is an example, ensure it's correct
+                "standard": [
                     ('amp', 0.7), ('carrierFreq', 440.0), ('beatFreq', 4.0),
                     ('pathShape', 'circle'), ('pathRadius', 1.0),
                     ('arcStartDeg', 0.0), ('arcEndDeg', 360.0),
                     ('frame_dur_ms', 46.4), ('overlap_factor', 8)
                 ],
-                "transition": [ # From spatial_angle_modulation_transition
+                "transition": [
                     ('amp', 0.7),
                     ('startCarrierFreq', 440.0), ('endCarrierFreq', 440.0),
                     ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
@@ -1544,7 +1560,7 @@ class VoiceEditorDialog(QDialog):
                     ('frame_dur_ms', 46.4), ('overlap_factor', 8)
                 ]
             },
-            "binaural_beat": {
+            "binaural_beat": { # This is an example, ensure it's correct
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5), ('baseFreq', 200.0), ('beatFreq', 4.0),
                     ('forceMono', False), ('startPhaseL', 0.0), ('startPhaseR', 0.0),
@@ -1554,15 +1570,15 @@ class VoiceEditorDialog(QDialog):
                     ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0),
                     ('ampOscPhaseOffsetL', 0.0), ('ampOscPhaseOffsetR', 0.0),
                     ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
-                    ('glitchInterval', 0.0), ('glitchDur', 0.0), # Included from commented section
+                    ('glitchInterval', 0.0), ('glitchDur', 0.0), 
                     ('glitchNoiseLevel', 0.0), ('glitchFocusWidth', 0.0), ('glitchFocusExp', 0.0)
                 ],
-                "transition": [ # From binaural_beat_transition
+                "transition": [ 
                     ('startAmpL', 0.5), ('endAmpL', 0.5),
                     ('startAmpR', 0.5), ('endAmpR', 0.5),
                     ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
                     ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
-                    ('startForceMono', 0.0), ('endForceMono', 0.0),
+                    ('startForceMono', 0.0), ('endForceMono', 0.0), # Should be bool if possible, or handled as 0/1
                     ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
                     ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
                     ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
@@ -1584,7 +1600,7 @@ class VoiceEditorDialog(QDialog):
                     ('startGlitchFocusExp', 0.0), ('endGlitchFocusExp', 0.0)
                 ]
             },
-            "monaural_beat_stereo_amps": {
+            "monaural_beat_stereo_amps": { # This is an example, ensure it's correct
                 "standard": [
                     ('amp_lower_L', 0.5), ('amp_upper_L', 0.5),
                     ('amp_lower_R', 0.5), ('amp_upper_R', 0.5),
@@ -1593,7 +1609,7 @@ class VoiceEditorDialog(QDialog):
                     ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
                     ('ampOscDepth', 0.0), ('ampOscFreq', 0.0), ('ampOscPhaseOffset', 0.0)
                 ],
-                "transition": [ # From monaural_beat_stereo_amps_transition
+                "transition": [ 
                     ('start_amp_lower_L', 0.5), ('end_amp_lower_L', 0.5),
                     ('start_amp_upper_L', 0.5), ('end_amp_upper_L', 0.5),
                     ('start_amp_lower_R', 0.5), ('end_amp_lower_R', 0.5),
@@ -1601,7 +1617,7 @@ class VoiceEditorDialog(QDialog):
                     ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
                     ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
                     ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
-                    ('startStartPhaseU', 0.0), ('endStartPhaseU', 0.0), # Note: 'U' from 'startPhaseR'
+                    ('startStartPhaseU', 0.0), ('endStartPhaseU', 0.0), 
                     ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
                     ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
                     ('startAmpOscDepth', 0.0), ('endAmpOscDepth', 0.0),
@@ -1609,8 +1625,8 @@ class VoiceEditorDialog(QDialog):
                     ('startAmpOscPhaseOffset', 0.0), ('endAmpOscPhaseOffset', 0.0)
                 ]
             },
-            "spatial_angle_modulation_monaural": { # Uses monaural_beat_stereo_amps as core
-                "standard": [ # From spatial_angle_modulation_monaural_beat
+            "spatial_angle_modulation_monaural": { # This is an example, ensure it's correct
+                "standard": [ 
                     ('sam_ampOscDepth', 0.0), ('sam_ampOscFreq', 0.0), ('sam_ampOscPhaseOffset', 0.0),
                     ('amp_lower_L', 0.5), ('amp_upper_L', 0.5),
                     ('amp_lower_R', 0.5), ('amp_upper_R', 0.5),
@@ -1623,7 +1639,7 @@ class VoiceEditorDialog(QDialog):
                     ('amp', 0.7), ('pathRadius', 1.0),
                     ('frame_dur_ms', 46.4), ('overlap_factor', 8)
                 ],
-                "transition": [ # From spatial_angle_modulation_monaural_beat_transition
+                "transition": [ 
                     ('start_amp_lower_L', 0.5), ('end_amp_lower_L', 0.5),
                     ('start_amp_upper_L', 0.5), ('end_amp_upper_L', 0.5),
                     ('start_amp_lower_R', 0.5), ('end_amp_lower_R', 0.5),
@@ -1647,45 +1663,73 @@ class VoiceEditorDialog(QDialog):
                     ('frame_dur_ms', 46.4), ('overlap_factor', 8)
                 ]
             },
-            "isochronic_tone": {
+            "isochronic_tone": { # This is an example, ensure it's correct
                 "standard": [
                     ('amp', 0.5), ('baseFreq', 200.0), ('beatFreq', 4.0),
                     ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0)
                 ],
-                "transition": [ # From isochronic_tone_transition
-                    ('amp', 0.5), ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), # endBaseFreq defaults to start
-                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0), # endBeatFreq defaults to start
+                "transition": [ 
+                    ('amp', 0.5), ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), 
+                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0), 
                     ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0)
                 ]
             },
-            "qam_beat": {
+            "qam_beat": { # CORRECTED AND COMPLETED for qam_beat based on qam_beat.py
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5),
-                    ('baseFreqL', 200.0), ('baseFreqR', 204.0), # baseFreqL + 4.0
+                    ('baseFreqL', 200.0), ('baseFreqR', 204.0),
                     ('qamAmFreqL', 4.0), ('qamAmDepthL', 0.5), ('qamAmPhaseOffsetL', 0.0),
-                    ('qamAmFreqR', 4.0), ('qamAmDepthR', 0.5), ('qamAmPhaseOffsetR', 0.0), # Defaults to L versions
+                    ('qamAmFreqR', 4.0), ('qamAmDepthR', 0.5), ('qamAmPhaseOffsetR', 0.0),
+                    ('qamAm2FreqL', 0.0), ('qamAm2DepthL', 0.0), ('qamAm2PhaseOffsetL', 0.0),
+                    ('qamAm2FreqR', 0.0), ('qamAm2DepthR', 0.0), ('qamAm2PhaseOffsetR', 0.0),
+                    ('modShapeL', 1.0), ('modShapeR', 1.0),
+                    ('crossModDepth', 0.0), ('crossModDelay', 0.0),
+                    ('harmonicDepth', 0.0), ('harmonicRatio', 2.0),
+                    ('subHarmonicFreq', 0.0), ('subHarmonicDepth', 0.0),
                     ('startPhaseL', 0.0), ('startPhaseR', 0.0),
-                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0), ('phaseOscPhaseOffset', 0.0)
+                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0), ('phaseOscPhaseOffset', 0.0),
+                    ('beatingSidebands', False), ('sidebandOffset', 1.0), ('sidebandDepth', 0.1),
+                    ('attackTime', 0.0), ('releaseTime', 0.0)
                 ],
-                "transition": [ # From qam_beat_transition
+                "transition": [
                     ('startAmpL', 0.5), ('endAmpL', 0.5),
                     ('startAmpR', 0.5), ('endAmpR', 0.5),
                     ('startBaseFreqL', 200.0), ('endBaseFreqL', 200.0),
-                    ('startBaseFreqR', 204.0), ('endBaseFreqR', 204.0), # startBaseFreqL + 4.0
+                    ('startBaseFreqR', 204.0), ('endBaseFreqR', 204.0),
                     ('startQamAmFreqL', 4.0), ('endQamAmFreqL', 4.0),
                     ('startQamAmDepthL', 0.5), ('endQamAmDepthL', 0.5),
                     ('startQamAmPhaseOffsetL', 0.0), ('endQamAmPhaseOffsetL', 0.0),
-                    ('startQamAmFreqR', 4.0), ('endQamAmFreqR', 4.0), # Defaults to L versions
-                    ('startQamAmDepthR', 0.5), ('endQamAmDepthR', 0.5), # Defaults to L versions
-                    ('startQamAmPhaseOffsetR', 0.0), ('endQamAmPhaseOffsetR', 0.0), # Defaults to L versions
-                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
-                    ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
+                    ('startQamAmFreqR', 4.0), ('endQamAmFreqR', 4.0),
+                    ('startQamAmDepthR', 0.5), ('endQamAmDepthR', 0.5),
+                    ('startQamAmPhaseOffsetR', 0.0), ('endQamAmPhaseOffsetR', 0.0),
+                    ('startQamAm2FreqL', 0.0), ('endQamAm2FreqL', 0.0),
+                    ('startQamAm2DepthL', 0.0), ('endQamAm2DepthL', 0.0),
+                    ('startQamAm2PhaseOffsetL', 0.0), ('endQamAm2PhaseOffsetL', 0.0),
+                    ('startQamAm2FreqR', 0.0), ('endQamAm2FreqR', 0.0),
+                    ('startQamAm2DepthR', 0.0), ('endQamAm2DepthR', 0.0),
+                    ('startQamAm2PhaseOffsetR', 0.0), ('endQamAm2PhaseOffsetR', 0.0),
+                    ('startModShapeL', 1.0), ('endModShapeL', 1.0),
+                    ('startModShapeR', 1.0), ('endModShapeR', 1.0),
+                    ('startCrossModDepth', 0.0), ('endCrossModDepth', 0.0),
+                    ('startHarmonicDepth', 0.0), ('endHarmonicDepth', 0.0),
+                    ('startSubHarmonicFreq', 0.0), ('endSubHarmonicFreq', 0.0),
+                    ('startSubHarmonicDepth', 0.0), ('endSubHarmonicDepth', 0.0),
+                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0), # Corresponds to 'startPhaseL' in qam_beat
+                    ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0), # Corresponds to 'startPhaseR' in qam_beat
                     ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
                     ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
-                    ('startPhaseOscPhaseOffset', 0.0), ('endPhaseOscPhaseOffset', 0.0)
+                    # Static parameters for transition mode (values are fixed, not interpolated)
+                    ('crossModDelay', 0.0),
+                    ('harmonicRatio', 2.0),
+                    ('phaseOscPhaseOffset', 0.0),
+                    ('beatingSidebands', False),
+                    ('sidebandOffset', 1.0),
+                    ('sidebandDepth', 0.1),
+                    ('attackTime', 0.0),
+                    ('releaseTime', 0.0)
                 ]
             },
-            "hybrid_qam_monaural_beat": {
+            "hybrid_qam_monaural_beat": { # This is an example, ensure it's correct
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5),
                     ('qamCarrierFreqL', 100.0), ('qamAmFreqL', 4.0), ('qamAmDepthL', 0.5),
@@ -1696,7 +1740,7 @@ class VoiceEditorDialog(QDialog):
                     ('monoStartPhaseR_Tone1', 0.0), ('monoStartPhaseR_Tone2', 0.0),
                     ('monoPhaseOscFreqR', 0.0), ('monoPhaseOscRangeR', 0.0), ('monoPhaseOscPhaseOffsetR', 0.0)
                 ],
-                "transition": [ # From hybrid_qam_monaural_beat_transition
+                "transition": [ 
                     ('startAmpL', 0.5), ('endAmpL', 0.5),
                     ('startAmpR', 0.5), ('endAmpR', 0.5),
                     ('startQamCarrierFreqL', 100.0), ('endQamCarrierFreqL', 100.0),
