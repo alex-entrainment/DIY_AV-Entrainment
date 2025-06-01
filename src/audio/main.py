@@ -2,13 +2,10 @@ import sys
 from collections import OrderedDict
 import json
 import sound_creator # Import the refactored sound generation script
-import inspect
 import os
 import copy # For deep copying voice data
 import math # For default values like pi
 import traceback # For error reporting
-import re # For parsing source code
-import ast # For safely evaluating default values from source
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
