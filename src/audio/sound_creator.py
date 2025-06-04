@@ -1,14 +1,10 @@
 import numpy as np
-import slab
 from scipy.signal import butter, lfilter, sosfiltfilt
 from scipy.io.wavfile import write
-import math
 import json
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
 import traceback # For detailed error printing
-import numba 
-from numba import jit, prange
 
 # Import all synth functions from the synth_functions package
 from synth_functions import *
@@ -117,7 +113,9 @@ _EXCLUDED_FUNCTION_NAMES = [
     'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
     'butter', 'lfilter', 'write', 'ensure_stereo', 'apply_filters', 'design_filter', 
     # Standard library functions that might be imported
-    'json', 'inspect', 'os', 'traceback', 'math', 'copy'
+    'json', 'inspect', 'os', 'traceback', 'math', 'copy', 'binaural_beat_transition', 'hybrid_qam_monaural_beat_transition', 'isochronic_tone_transition', 'monaural_beat_stereo_amps_transition',
+    'rhythmic_waveshaping_transition', 'stereo_am_independent_transition', 'wave_shape_stereo_am_transition',
+    'spatial_angle_modulation_transition', 'spatial_angle_modulation_monaural_beat_transition'
 ]
 
 SYNTH_FUNCTIONS = {}
@@ -629,4 +627,91 @@ def generate_wav(track_data, output_filename=None):
         print(f"Error writing WAV file {output_filename}:")
         traceback.print_exc()
         return False
+
+def generate_single_step_audio_segment(step_data, global_settings, target_duration_seconds, duration_override=None):
+    """
+    Generates a raw audio segment for a single step, looping or truncating 
+    it to fill a target duration.
+    
+    Args:
+        step_data: Dictionary containing step configuration
+        global_settings: Dictionary containing global audio settings
+        target_duration_seconds: Target duration for the output segment
+        duration_override: Optional override for the step's natural duration when generating audio
+    """
+    if not step_data or not global_settings:
+        print("Error: Invalid step_data or global_settings provided.")
+        return np.zeros((0, 2), dtype=np.float32)
+
+    try:
+        sample_rate = int(global_settings.get("sample_rate", 44100))
+        if sample_rate <= 0:
+            raise ValueError("Sample rate must be positive")
+    except (ValueError, TypeError):
+        print("Error: Invalid sample rate in global_settings.")
+        return np.zeros((0, 2), dtype=np.float32)
+
+    target_total_samples = int(target_duration_seconds * sample_rate)
+    output_audio_segment = np.zeros((target_total_samples, 2), dtype=np.float32)
+
+    voices_data = step_data.get("voices", [])
+    if not voices_data:
+        print("Warning: Step has no voices. Returning silence.")
+        return output_audio_segment
+
+    # Use duration override if provided, otherwise use step's natural duration
+    if duration_override is not None:
+        step_generation_duration = float(duration_override)
+        print(f"  Using duration override: {step_generation_duration:.2f}s (natural: {step_data.get('duration', 0):.2f}s)")
+    else:
+        step_generation_duration = float(step_data.get("duration", 0))
+    
+    if step_generation_duration <= 0:
+        print("Warning: Step generation duration is zero or negative. Returning silence.")
+        return output_audio_segment    
+    step_generation_samples = int(step_generation_duration * sample_rate)
+    if step_generation_samples <= 0:
+        print("Warning: Step has zero samples. Returning silence.")
+        return output_audio_segment
+
+    # Generate one iteration of the step's audio
+    single_iteration_audio_mix = np.zeros((step_generation_samples, 2), dtype=np.float32)
+    
+    print(f"  Generating single iteration for step (Duration: {step_generation_duration:.2f}s, Samples: {step_generation_samples})")
+    for i, voice_data in enumerate(voices_data):
+        func_name_short = voice_data.get('synth_function_name', 'UnknownFunc')
+        print(f"    Generating Voice {i+1}/{len(voices_data)}: {func_name_short}")
+        
+        voice_audio = generate_voice_audio(voice_data, step_generation_duration, sample_rate, 0.0)
+        
+        # Add generated audio if valid
+        if voice_audio is not None and voice_audio.shape[0] == step_generation_samples and voice_audio.ndim == 2 and voice_audio.shape[1] == 2:
+            single_iteration_audio_mix += voice_audio  # Sum voices
+        elif voice_audio is not None:
+            print(f"    Warning: Voice {i+1} ({func_name_short}) generated audio shape mismatch ({voice_audio.shape} vs {(step_generation_samples, 2)}). Skipping voice.")
+
+    # Normalize the single iteration audio
+    step_peak = np.max(np.abs(single_iteration_audio_mix))
+    step_normalization_threshold = 0.95  # Normalize to -0.44 dBFS to leave some headroom
+    if step_peak > step_normalization_threshold and step_peak > 1e-9:
+        print(f"    Normalizing step mix (peak={step_peak:.3f}) down to {step_normalization_threshold:.2f}")
+        single_iteration_audio_mix *= (step_normalization_threshold / step_peak)
+    elif step_peak <= 1e-9:
+        print("    Warning: Step audio is essentially silent.")
+
+    # Fill the output_audio_segment by looping/truncating the single_iteration_audio_mix
+    if step_generation_samples == 0:
+        print("    Error: Step has zero generation samples, cannot loop.")
+        return output_audio_segment
+
+    current_pos_samples = 0
+    while current_pos_samples < target_total_samples:
+        remaining_samples = target_total_samples - current_pos_samples
+        samples_to_copy = min(remaining_samples, step_generation_samples)
+        
+        output_audio_segment[current_pos_samples:current_pos_samples + samples_to_copy] = single_iteration_audio_mix[:samples_to_copy]
+        current_pos_samples += samples_to_copy
+
+    print(f"  Generated single step audio segment: {target_duration_seconds:.2f}s ({output_audio_segment.shape[0]} samples)")
+    return output_audio_segment.astype(np.float32)
 

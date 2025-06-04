@@ -109,7 +109,7 @@ class TrackEditorApp(QMainWindow):
             "global_settings": {
                 "sample_rate": DEFAULT_SAMPLE_RATE,
                 "crossfade_duration": DEFAULT_CROSSFADE,
-                "output_filename": "my_track.wav"
+                "output_filename": "my_track"
             },
             "steps": []
         }
