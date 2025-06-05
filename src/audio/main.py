@@ -30,10 +30,19 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QSlider,
     QAbstractItemView,
+    QAction,
 )
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QPalette, QColor
-from PyQt5.QtMultimedia import QAudioFormat, QAudioOutput, QAudioDeviceInfo, QAudio
+from PyQt5.QtMultimedia import (
+    QAudioFormat,
+    QAudioOutput,
+    QAudioDeviceInfo,
+    QAudio,
+)
+
+from functools import partial
+from ui import themes
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -151,6 +160,7 @@ class TrackEditorApp(QMainWindow):
         self._update_step_actions_state()
         self._update_voice_actions_state()
         self.statusBar()
+        self._create_menu()
 
         # Flag to prevent handling itemChanged signals while refreshing
         self._voices_tree_updating = False
@@ -164,6 +174,36 @@ class TrackEditorApp(QMainWindow):
             },
             "steps": []
         }
+
+    def _create_menu(self):
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu("File")
+
+        new_act = QAction("New", self)
+        new_act.triggered.connect(self.new_file)
+        file_menu.addAction(new_act)
+
+        open_act = QAction("Open", self)
+        open_act.triggered.connect(self.load_json)
+        file_menu.addAction(open_act)
+
+        save_act = QAction("Save", self)
+        save_act.triggered.connect(self.save_json)
+        file_menu.addAction(save_act)
+
+        save_as_act = QAction("Save As", self)
+        save_as_act.triggered.connect(self.save_json_as)
+        file_menu.addAction(save_as_act)
+
+        file_menu.addSeparator()
+        theme_menu = file_menu.addMenu("Theme")
+        for name in themes.THEMES.keys():
+            act = QAction(name, self)
+            act.triggered.connect(partial(self.set_theme, name))
+            theme_menu.addAction(act)
+
+    def set_theme(self, name):
+        themes.apply_theme(QApplication.instance(), name)
 
     def _setup_ui(self):
         # Central Widget and Main Layout
@@ -1525,27 +1565,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     app = QApplication(sys.argv)
-    app.setStyle('Fusion') # Optional: Consistent styling
-    
-    # Dark theme palette (optional, can be customized or removed)
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor(53, 53, 53))
-    palette.setColor(QPalette.WindowText, Qt.white)
-    palette.setColor(QPalette.Base, QColor(25, 25, 25))
-    palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
-    palette.setColor(QPalette.ToolTipBase, Qt.black)
-    palette.setColor(QPalette.ToolTipText, Qt.white)
-    palette.setColor(QPalette.Text, Qt.white)
-    palette.setColor(QPalette.Button, QColor(53, 53, 53))
-    palette.setColor(QPalette.ButtonText, Qt.white)
-    palette.setColor(QPalette.BrightText, Qt.red)
-    palette.setColor(QPalette.Link, QColor(42, 130, 218))
-    palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
-    palette.setColor(QPalette.HighlightedText, Qt.black)
-    app.setPalette(palette)  # Apply palette to all widgets
-
+    app.setStyle("Fusion")
+    themes.apply_theme(app, "Dark")
 
     window = TrackEditorApp()
-    window.setPalette(palette)  # Maintain palette on main window
     window.show()
     sys.exit(app.exec_())
