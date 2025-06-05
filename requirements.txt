@@ -1,6 +1,6 @@
 pyaudio
 pygame
-pydub
+
 adafruit-blinka
 adafruit-circuitpython-pca9685
 colorednoise==2.2.0

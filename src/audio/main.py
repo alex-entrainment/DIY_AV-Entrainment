@@ -173,10 +173,10 @@ class TrackEditorApp(QMainWindow):
         generate_frame = QWidget()
         generate_layout = QHBoxLayout(generate_frame)
         generate_layout.addStretch(1)
-        self.generate_button = QPushButton("Generate WAV")
+        self.generate_button = QPushButton("Generate Audio")
         self.generate_button.setStyleSheet("QPushButton { background-color: #0078D7; color: white; padding: 8px; font-weight: bold; border-radius: 3px; } QPushButton:hover { background-color: #005A9E; } QPushButton:pressed { background-color: #003C6A; } QPushButton:disabled { background-color: #AAAAAA; color: #666666; }")
         self.generate_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.generate_button.clicked.connect(self.generate_wav_action)
+        self.generate_button.clicked.connect(self.generate_audio_action)
         generate_layout.addWidget(self.generate_button)
         generate_layout.setContentsMargins(0,0,0,0)
         control_layout.addWidget(generate_frame)
@@ -1014,33 +1014,33 @@ class TrackEditorApp(QMainWindow):
         except Exception as e: QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
         self._update_voice_actions_state()
 
-    # --- generate_wav_action ---
+    # --- generate_audio_action ---
     @pyqtSlot()
-    def generate_wav_action(self):
+    def generate_audio_action(self):
         if not self._update_global_settings_from_ui(): return
         current_track_data = self.track_data
         output_filepath = current_track_data["global_settings"].get("output_filename")
         if not output_filepath:
             QMessageBox.critical(self, "Output Error", "Output filename is not specified in global settings. Please set it and try again.")
             return
-        if not hasattr(sound_creator, 'generate_wav'):
-            QMessageBox.critical(self, "Audio Engine Error", "The 'generate_wav' function is missing from 'sound_creator.py'. Cannot generate the final track.")
+        if not hasattr(sound_creator, 'generate_audio'):
+            QMessageBox.critical(self, "Audio Engine Error", "The 'generate_audio' function is missing from 'sound_creator.py'. Cannot generate the final track.")
             return
-        reply = QMessageBox.question(self, 'Confirm Generation', f"This will generate the WAV file: {os.path.basename(output_filepath)}\nBased on the current track configuration.\n\nProceed?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = QMessageBox.question(self, 'Confirm Generation', f"This will generate the audio file: {os.path.basename(output_filepath)}\nBased on the current track configuration.\n\nProceed?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.No: return
         try:
             self.generate_button.setEnabled(False)
-            self.statusBar().showMessage("Generating WAV file, please wait...")
+            self.statusBar().showMessage("Generating audio file, please wait...")
             QApplication.processEvents()
-            print(f"Initiating WAV generation for: {output_filepath}")
-            success = sound_creator.generate_wav(current_track_data, output_filename=output_filepath)
+            print(f"Initiating audio generation for: {output_filepath}")
+            success = sound_creator.generate_audio(current_track_data, output_filename=output_filepath)
             if success:
                 abs_path = os.path.abspath(output_filepath)
-                QMessageBox.information(self, "Generation Complete", f"WAV file '{os.path.basename(output_filepath)}' generated successfully!\nFull path: {abs_path}")
+                QMessageBox.information(self, "Generation Complete", f"Audio file '{os.path.basename(output_filepath)}' generated successfully!\nFull path: {abs_path}")
             else:
-                QMessageBox.critical(self, "Generation Failed", "Failed to generate WAV file. Please check the console output for more details and error messages from the sound engine.")
+                QMessageBox.critical(self, "Generation Failed", "Failed to generate audio file. Please check the console output for more details and error messages from the sound engine.")
         except Exception as e:
-            QMessageBox.critical(self, "WAV Generation Error", f"An unexpected error occurred during the WAV generation process:\n{str(e)}\n\nPlease check the console for a detailed traceback.")
+            QMessageBox.critical(self, "Audio Generation Error", f"An unexpected error occurred during the audio generation process:\n{str(e)}\n\nPlease check the console for a detailed traceback.")
             traceback.print_exc()
         finally:
             self.generate_button.setEnabled(True)
