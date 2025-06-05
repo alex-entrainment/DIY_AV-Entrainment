@@ -1,5 +1,8 @@
 pyaudio
 pygame
+scipy
+numba
+slab
 pydub
 pyqt5
 numpy
