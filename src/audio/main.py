@@ -10,7 +10,7 @@ import traceback # For error reporting
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QLineEdit, QTreeWidget, QTreeWidgetItem, QTextEdit,
-    QGroupBox, QSplitter, QFileDialog, QMessageBox, QDialog, 
+    QGroupBox, QSplitter, QFileDialog, QMessageBox, QDialog,
     QSizePolicy, QInputDialog, QHeaderView, QSlider
 )
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice
@@ -46,6 +46,35 @@ except ImportError:
 
 # Numpy is used in _generate_test_step_audio
 import numpy as np
+
+# Common stylesheet for a slightly more modern dark look
+GLOBAL_STYLE_SHEET = """
+QWidget {
+    font-size: 10pt;
+}
+QGroupBox {
+    border: 1px solid #444444;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 3px 0 3px;
+}
+QPushButton {
+    padding: 4px 12px;
+}
+QTreeWidget {
+    background-color: #2b2b2b;
+    color: #dddddd;
+}
+QLineEdit, QComboBox, QSlider {
+    background-color: #202020;
+    border: 1px solid #555555;
+    color: #dddddd;
+}
+"""
 
 # --- Constants ---
 DEFAULT_SAMPLE_RATE = 44100
@@ -98,6 +127,7 @@ class TrackEditorApp(QMainWindow):
         self.total_test_audio_duration_ms = 0 # Used by test player UI
 
         self._setup_ui()
+        self.setStyleSheet(GLOBAL_STYLE_SHEET)
         self._update_ui_from_global_settings()
         self.refresh_steps_tree()
         self._update_step_actions_state()
@@ -1449,10 +1479,10 @@ if __name__ == "__main__":
     palette.setColor(QPalette.Link, QColor(42, 130, 218))
     palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
     palette.setColor(QPalette.HighlightedText, Qt.black)
-    # app.setPalette(palette) # Apply to entire application
+    app.setPalette(palette)  # Apply palette to all widgets
 
 
     window = TrackEditorApp()
-    window.setPalette(palette) # Apply to main window specifically
+    window.setPalette(palette)  # Maintain palette on main window
     window.show()
     sys.exit(app.exec_())
