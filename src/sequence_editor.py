@@ -86,31 +86,38 @@ class MainWindow(QMainWindow):
     def _create_menu(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("File")
+
         new_act = QAction("New", self)
         new_act.triggered.connect(self.handle_new_sequence)
         file_menu.addAction(new_act)
+
         open_act = QAction("Open", self)
         open_act.triggered.connect(self.handle_load_sequence)
         file_menu.addAction(open_act)
+
         save_act = QAction("Save", self)
         save_act.triggered.connect(self.handle_save_sequence)
         file_menu.addAction(save_act)
+
         save_as_act = QAction("Save As", self)
         save_as_act.triggered.connect(self.handle_save_sequence_as)
         file_menu.addAction(save_as_act)
+
         delete_act = QAction("Delete", self)
         delete_act.triggered.connect(self.handle_delete_sequence_file)
         file_menu.addAction(delete_act)
-        simulator_menu = menubar.addMenu("Simulator")
-        simulator_act = QAction("Open Simulator", self)
-        simulator_act.triggered.connect(self.open_simulator)
-        simulator_menu.addAction(simulator_act)
 
-        theme_menu = menubar.addMenu("Theme")
+        file_menu.addSeparator()
+        theme_menu = file_menu.addMenu("Theme")
         for name in themes.THEMES.keys():
             act = QAction(name, self)
             act.triggered.connect(partial(self.set_theme, name))
             theme_menu.addAction(act)
+
+        simulator_menu = menubar.addMenu("Simulator")
+        simulator_act = QAction("Open Simulator", self)
+        simulator_act.triggered.connect(self.open_simulator)
+        simulator_menu.addAction(simulator_act)
 
     def open_simulator(self):
         if self.simulator_window is None:
