@@ -1,7 +1,7 @@
 import sys
 from collections import OrderedDict
 import json
-import sound_creator # Import the refactored sound generation script
+from synth_functions import sound_creator  # Updated import path
 import os
 import copy # For deep copying voice data
 import math # For default values like pi
@@ -104,14 +104,17 @@ ENVELOPE_TYPE_LINEAR = "linear_fade" # From previous
 SUPPORTED_ENVELOPE_TYPES = [ENVELOPE_TYPE_NONE, ENVELOPE_TYPE_LINEAR] # From previous
 
 
-# It's assumed sound_creator.py is in the same directory or accessible via Python path
+# Updated import path for sound_creator
 try:
-    from sound_creator import generate_single_step_audio_segment # Used for test preview
+    from synth_functions.sound_creator import generate_single_step_audio_segment  # Used for test preview
     AUDIO_GENERATION_AVAILABLE = True # For test preview specifically
 except ImportError as e:
     generate_single_step_audio_segment = None
     AUDIO_GENERATION_AVAILABLE = False
-    print(f"Warning: Could not import 'generate_single_step_audio_segment' from 'sound_creator': {e}. Test step audio generation will be non-functional.")
+    print(
+        f"Warning: Could not import 'generate_single_step_audio_segment' from 'synth_functions.sound_creator': {e}. "
+        "Test step audio generation will be non-functional."
+    )
 
 
 # --- Main Application Class ---
@@ -1117,7 +1120,11 @@ class TrackEditorApp(QMainWindow):
             QMessageBox.critical(self, "Output Error", "Output filename is not specified in global settings. Please set it and try again.")
             return
         if not hasattr(sound_creator, 'generate_audio'):
-            QMessageBox.critical(self, "Audio Engine Error", "The 'generate_audio' function is missing from 'sound_creator.py'. Cannot generate the final track.")
+            QMessageBox.critical(
+                self,
+                "Audio Engine Error",
+                "The 'generate_audio' function is missing from 'synth_functions.sound_creator'. Cannot generate the final track."
+            )
             return
         reply = QMessageBox.question(self, 'Confirm Generation', f"This will generate the audio file: {os.path.basename(output_filepath)}\nBased on the current track configuration.\n\nProceed?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.No: return
@@ -1517,11 +1524,16 @@ if __name__ == "__main__":
         #     temp_app_for_error_msg = QApplication(sys.argv)
         # mbox = QMessageBox()
         # mbox.setIcon(QMessageBox.Critical)
-        # mbox.setText("Critical Error: Sound creator module is missing vital components (SYNTH_FUNCTIONS).\nThe application cannot start.\nPlease check the 'sound_creator.py' file.")
+        # mbox.setText(
+        #     "Critical Error: Sound creator module is missing vital components (SYNTH_FUNCTIONS).\n"
+        #     "The application cannot start.\nPlease check the 'synth_functions/sound_creator.py' file."
+        # )
         # mbox.setWindowTitle("Application Startup Error")
         # mbox.setStandardButtons(QMessageBox.Ok)
         # mbox.exec_()
-        print("Critical Error: sound_creator.SYNTH_FUNCTIONS not found. Ensure sound_creator.py is correct and accessible.")
+        print(
+            "Critical Error: sound_creator.SYNTH_FUNCTIONS not found. Ensure synth_functions/sound_creator.py is correct and accessible."
+        )
         sys.exit(1)
 
     app = QApplication(sys.argv)

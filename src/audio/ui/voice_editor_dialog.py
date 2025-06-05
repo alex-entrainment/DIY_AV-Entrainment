@@ -9,7 +9,7 @@ from collections import OrderedDict
 import math
 import inspect
 import traceback
-import sound_creator # Dialog directly imports sound_creator as per this "original" structure
+from synth_functions import sound_creator  # Updated import path
 
 # Constants from your original dialog structure for envelopes
 ENVELOPE_TYPE_NONE = "None"

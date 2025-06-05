@@ -7,7 +7,7 @@ This folder contains a small library of Python synthesis routines used by `sound
 ## Quick Usage
 
 ```
-from sound_creator import generate_audio, load_track_from_json
+from synth_functions.sound_creator import generate_audio, load_track_from_json
 
 data = load_track_from_json("track.json")
 generate_audio(data, "output.wav")

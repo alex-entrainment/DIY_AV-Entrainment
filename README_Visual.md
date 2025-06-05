@@ -71,11 +71,11 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
     * Uses the ESP32's native **LEDC peripheral** for precise PWM generation on 6 GPIO pins.
 
 2. **Host Software (Python - Runs on PC or Raspberry Pi):**
-    * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding audio files (`.wav`, `.flac`, `.mp3`) using the `sound_creator.py` engine.
+    * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding audio files (`.wav`, `.flac`, `.mp3`) using the `synth_functions/sound_creator.py` engine.
     * **`sequence_model.py`**: (Used by GUI) Data classes defining the structure of sequences stored in JSON.
     * **`setup.py`**: (Run once per host machine) Configures environment-specific settings (serial port, paths for converter) and saves them to `config.ini`.
     * **`config.ini`**: Stores configuration settings read by the other Python scripts.
-    * **`sound_creator.py`**: (Used by GUI) The audio generation engine. Contains various synthesis functions and helpers to create complex audio waveforms based on parameters defined in the GUI. See the [Audio README](./README_Audio.md) for detailed information on its functionality and usage.
+    * **`sound_creator.py`**: (Used by GUI) The audio generation engine located in `synth_functions/`. It contains various synthesis functions and helpers to create complex audio waveforms based on parameters defined in the GUI. See the [Audio README](./README_Audio.md) for detailed information on its functionality and usage.
     * **`json_to_cpp_converter.py`**: (Runs on Dev PC)
         * Reads a `.json` sequence file (or all `.json` files in its directory).
         * Generates corresponding C++ function code for the *visual* sequence.
@@ -95,7 +95,7 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
 
 ## Workflow
 
-1. **Design Sequence:** Use the `sequence_editor.py` GUI on your development PC to create a sequence. Configure visual parameters (frequencies, brightness ramps, waveforms) and **audio parameters** using the built-in voice editor. Save the sequence as a `.json` file (e.g., `my_sequence.json`). Optionally generate the corresponding audio file (`.wav`, `.flac`, or `.mp3`) using the "Generate Audio" button in the GUI (which utilizes `sound_creator.py`).
+1. **Design Sequence:** Use the `sequence_editor.py` GUI on your development PC to create a sequence. Configure visual parameters (frequencies, brightness ramps, waveforms) and **audio parameters** using the built-in voice editor. Save the sequence as a `.json` file (e.g., `my_sequence.json`). Optionally generate the corresponding audio file (`.wav`, `.flac`, or `.mp3`) using the "Generate Audio" button in the GUI (which utilizes `synth_functions/sound_creator.py`).
 2. **Prepare Files:** Place the saved `.json` file and the generated audio file (`.wav`, `.flac`, or `.mp3`) into the same directory as the `json_to_cpp_converter.py` and `controller.py` scripts.
 3. **Convert & Upload (on Dev PC):** Run the `json_to_cpp_converter.py` script. It will automatically:
     * Find `my_sequence.json` (and any other `.json` files).
