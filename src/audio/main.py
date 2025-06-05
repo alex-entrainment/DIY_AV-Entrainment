@@ -351,7 +351,10 @@ class TrackEditorApp(QMainWindow):
         self.duplicate_step_button.setEnabled(is_single_selection)
         self.edit_duration_button.setEnabled(is_single_selection)
         self.edit_description_button.setEnabled(is_single_selection)
-        self.add_voice_button.setEnabled(is_single_selection and VOICE_EDITOR_DIALOG_AVAILABLE) 
+        # Enable Add Voice if a single step is selected. Availability of the
+        # actual editor will be checked when the button is pressed so that the
+        # user can receive an explanatory message if the dialog failed to load.
+        self.add_voice_button.setEnabled(is_single_selection)
 
         can_move_up = is_single_selection and current_idx is not None and current_idx > 0
         can_move_down = is_single_selection and current_idx is not None and current_idx < (num_steps - 1)
@@ -402,7 +405,10 @@ class TrackEditorApp(QMainWindow):
 
         is_single_step_selected = len(self.steps_tree.selectedItems()) == 1 and self.get_selected_step_index() is not None
 
-        self.add_voice_button.setEnabled(is_single_step_selected and VOICE_EDITOR_DIALOG_AVAILABLE)
+        # Always allow the button click when a single step is selected. If the
+        # editor dialog failed to import, the handler will inform the user when
+        # they attempt to add a voice.
+        self.add_voice_button.setEnabled(is_single_step_selected)
 
         if not is_single_step_selected:
             self.edit_voice_button.setEnabled(False)
@@ -414,7 +420,9 @@ class TrackEditorApp(QMainWindow):
         has_voice_selection = num_selected_voices > 0
         is_single_voice_selection = num_selected_voices == 1
 
-        self.edit_voice_button.setEnabled(is_single_voice_selection and VOICE_EDITOR_DIALOG_AVAILABLE)
+        # Enable editing whenever a single voice is selected. The click handler
+        # will report an error if the dialog cannot be loaded.
+        self.edit_voice_button.setEnabled(is_single_voice_selection)
         self.remove_voice_button.setEnabled(has_voice_selection)
 
         num_voices_in_current_step = 0
@@ -895,9 +903,10 @@ class TrackEditorApp(QMainWindow):
 
     @pyqtSlot()
     def add_voice(self):
-        if not VOICE_EDITOR_DIALOG_AVAILABLE:
-             QMessageBox.critical(self, "Add Voice Error", "VoiceEditorDialog is not available. Cannot add voice.")
-             return
+        # If the dialog could not be loaded, the fallback implementation will
+        # display an informative message when executed. Therefore we allow the
+        # user to click the button even when VOICE_EDITOR_DIALOG_AVAILABLE is
+        # False.
         selected_step_index = self.get_selected_step_index()
         if selected_step_index is None or len(self.steps_tree.selectedItems()) != 1:
             QMessageBox.warning(self, "Add Voice", "Please select exactly one step first.")
@@ -930,9 +939,8 @@ class TrackEditorApp(QMainWindow):
 
     @pyqtSlot()
     def edit_voice(self):
-        if not VOICE_EDITOR_DIALOG_AVAILABLE:
-             QMessageBox.critical(self, "Edit Voice Error", "VoiceEditorDialog is not available. Cannot edit voice.")
-             return
+        # If the editor dialog failed to load we still allow the action so the
+        # fallback dialog can inform the user about the issue.
         selected_step_index = self.get_selected_step_index()
         selected_voice_index = self.get_selected_voice_index()
         if selected_step_index is None or selected_voice_index is None or \
