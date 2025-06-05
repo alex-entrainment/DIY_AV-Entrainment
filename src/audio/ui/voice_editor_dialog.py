@@ -16,6 +16,22 @@ ENVELOPE_TYPE_NONE = "None"
 ENVELOPE_TYPE_LINEAR = "linear_fade" # Corresponds to create_linear_fade_envelope in sound_creator
 SUPPORTED_ENVELOPE_TYPES = [ENVELOPE_TYPE_NONE, ENVELOPE_TYPE_LINEAR]
 
+# Synth functions that should be available for parameter lookup but hidden
+# from the UI drop-down list. These are typically transition variants that
+# are selected automatically when the "Is Transition?" box is checked.
+UI_EXCLUDED_FUNCTION_NAMES = [
+    'rhythmic_waveshaping_transition',
+    'stereo_am_independent_transition',
+    'wave_shape_stereo_am_transition',
+    'binaural_beat_transition',
+    'isochronic_tone_transition',
+    'monaural_beat_stereo_amps_transition',
+    'qam_beat_transition',
+    'hybrid_qam_monaural_beat_transition',
+    'spatial_angle_modulation_transition',
+    'spatial_angle_modulation_monaural_beat_transition',
+]
+
 
 class VoiceEditorDialog(QDialog): # Standard class name
 
@@ -73,8 +89,13 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
     def _load_initial_data(self):
         if self.is_new_voice:
-            available_funcs = sorted(sound_creator.SYNTH_FUNCTIONS.keys()) # Assumes sound_creator.SYNTH_FUNCTIONS exists
-            first_func_name = available_funcs[0] if available_funcs else "default_sine" # Provide a fallback name
+            available_funcs = sorted(
+                name for name in sound_creator.SYNTH_FUNCTIONS.keys()
+                if name not in UI_EXCLUDED_FUNCTION_NAMES
+            )
+            if not available_funcs:
+                available_funcs = sorted(sound_creator.SYNTH_FUNCTIONS.keys())
+            first_func_name = available_funcs[0] if available_funcs else "default_sine"
             
             is_trans = first_func_name.endswith("_transition")
             default_params = self._get_default_params(first_func_name, is_trans)
@@ -120,9 +141,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
         top_layout.addWidget(QLabel("Synth Function:"))
         self.synth_func_combo = QComboBox()
         try:
-            # Populate from sound_creator.SYNTH_FUNCTIONS directly
-            func_names = sorted(sound_creator.SYNTH_FUNCTIONS.keys())
-            if not func_names: raise ValueError("No synth functions found in sound_creator.SYNTH_FUNCTIONS")
+            # Populate from sound_creator.SYNTH_FUNCTIONS but hide functions
+            # that are intended for internal use only.
+            func_names = sorted(
+                name for name in sound_creator.SYNTH_FUNCTIONS.keys()
+                if name not in UI_EXCLUDED_FUNCTION_NAMES
+            )
+            if not func_names:
+                raise ValueError("No synth functions found in sound_creator.SYNTH_FUNCTIONS")
             self.synth_func_combo.addItems(func_names)
         except Exception as e:
             print(f"Error populating synth_func_combo: {e}")
