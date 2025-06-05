@@ -1,6 +1,7 @@
 pyaudio
 pygame
 pydub
+soundfile
 pyqt5
 numpy
 adafruit-blinka

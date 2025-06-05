@@ -36,13 +36,13 @@ A Python-based tool for building customized brainwave entrainment audio files. C
    ```bash
    python main.py
    ```
-   Use **Load JSON**, **Add Step**, **Add Voice**, etc., then **Generate WAV**.
+   Use **Load JSON**, **Add Step**, **Add Voice**, etc., then **Generate Audio** (choose extension `.wav`, `.flac` or `.mp3`).
 
 2. **Programmatic mode**  
    ```python
    from sound_creator import load_track_from_json, assemble_track_from_data, generate_audio
    data = load_track_from_json("my_track.json")
-   generate_audio(data, "wav", "output.wav")
+   generate_audio(data, "output.wav")  # extension can be .wav, .flac or .mp3
    ```
 
 ---

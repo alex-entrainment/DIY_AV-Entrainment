@@ -18,7 +18,7 @@ Most synth functions include a `_transition` variant (e.g., `basic_am_transition
 
 ### Track Assembly
 
-The `generate_wav` function orchestrates the process:
+The `generate_audio` function orchestrates the process:
 
   1. Iterates through each step defined in the sequence.
   2. For each step, iterates through all defined voices.
@@ -27,7 +27,7 @@ The `generate_wav` function orchestrates the process:
   5. Concatenates the audio from each step, applying a linear crossfade (duration set in Global Settings) between steps to ensure smooth transitions.
   6. Applies a safety limiter to the final mixed track.
   7. Normalizes the audio to maximum amplitude.
-  8. Saves the result as a 16-bit stereo WAV file.
+  8. Saves the result as a 16-bit stereo file in the format specified by the output filename (`.wav`, `.flac`, or `.mp3`).
 
 ## Functions
 

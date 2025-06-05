@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import butter, lfilter, sosfiltfilt
 from scipy.io.wavfile import write
+import soundfile as sf
 import json
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
@@ -109,7 +110,7 @@ _EXCLUDED_FUNCTION_NAMES = [
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
-    'load_track_from_json', 'save_track_to_json', 'generate_wav', 'get_synth_params',
+    'load_track_from_json', 'save_track_to_json', 'generate_audio', 'generate_wav', 'get_synth_params',
     'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
     'butter', 'lfilter', 'write', 'ensure_stereo', 'apply_filters', 'design_filter', 
     # Standard library functions that might be imported
@@ -548,10 +549,38 @@ def save_track_to_json(track_data, filepath):
 # Main Generation Function
 # -----------------------------------------------------------------------------
 
-def generate_wav(track_data, output_filename=None):
-    """Generates and saves the WAV file based on the track_data."""
+def _write_audio_file(audio_int16, sample_rate, filename):
+    """Write audio data to a file based on extension."""
+    ext = os.path.splitext(filename)[1].lower()
+    try:
+        if ext == '.wav':
+            write(filename, sample_rate, audio_int16)
+        elif ext == '.flac':
+            sf.write(filename, audio_int16, sample_rate, subtype='PCM_16')
+        elif ext == '.mp3':
+            try:
+                from pydub import AudioSegment
+            except Exception:
+                print("Error: pydub not installed. Cannot export MP3.")
+                return False
+            seg = AudioSegment(audio_int16.tobytes(), frame_rate=sample_rate,
+                               sample_width=2, channels=2)
+            seg.export(filename, format='mp3')
+        else:
+            print(f"Unsupported output format: {ext}")
+            return False
+        print(f"Track successfully written to {filename}")
+        return True
+    except Exception as e:
+        print(f"Error writing audio file {filename}: {e}")
+        traceback.print_exc()
+        return False
+
+
+def generate_audio(track_data, output_filename=None):
+    """Generate and export an audio file (WAV/FLAC/MP3) based on track_data."""
     if not track_data:
-        print("Error: Cannot generate WAV, track data is missing.")
+        print("Error: Cannot generate audio, track data is missing.")
         return False
 
     global_settings = track_data.get("global_settings", {})
@@ -617,16 +646,15 @@ def generate_wav(track_data, output_filename=None):
     # Scale to 16-bit integer range and clip just in case
     track_int16 = np.int16(np.clip(normalized_track * 32767, -32768, 32767))
 
-    # Write WAV file
-    try:
-        write(output_filename, sample_rate, track_int16)
-        print(f"--- WAV Generation Complete ---")
-        print(f"Track successfully written to {output_filename}")
-        return True
-    except Exception as e:
-        print(f"Error writing WAV file {output_filename}:")
-        traceback.print_exc()
-        return False
+    success = _write_audio_file(track_int16, sample_rate, output_filename)
+    if success:
+        print(f"--- Audio Generation Complete ---")
+    return success
+
+
+def generate_wav(track_data, output_filename=None):
+    """Backward compatible wrapper for generate_audio."""
+    return generate_audio(track_data, output_filename)
 
 def generate_single_step_audio_segment(step_data, global_settings, target_duration_seconds, duration_override=None):
     """

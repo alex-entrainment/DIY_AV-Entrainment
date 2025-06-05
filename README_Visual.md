@@ -71,7 +71,7 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
     * Uses the ESP32's native **LEDC peripheral** for precise PWM generation on 6 GPIO pins.
 
 2. **Host Software (Python - Runs on PC or Raspberry Pi):**
-    * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding `.wav` audio files using the `sound_creator.py` engine.
+    * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding audio files (`.wav`, `.flac`, `.mp3`) using the `sound_creator.py` engine.
     * **`sequence_model.py`**: (Used by GUI) Data classes defining the structure of sequences stored in JSON.
     * **`setup.py`**: (Run once per host machine) Configures environment-specific settings (serial port, paths for converter) and saves them to `config.ini`.
     * **`config.ini`**: Stores configuration settings read by the other Python scripts.
@@ -95,8 +95,8 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
 
 ## Workflow
 
-1. **Design Sequence:** Use the `sequence_editor.py` GUI on your development PC to create a sequence. Configure visual parameters (frequencies, brightness ramps, waveforms) and **audio parameters** using the built-in voice editor. Save the sequence as a `.json` file (e.g., `my_sequence.json`). Optionally generate the corresponding `.wav` file using the "Generate WAV" button in the GUI (which utilizes `sound_creator.py`).
-2. **Prepare Files:** Place the saved `.json` file and the generated `.wav` (or other matching audio file - `.flac`, `.mp3`) into the same directory as the `json_to_cpp_converter.py` and `controller.py` scripts.
+1. **Design Sequence:** Use the `sequence_editor.py` GUI on your development PC to create a sequence. Configure visual parameters (frequencies, brightness ramps, waveforms) and **audio parameters** using the built-in voice editor. Save the sequence as a `.json` file (e.g., `my_sequence.json`). Optionally generate the corresponding audio file (`.wav`, `.flac`, or `.mp3`) using the "Generate Audio" button in the GUI (which utilizes `sound_creator.py`).
+2. **Prepare Files:** Place the saved `.json` file and the generated audio file (`.wav`, `.flac`, or `.mp3`) into the same directory as the `json_to_cpp_converter.py` and `controller.py` scripts.
 3. **Convert & Upload (on Dev PC):** Run the `json_to_cpp_converter.py` script. It will automatically:
     * Find `my_sequence.json` (and any other `.json` files).
     * Generate C++ code (`void my_sequence() { ... }`) for the **visual** part.
@@ -108,5 +108,5 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
     * Ensure the ESP32 is connected via USB.
     * Run the `controller.py` script.
     * At the `>` prompt, type `RUN:my_sequence` and press Enter.
-    * The script sends the command to the ESP32 (starting the lights) and simultaneously starts playing `my_sequence.wav` (or `.flac`/`.mp3` if found).
+    * The script sends the command to the ESP32 (starting the lights) and simultaneously starts playing `my_sequence.wav`, `.flac`, or `.mp3` if present.
     * Type `STOP` to tell the ESP32 to stop the light sequence (audio playback on the host will need separate handling or stop when the script exits/is interrupted). Type `EXIT` to close the controller script.
