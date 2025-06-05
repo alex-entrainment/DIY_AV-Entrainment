@@ -117,7 +117,8 @@ _EXCLUDED_FUNCTION_NAMES = [
     'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
 
-SYNTH_FUNCTIONS = {}
+SYNTH_FUNCTIONS = {
+}
 try:
     # Import the synth_functions package
     import synth_functions
