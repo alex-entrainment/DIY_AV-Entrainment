@@ -114,9 +114,7 @@ _EXCLUDED_FUNCTION_NAMES = [
     'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
     'butter', 'lfilter', 'write', 'ensure_stereo', 'apply_filters', 'design_filter', 
     # Standard library functions that might be imported
-    'json', 'inspect', 'os', 'traceback', 'math', 'copy', 'binaural_beat_transition', 'hybrid_qam_monaural_beat_transition', 'isochronic_tone_transition', 'monaural_beat_stereo_amps_transition',
-    'rhythmic_waveshaping_transition', 'stereo_am_independent_transition', 'wave_shape_stereo_am_transition',
-    'spatial_angle_modulation_transition', 'spatial_angle_modulation_monaural_beat_transition'
+    'json', 'inspect', 'os', 'traceback', 'math', 'copy'
 ]
 
 SYNTH_FUNCTIONS = {}
