@@ -1,8 +1,18 @@
 import sys
 
 from PyQt5 import sip
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QApplication,
-                             QStatusBar, QAction, QFileDialog, QMessageBox)
+from PyQt5.QtWidgets import (
+    QMainWindow,
+    QWidget,
+    QHBoxLayout,
+    QApplication,
+    QStatusBar,
+    QAction,
+    QFileDialog,
+    QMessageBox,
+)
+from functools import partial
+from ui import themes
 from ui.step_list_panel import StepListPanel
 from ui.step_config_panel import StepConfigPanel
 # REMOVED: from ui.audio_settings_panel import AudioSettingsPanel
@@ -96,12 +106,21 @@ class MainWindow(QMainWindow):
         simulator_act.triggered.connect(self.open_simulator)
         simulator_menu.addAction(simulator_act)
 
+        theme_menu = menubar.addMenu("Theme")
+        for name in themes.THEMES.keys():
+            act = QAction(name, self)
+            act.triggered.connect(partial(self.set_theme, name))
+            theme_menu.addAction(act)
+
     def open_simulator(self):
         if self.simulator_window is None:
             self.simulator_window = SimulatorWindow(self)
         self.simulator_window.show()
         self.simulator_window.raise_()
         self.simulator_window.activateWindow()
+
+    def set_theme(self, name):
+        themes.apply_theme(QApplication.instance(), name)
 
     def update_sequence_duration(self):
         duration = self.step_controller.update_sequence_duration()
@@ -590,6 +609,7 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    themes.apply_theme(app, "Dark")
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())
