@@ -105,7 +105,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 "synth_function_name": first_func_name,
                 "is_transition": is_trans,
                 "params": default_params,
-                "volume_envelope": None # Or {"type": ENVELOPE_TYPE_NONE, "params": {}}
+                "volume_envelope": None,  # Or {"type": ENVELOPE_TYPE_NONE, "params": {}}
+                "description": "",
             }
         else:
             try:
@@ -119,6 +120,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     self.current_voice_data["volume_envelope"] = None # Or {"type": ENVELOPE_TYPE_NONE, "params": {}}
                 if "is_transition" not in self.current_voice_data: # Infer if missing
                     self.current_voice_data["is_transition"] = self.current_voice_data.get("synth_function_name","").endswith("_transition")
+                if "description" not in self.current_voice_data:
+                    self.current_voice_data["description"] = ""
 
             except (IndexError, KeyError, AttributeError) as e: # Added AttributeError for self.app.track_data access
                 QMessageBox.critical(self.parent(), "Error", f"Could not load voice data for editing:\n{e}")
@@ -1214,7 +1217,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
             "synth_function_name": self.synth_func_combo.currentText(),
             "is_transition": self.transition_check.isChecked(),
             "params": new_synth_params,
-            "volume_envelope": new_envelope_data # This is the correct key for main.py
+            "volume_envelope": new_envelope_data,  # This is the correct key for main.py
+            "description": self.current_voice_data.get("description", ""),
         }
         
         # Update the main application's track_data

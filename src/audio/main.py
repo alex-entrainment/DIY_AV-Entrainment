@@ -8,10 +8,28 @@ import math # For default values like pi
 import traceback # For error reporting
 
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QPushButton, QLabel, QLineEdit, QTreeWidget, QTreeWidgetItem, QTextEdit,
-    QGroupBox, QSplitter, QFileDialog, QMessageBox, QDialog,
-    QSizePolicy, QInputDialog, QHeaderView, QSlider
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QPushButton,
+    QLabel,
+    QLineEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTextEdit,
+    QGroupBox,
+    QSplitter,
+    QFileDialog,
+    QMessageBox,
+    QDialog,
+    QSizePolicy,
+    QInputDialog,
+    QHeaderView,
+    QSlider,
+    QAbstractItemView,
 )
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QPalette, QColor
@@ -133,6 +151,9 @@ class TrackEditorApp(QMainWindow):
         self._update_step_actions_state()
         self._update_voice_actions_state()
         self.statusBar()
+
+        # Flag to prevent handling itemChanged signals while refreshing
+        self._voices_tree_updating = False
 
     def _get_default_track_data(self):
         return {
@@ -314,14 +335,24 @@ class TrackEditorApp(QMainWindow):
         voices_groupbox_layout = QVBoxLayout(self.voices_groupbox)
         voices_outer_layout.addWidget(self.voices_groupbox)
         self.voices_tree = QTreeWidget()
-        self.voices_tree.setColumnCount(3)
-        self.voices_tree.setHeaderLabels(["Synth Function", "Carrier Freq", "Transition?"])
+        self.voices_tree.setColumnCount(4)
+        self.voices_tree.setHeaderLabels([
+            "Synth Function",
+            "Carrier Freq",
+            "Transition?",
+            "Description",
+        ])
         self.voices_tree.setColumnWidth(0, 220)
         self.voices_tree.setColumnWidth(1, 100)
         self.voices_tree.setColumnWidth(2, 80)
+        self.voices_tree.setColumnWidth(3, 150)
         self.voices_tree.header().setStretchLastSection(True)
         self.voices_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.voices_tree.itemSelectionChanged.connect(self.on_voice_select)
+        self.voices_tree.itemChanged.connect(self.on_voice_item_changed)
+        self.voices_tree.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+        )
         voices_groupbox_layout.addWidget(self.voices_tree, 1)
 
         voices_button_layout_1 = QHBoxLayout()
@@ -537,6 +568,7 @@ class TrackEditorApp(QMainWindow):
         self.on_step_select() # This will also trigger _update_step_actions_state
 
     def refresh_voices_tree(self):
+        self._voices_tree_updating = True
         current_focused_voice_item_data = None
         current_voice_item = self.voices_tree.currentItem()
         if current_voice_item:
@@ -560,6 +592,7 @@ class TrackEditorApp(QMainWindow):
                 func_name = voice.get("synth_function_name", "N/A")
                 params = voice.get("params", {})
                 is_transition = voice.get("is_transition", False)
+                description = voice.get("description", "")
                 carrier_freq_str = 'N/A'
                 if 'baseFreq' in params: carrier_freq = params['baseFreq']
                 elif 'frequency' in params: carrier_freq = params['frequency']
@@ -578,6 +611,8 @@ class TrackEditorApp(QMainWindow):
                 item.setText(0, func_name)
                 item.setText(1, carrier_freq_str)
                 item.setText(2, transition_str)
+                item.setText(3, description)
+                item.setFlags(item.flags() | Qt.ItemIsEditable)
                 item.setData(0, Qt.UserRole, i)
             new_focused_voice_item = None
             for i in range(self.voices_tree.topLevelItemCount()):
@@ -602,6 +637,7 @@ class TrackEditorApp(QMainWindow):
             print(f"Error refreshing voices tree: {e}")
             traceback.print_exc()
         self.on_voice_select()
+        self._voices_tree_updating = False
 
     def clear_voice_details(self):
         self.voice_details_text.clear()
@@ -620,6 +656,9 @@ class TrackEditorApp(QMainWindow):
             params = voice_data.get("params", {})
             details = f"Function: {func_name}\n"
             details += f"Transition: {'Yes' if voice_data.get('is_transition', False) else 'No'}\n"
+            desc = voice_data.get('description', '')
+            if desc:
+                details += f"Description: {desc}\n"
             details += "Parameters:\n"
             if params:
                 for key, value in sorted(params.items()):
@@ -681,6 +720,22 @@ class TrackEditorApp(QMainWindow):
     def on_voice_select(self):
         self._update_voice_actions_state()
         self.update_voice_details()
+
+    @pyqtSlot(QTreeWidgetItem, int)
+    def on_voice_item_changed(self, item, column):
+        if self._voices_tree_updating or column != 3:
+            return
+        step_idx = self.get_selected_step_index()
+        voice_idx = item.data(0, Qt.UserRole)
+        if step_idx is None or voice_idx is None:
+            return
+        try:
+            new_desc = item.text(3).strip()
+            self.track_data["steps"][step_idx]["voices"][voice_idx][
+                "description"
+            ] = new_desc
+        except Exception as e:
+            print(f"Error updating voice description: {e}")
 
     # --- Action Methods (File Ops, Step/Voice Ops) ---
     @pyqtSlot()
