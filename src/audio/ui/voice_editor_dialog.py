@@ -45,7 +45,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.voice_index = voice_index
         self.is_new_voice = (voice_index is None)
         if parent:
-            self.setPalette(parent.palette()) 
+            self.setPalette(parent.palette())
+            self.setStyleSheet(parent.styleSheet())
 
         # Validators
         self.double_validator_non_negative = QDoubleValidator(0.0, 999999.0, 6, self)
