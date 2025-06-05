@@ -1,6 +1,6 @@
 # Audio Generation Details
 
-The `sound_creator.py` script provides the engine for generating audio tracks defined in the GUI. It offers a modular system for combining different synthesis techniques.
+The `synth_functions/sound_creator.py` script provides the engine for generating audio tracks defined in the GUI. It offers a modular system for combining different synthesis techniques.
 
 ## Design
 
