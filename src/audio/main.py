@@ -43,6 +43,8 @@ from PyQt5.QtMultimedia import (
 
 from functools import partial
 from ui import themes
+from preferences import load_preferences, save_preferences, Preferences
+from audio.ui.preferences_dialog import PreferencesDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -128,8 +130,10 @@ except ImportError as e:
 
 # --- Main Application Class ---
 class TrackEditorApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, prefs: Preferences = None):
         super().__init__()
+        self.prefs: Preferences = prefs or load_preferences()
+        self.apply_preferences()
         self.setWindowTitle("Binaural Track Editor (PyQt5)")
         self.setMinimumSize(950, 600)
         self.resize(1200, 800)
@@ -155,6 +159,8 @@ class TrackEditorApp(QMainWindow):
         self.test_audio_timer.timeout.connect(self._update_test_audio_progress)
         self.test_audio_format = None
         self.total_test_audio_duration_ms = 0 # Used by test player UI
+
+        self.test_step_duration = self.prefs.test_step_duration
 
         self._setup_ui()
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
@@ -199,6 +205,10 @@ class TrackEditorApp(QMainWindow):
         save_as_act.triggered.connect(self.save_json_as)
         file_menu.addAction(save_as_act)
 
+        pref_act = QAction("Preferences", self)
+        pref_act.triggered.connect(self.open_preferences)
+        file_menu.addAction(pref_act)
+
         file_menu.addSeparator()
         theme_menu = file_menu.addMenu("Theme")
         for name in themes.THEMES.keys():
@@ -208,6 +218,23 @@ class TrackEditorApp(QMainWindow):
 
     def set_theme(self, name):
         themes.apply_theme(QApplication.instance(), name)
+        if hasattr(self, "prefs"):
+            self.prefs.theme = name
+            save_preferences(self.prefs)
+
+    def open_preferences(self):
+        dialog = PreferencesDialog(self.prefs, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.prefs = dialog.get_preferences()
+            save_preferences(self.prefs)
+            self.apply_preferences()
+
+    def apply_preferences(self):
+        app = QApplication.instance()
+        if self.prefs.font_family or self.prefs.font_size:
+            font = QFont(self.prefs.font_family or app.font().family(), self.prefs.font_size)
+            app.setFont(font)
+        themes.apply_theme(app, self.prefs.theme)
 
     def _setup_ui(self):
         # Central Widget and Main Layout
@@ -1229,7 +1256,7 @@ class TrackEditorApp(QMainWindow):
             sample_rate = global_settings["sample_rate"]
             
             # Generate audio (float32, stereo)
-            audio_data_np_float32 = generate_single_step_audio_segment(step_data, global_settings, TEST_AUDIO_DURATION_S, TEST_AUDIO_DURATION_S)
+            audio_data_np_float32 = generate_single_step_audio_segment(step_data, global_settings, self.test_step_duration, self.test_step_duration)
             
             if audio_data_np_float32 is None or audio_data_np_float32.size == 0:
                 QMessageBox.critical(self, "Audio Generation Error", "Failed to generate test audio data (empty).")
@@ -1608,9 +1635,12 @@ if __name__ == "__main__":
         sys.exit(1)
 
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    themes.apply_theme(app, "Dark")
+    prefs = load_preferences()
+    if prefs.font_family or prefs.font_size:
+        font = QFont(prefs.font_family or app.font().family(), prefs.font_size)
+        app.setFont(font)
+    themes.apply_theme(app, prefs.theme)
 
-    window = TrackEditorApp()
+    window = TrackEditorApp(prefs)
     window.show()
     sys.exit(app.exec_())
