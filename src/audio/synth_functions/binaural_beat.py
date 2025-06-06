@@ -194,7 +194,10 @@ def _binaural_beat_core(
     return out
 
 
-def binaural_beat_transition(duration, sample_rate=44100, **params):
+from .common import calculate_transition_alpha
+
+
+def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     # --- Unpack start/end parameters ---
     startAmpL = float(params.get('startAmpL', params.get('ampL', 0.5)))
     endAmpL = float(params.get('endAmpL', startAmpL))
@@ -263,7 +266,7 @@ def binaural_beat_transition(duration, sample_rate=44100, **params):
     avg_glitchFocusExp = (s_glitchFocusExp + e_glitchFocusExp) / 2.0
 
     N = int(duration * sample_rate)
-
+    
     # --- Precompute glitch bursts using average parameters ---
     positions = []
     bursts = []
@@ -320,6 +323,8 @@ def binaural_beat_transition(duration, sample_rate=44100, **params):
         pos_arr   = np.empty(0, dtype=np.int32)
         burst_arr = np.empty(0, dtype=np.float32)
 
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+
     return _binaural_beat_transition_core(
         N, float(duration), float(sample_rate),
         startAmpL, endAmpL, startAmpR, endAmpR,
@@ -333,7 +338,8 @@ def binaural_beat_transition(duration, sample_rate=44100, **params):
         startAmpOscPhaseOffsetR, endAmpOscPhaseOffsetR,
         startFORL, endFORL, startFOFL, endFOFL,
         startFORR, endFORR, startFOFR, endFOFR,
-        pos_arr, burst_arr # Pass pre-calculated glitches
+        pos_arr, burst_arr, # Pass pre-calculated glitches
+        alpha_arr
     )
 
 
@@ -351,7 +357,8 @@ def _binaural_beat_transition_core(
     startAmpOscPhaseOffsetR, endAmpOscPhaseOffsetR,
     startFORL, endFORL, startFOFL, endFOFL,
     startFORR, endFORR, startFOFR, endFOFR,
-    pos, burst # Glitch arrays (static for this core run)
+    pos, burst, # Glitch arrays (static for this core run)
+    alpha_arr
 ):
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
@@ -383,7 +390,7 @@ def _binaural_beat_transition_core(
 
     # Linear interpolation of parameters
     for i in numba.prange(N):
-        alpha = i / (N - 1) if N > 1 else 0.0
+        alpha = alpha_arr[i] if alpha_arr.size == N else (i / (N - 1) if N > 1 else 0.0)
         t_arr[i] = i * dt
         
         ampL_arr[i] = startAmpL + (endAmpL - startAmpL) * alpha

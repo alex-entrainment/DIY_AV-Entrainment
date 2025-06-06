@@ -1,7 +1,7 @@
 """Rhythmic waveshaping synthesis functions."""
 
 import numpy as np
-from .common import sine_wave, sine_wave_varying, pan2
+from .common import sine_wave, sine_wave_varying, pan2, calculate_transition_alpha
 
 
 def rhythmic_waveshaping(duration, sample_rate=44100, **params):
@@ -37,7 +37,8 @@ def rhythmic_waveshaping(duration, sample_rate=44100, **params):
     return pan2(output_mono, pan=pan)
 
 
-def rhythmic_waveshaping_transition(duration, sample_rate=44100, **params):
+
+def rhythmic_waveshaping_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     """Rhythmic waveshaping with parameter transitions."""
     amp = float(params.get('amp', 0.25))
     startCarrierFreq = float(params.get('startCarrierFreq', 200))
@@ -56,11 +57,13 @@ def rhythmic_waveshaping_transition(duration, sample_rate=44100, **params):
     t_rel = np.linspace(0, duration, N, endpoint=False)
     t_abs = t_rel
 
-    # Interpolate parameters
-    currentCarrierFreq = np.linspace(startCarrierFreq, endCarrierFreq, N)
-    currentModFreq = np.linspace(startModFreq, endModFreq, N)
-    currentModDepth = np.linspace(startModDepth, endModDepth, N)
-    currentShapeAmount = np.linspace(startShapeAmount, endShapeAmount, N)
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+
+    # Interpolate parameters using alpha
+    currentCarrierFreq = startCarrierFreq + (endCarrierFreq - startCarrierFreq) * alpha
+    currentModFreq = startModFreq + (endModFreq - startModFreq) * alpha
+    currentModDepth = startModDepth + (endModDepth - startModDepth) * alpha
+    currentShapeAmount = startShapeAmount + (endShapeAmount - startShapeAmount) * alpha
 
     carrier = sine_wave_varying(currentCarrierFreq, t_abs, sample_rate)
     lfo = sine_wave_varying(currentModFreq, t_abs, sample_rate)
