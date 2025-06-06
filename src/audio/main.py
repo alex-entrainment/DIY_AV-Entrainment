@@ -44,7 +44,7 @@ from PyQt5.QtMultimedia import (
 from functools import partial
 from ui import themes
 from preferences import load_preferences, save_preferences, Preferences
-from audio.ui.preferences_dialog import PreferencesDialog
+from ui.preferences_dialog import PreferencesDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
