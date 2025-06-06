@@ -167,6 +167,7 @@ class TrackEditorApp(QMainWindow):
 
         # Flag to prevent handling itemChanged signals while refreshing
         self._voices_tree_updating = False
+        self._steps_tree_updating = False
 
     def _get_default_track_data(self):
         return {
@@ -296,6 +297,10 @@ class TrackEditorApp(QMainWindow):
         self.steps_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
         self.steps_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.steps_tree.itemSelectionChanged.connect(self.on_step_select)
+        self.steps_tree.itemChanged.connect(self.on_step_item_changed)
+        self.steps_tree.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+        )
         steps_groupbox_layout.addWidget(self.steps_tree, 1)
 
         steps_button_layout_1 = QHBoxLayout()
@@ -574,6 +579,7 @@ class TrackEditorApp(QMainWindow):
 
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
+        self._steps_tree_updating = True
         current_focused_item_data = None
         current_item = self.steps_tree.currentItem()
         if current_item:
@@ -588,6 +594,7 @@ class TrackEditorApp(QMainWindow):
             description = step.get("description", "")
             num_voices = len(step.get("voices", []))
             item = QTreeWidgetItem(self.steps_tree)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setText(0, f"{duration:.2f}")
             item.setText(1, description)
             item.setText(2, str(num_voices))
@@ -609,6 +616,7 @@ class TrackEditorApp(QMainWindow):
                 if item.isSelected(): first_selected_restored = item; break
             if first_selected_restored: self.steps_tree.setCurrentItem(first_selected_restored)
         self.on_step_select() # This will also trigger _update_step_actions_state
+        self._steps_tree_updating = False
 
     def refresh_voices_tree(self):
         self._voices_tree_updating = True
@@ -763,6 +771,29 @@ class TrackEditorApp(QMainWindow):
     def on_voice_select(self):
         self._update_voice_actions_state()
         self.update_voice_details()
+
+    @pyqtSlot(QTreeWidgetItem, int)
+    def on_step_item_changed(self, item, column):
+        if self._steps_tree_updating:
+            return
+        step_idx = item.data(0, Qt.UserRole)
+        if step_idx is None:
+            return
+        try:
+            if column == 1:
+                new_desc = item.text(1).strip()
+                self.track_data["steps"][step_idx]["description"] = new_desc
+            else:
+                # Revert edits to non-editable columns
+                self._steps_tree_updating = True
+                step = self.track_data["steps"][step_idx]
+                if column == 0:
+                    item.setText(0, f"{step.get('duration', 0.0):.2f}")
+                elif column == 2:
+                    item.setText(2, str(len(step.get('voices', []))))
+                self._steps_tree_updating = False
+        except Exception as e:
+            print(f"Error updating step item: {e}")
 
     @pyqtSlot(QTreeWidgetItem, int)
     def on_voice_item_changed(self, item, column):
