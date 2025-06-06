@@ -1,7 +1,7 @@
 """Stereo amplitude modulation with independent L/R modulators."""
 
 import numpy as np
-from .common import sine_wave, sine_wave_varying
+from .common import sine_wave, sine_wave_varying, calculate_transition_alpha
 
 
 def stereo_am_independent(duration, sample_rate=44100, **params):
@@ -41,7 +41,7 @@ def stereo_am_independent(duration, sample_rate=44100, **params):
     return np.vstack([outputL, outputR]).T
 
 
-def stereo_am_independent_transition(duration, sample_rate=44100, **params):
+def stereo_am_independent_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     """Stereo AM Independent with parameter transitions."""
     amp = float(params.get('amp', 0.25))
     startCarrierFreq = float(params.get('startCarrierFreq', 200))
@@ -65,13 +65,15 @@ def stereo_am_independent_transition(duration, sample_rate=44100, **params):
     t_rel = np.linspace(0, duration, N, endpoint=False)
     t_abs = t_rel
 
-    # Interpolate parameters
-    currentCarrierFreq = np.linspace(startCarrierFreq, endCarrierFreq, N)
-    currentModFreqL = np.linspace(startModFreqL, endModFreqL, N)
-    currentModDepthL = np.linspace(startModDepthL, endModDepthL, N)
-    currentModFreqR = np.linspace(startModFreqR, endModFreqR, N)
-    currentModDepthR = np.linspace(startModDepthR, endModDepthR, N)
-    currentStereoWidthHz = np.linspace(startStereoWidthHz, endStereoWidthHz, N)
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+
+    # Interpolate parameters using alpha
+    currentCarrierFreq = startCarrierFreq + (endCarrierFreq - startCarrierFreq) * alpha
+    currentModFreqL = startModFreqL + (endModFreqL - startModFreqL) * alpha
+    currentModDepthL = startModDepthL + (endModDepthL - startModDepthL) * alpha
+    currentModFreqR = startModFreqR + (endModFreqR - startModFreqR) * alpha
+    currentModDepthR = startModDepthR + (endModDepthR - startModDepthR) * alpha
+    currentStereoWidthHz = startStereoWidthHz + (endStereoWidthHz - startStereoWidthHz) * alpha
 
     # Varying frequency carriers
     carrierL = sine_wave_varying(currentCarrierFreq - currentStereoWidthHz / 2, t_abs, sample_rate)

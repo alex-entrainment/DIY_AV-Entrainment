@@ -8,7 +8,7 @@ Right Channel: Monaural beat with its own AM, FM, and phase oscillation.
 
 import numpy as np
 import numba
-from .common import apply_filters
+from .common import apply_filters, calculate_transition_alpha
 
 
 def hybrid_qam_monaural_beat(duration, sample_rate=44100, **params):
@@ -161,7 +161,7 @@ def _hybrid_qam_monaural_beat_core(
     return out
 
 
-def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, **params):
+def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     """
     Generates a hybrid QAM-Monaural beat with parameters linearly interpolated.
     """
@@ -216,6 +216,8 @@ def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, **params):
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
 
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+
     raw_signal = _hybrid_qam_monaural_beat_transition_core(
         N, float(duration), float(sample_rate),
         s_ampL, e_ampL, s_ampR, e_ampR,
@@ -229,7 +231,8 @@ def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, **params):
         s_mono_R_fmPhaseOffset, e_mono_R_fmPhaseOffset,
         s_mono_R_startPhaseTone1, e_mono_R_startPhaseTone1, s_mono_R_startPhaseTone2, e_mono_R_startPhaseTone2,
         s_mono_R_phaseOscFreq, e_mono_R_phaseOscFreq, s_mono_R_phaseOscRange, e_mono_R_phaseOscRange,
-        s_mono_R_phaseOscPhaseOffset, e_mono_R_phaseOscPhaseOffset
+        s_mono_R_phaseOscPhaseOffset, e_mono_R_phaseOscPhaseOffset,
+        alpha_arr
     )
 
     if raw_signal.size > 0:
@@ -255,17 +258,18 @@ def _hybrid_qam_monaural_beat_transition_core(
     s_mono_R_startPhaseTone1_init, e_mono_R_startPhaseTone1_init, 
     s_mono_R_startPhaseTone2_init, e_mono_R_startPhaseTone2_init,
     s_mono_R_phaseOscFreq, e_mono_R_phaseOscFreq, s_mono_R_phaseOscRange, e_mono_R_phaseOscRange,
-    s_mono_R_phaseOscPhaseOffset, e_mono_R_phaseOscPhaseOffset
+    s_mono_R_phaseOscPhaseOffset, e_mono_R_phaseOscPhaseOffset,
+    alpha_arr
 ):
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
 
     t_arr = np.empty(N, dtype=np.float64)
-    alpha_arr = np.empty(N, dtype=np.float64)
     dt = duration_float / N
     for i in numba.prange(N):
         t_arr[i] = i * dt
-        alpha_arr[i] = i / (N - 1) if N > 1 else 0.0
+        alpha = alpha_arr[i] if alpha_arr.size == N else (i / (N - 1) if N > 1 else 0.0)
+        alpha_arr[i] = alpha
 
     out = np.empty((N, 2), dtype=np.float32)
 

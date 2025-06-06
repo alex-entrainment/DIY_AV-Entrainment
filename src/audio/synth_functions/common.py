@@ -482,3 +482,31 @@ def apply_filters(signal_segment, fs):
         
     return signal_segment
 
+
+def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, post_offset=0.0):
+    """Create an interpolation factor array taking start/end offsets into account."""
+    total_duration = float(total_duration)
+    sample_rate = float(sample_rate)
+    initial_offset = max(0.0, float(initial_offset))
+    post_offset = max(0.0, float(post_offset))
+
+    N = int(total_duration * sample_rate)
+    if N <= 0:
+        return np.zeros(0, dtype=np.float64)
+
+    t = np.linspace(0.0, total_duration, N, endpoint=False)
+
+    start_t = min(initial_offset, total_duration)
+    end_t = max(start_t, total_duration - post_offset)
+    trans_time = end_t - start_t
+
+    if trans_time <= 0.0:
+        alpha = np.zeros(N, dtype=np.float64)
+        if start_t < total_duration:
+            alpha[t >= start_t] = 1.0
+        return alpha
+
+    alpha = (t - start_t) / trans_time
+    alpha = np.clip(alpha, 0.0, 1.0)
+    return alpha
+

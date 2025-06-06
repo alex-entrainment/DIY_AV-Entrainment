@@ -1,7 +1,7 @@
 """Isochronic tone synthesis functions."""
 
 import numpy as np
-from .common import pan2, trapezoid_envelope_vectorized
+from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_alpha
 
 
 def isochronic_tone(duration, sample_rate=44100, **params):
@@ -68,7 +68,7 @@ def isochronic_tone(duration, sample_rate=44100, **params):
     return audio.astype(np.float32)
 
 
-def isochronic_tone_transition(duration, sample_rate=44100, **params):
+def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     amp = float(params.get('amp', 0.5)) # Constant amplitude for the voice
     startBaseFreq = float(params.get('startBaseFreq', 200.0))
     endBaseFreq = float(params.get('endBaseFreq', startBaseFreq)) # Default end to start
@@ -84,9 +84,11 @@ def isochronic_tone_transition(duration, sample_rate=44100, **params):
 
     t_abs = np.linspace(0, duration, N, endpoint=False)
 
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+
     # --- Interpolate Frequencies ---
-    base_freq_array = np.linspace(startBaseFreq, endBaseFreq, N)
-    beat_freq_array = np.linspace(startBeatFreq, endBeatFreq, N) # Pulse rate array
+    base_freq_array = startBaseFreq + (endBaseFreq - startBaseFreq) * alpha
+    beat_freq_array = startBeatFreq + (endBeatFreq - startBeatFreq) * alpha  # Pulse rate array
 
     # Ensure frequencies are non-negative
     instantaneous_carrier_freq_array = np.maximum(0.0, base_freq_array)

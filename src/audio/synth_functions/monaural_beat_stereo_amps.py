@@ -2,6 +2,7 @@
 
 import numpy as np
 import numba
+from .common import calculate_transition_alpha
 
 
 def monaural_beat_stereo_amps(duration, sample_rate=44100, **params):
@@ -116,7 +117,7 @@ def _monaural_beat_stereo_amps_core(
     return out
 
 
-def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, **params):
+def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     s_ll = float(params.get('start_amp_lower_L', params.get('amp_lower_L', 0.5)))
     e_ll = float(params.get('end_amp_lower_L',   s_ll))
     s_ul = float(params.get('start_amp_upper_L', params.get('amp_upper_L', 0.5)))
@@ -149,13 +150,15 @@ def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, **params):
     eAOP = float(params.get('endAmpOscPhaseOffset', sAOP))
 
     N = int(duration * sample_rate)
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
     return _monaural_beat_stereo_amps_transition_core(
         N, float(duration), float(sample_rate),
         s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,
         sBF, eBF, sBt, eBt,
         sStartPhaseL, eStartPhaseL, sStartPhaseU, eStartPhaseU,
         sPhiF, ePhiF, sPhiR, ePhiR,
-        sAOD, eAOD, sAOF, eAOF, sAOP, eAOP
+        sAOD, eAOD, sAOF, eAOF, sAOP, eAOP,
+        alpha_arr
     )
 
 
@@ -166,7 +169,8 @@ def _monaural_beat_stereo_amps_transition_core(
     sBF, eBF, sBt, eBt,                             # Frequencies
     sSPL, eSPL, sSPU, eSPU,                         # Start Phases (lower, upper)
     sPhiF, ePhiF, sPhiR, ePhiR,                     # Phase Osc
-    sAOD, eAOD, sAOF, eAOF, sAOP, eAOP              # Amp Osc
+    sAOD, eAOD, sAOF, eAOF, sAOP, eAOP,              # Amp Osc
+    alpha_arr
 ):
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
@@ -192,7 +196,7 @@ def _monaural_beat_stereo_amps_transition_core(
 
     for i in numba.prange(N):
         t_arr[i] = i * dt
-        alpha = i / (N - 1) if N > 1 else 0.0
+        alpha = alpha_arr[i] if alpha_arr.size == N else (i / (N - 1) if N > 1 else 0.0)
         
         amp_ll_arr[i] = s_ll + (e_ll - s_ll) * alpha
         amp_ul_arr[i] = s_ul + (e_ul - s_ul) * alpha

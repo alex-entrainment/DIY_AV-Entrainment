@@ -2,7 +2,7 @@
 
 import numpy as np
 import math
-from .common import sine_wave, sine_wave_varying
+from .common import sine_wave, sine_wave_varying, calculate_transition_alpha
 
 
 def wave_shape_stereo_am(duration, sample_rate=44100, **params):
@@ -55,7 +55,7 @@ def wave_shape_stereo_am(duration, sample_rate=44100, **params):
     return np.vstack([outputL, outputR]).T
 
 
-def wave_shape_stereo_am_transition(duration, sample_rate=44100, **params):
+def wave_shape_stereo_am_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
     """Combined waveshaping and stereo AM with parameter transitions."""
     amp = float(params.get('amp', 0.15))
     startCarrierFreq = float(params.get('startCarrierFreq', 200))
@@ -83,15 +83,17 @@ def wave_shape_stereo_am_transition(duration, sample_rate=44100, **params):
     t_rel = np.linspace(0, duration, N, endpoint=False)
     t_abs = t_rel
 
-    # Interpolate parameters
-    currentCarrierFreq = np.linspace(startCarrierFreq, endCarrierFreq, N)
-    currentShapeModFreq = np.linspace(startShapeModFreq, endShapeModFreq, N)
-    currentShapeModDepth = np.linspace(startShapeModDepth, endShapeModDepth, N)
-    currentShapeAmount = np.linspace(startShapeAmount, endShapeAmount, N)
-    currentStereoModFreqL = np.linspace(startStereoModFreqL, endStereoModFreqL, N)
-    currentStereoModDepthL = np.linspace(startStereoModDepthL, endStereoModDepthL, N)
-    currentStereoModFreqR = np.linspace(startStereoModFreqR, endStereoModFreqR, N)
-    currentStereoModDepthR = np.linspace(startStereoModDepthR, endStereoModDepthR, N)
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+
+    # Interpolate parameters using alpha
+    currentCarrierFreq = startCarrierFreq + (endCarrierFreq - startCarrierFreq) * alpha
+    currentShapeModFreq = startShapeModFreq + (endShapeModFreq - startShapeModFreq) * alpha
+    currentShapeModDepth = startShapeModDepth + (endShapeModDepth - startShapeModDepth) * alpha
+    currentShapeAmount = startShapeAmount + (endShapeAmount - startShapeAmount) * alpha
+    currentStereoModFreqL = startStereoModFreqL + (endStereoModFreqL - startStereoModFreqL) * alpha
+    currentStereoModDepthL = startStereoModDepthL + (endStereoModDepthL - startStereoModDepthL) * alpha
+    currentStereoModFreqR = startStereoModFreqR + (endStereoModFreqR - startStereoModFreqR) * alpha
+    currentStereoModDepthR = startStereoModDepthR + (endStereoModDepthR - startStereoModDepthR) * alpha
 
     # Rhythmic waveshaping part (mono)
     carrier = sine_wave_varying(currentCarrierFreq, t_abs, sample_rate)
