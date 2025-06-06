@@ -11,10 +11,13 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QMessageBox,
 )
+from PyQt5.QtGui import QFont
 from functools import partial
 from ui import themes
 from ui.step_list_panel import StepListPanel
 from ui.step_config_panel import StepConfigPanel
+from ui.preferences_dialog import PreferencesDialog
+from preferences import load_preferences, save_preferences, Preferences
 # REMOVED: from ui.audio_settings_panel import AudioSettingsPanel
 from controllers.step_controller import StepController
 from controllers.file_controller import FileController
@@ -30,10 +33,14 @@ def clear_layout(layout):
                 widget.deleteLater()
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, prefs: Preferences = None):
         super().__init__()
-        self.setWindowTitle("6-LED Sequence Editor") # Updated title
-        self.resize(1000, 700) # Adjusted default size might be needed
+        self.prefs: Preferences = prefs or load_preferences()
+        self.setWindowTitle("6-LED Sequence Editor")
+        self.resize(1000, 700)
+
+        # Apply preferences
+        self.apply_preferences()
 
         self.simulator_window = None  # to hold the simulator instance
 
@@ -107,6 +114,10 @@ class MainWindow(QMainWindow):
         delete_act.triggered.connect(self.handle_delete_sequence_file)
         file_menu.addAction(delete_act)
 
+        pref_act = QAction("Preferences", self)
+        pref_act.triggered.connect(self.open_preferences)
+        file_menu.addAction(pref_act)
+
         file_menu.addSeparator()
         theme_menu = file_menu.addMenu("Theme")
         for name in themes.THEMES.keys():
@@ -126,8 +137,24 @@ class MainWindow(QMainWindow):
         self.simulator_window.raise_()
         self.simulator_window.activateWindow()
 
+    def open_preferences(self):
+        dialog = PreferencesDialog(self.prefs, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.prefs = dialog.get_preferences()
+            save_preferences(self.prefs)
+            self.apply_preferences()
+
+    def apply_preferences(self):
+        app = QApplication.instance()
+        if self.prefs.font_family or self.prefs.font_size:
+            font = QFont(self.prefs.font_family or app.font().family(), self.prefs.font_size)
+            app.setFont(font)
+        themes.apply_theme(app, self.prefs.theme)
+
     def set_theme(self, name):
         themes.apply_theme(QApplication.instance(), name)
+        self.prefs.theme = name
+        save_preferences(self.prefs)
 
     def update_sequence_duration(self):
         duration = self.step_controller.update_sequence_duration()
@@ -616,8 +643,13 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    themes.apply_theme(app, "Dark")
-    win = MainWindow()
+    prefs = load_preferences()
+    if prefs.font_family or prefs.font_size:
+        font = QFont(prefs.font_family or app.font().family(), prefs.font_size)
+        app.setFont(font)
+    themes.apply_theme(app, prefs.theme)
+    win = MainWindow(prefs)
+    # preferences already applied in constructor
     win.show()
     sys.exit(app.exec_())
 
