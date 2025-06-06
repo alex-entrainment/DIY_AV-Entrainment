@@ -7,7 +7,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 
 from .preferences import Preferences
-from themes import *  # reuse themes from audio package
+from .themes import *  # reuse themes from audio package
 
 class PreferencesDialog(QDialog):
     def __init__(self, prefs: Preferences, parent=None):
