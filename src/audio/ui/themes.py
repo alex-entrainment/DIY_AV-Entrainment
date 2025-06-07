@@ -26,12 +26,11 @@ def dark_palette() -> QPalette:
 
 # Style sheet ensuring editable widgets use white text in the dark theme
 GLOBAL_STYLE_SHEET_DARK = """
+
 QTreeWidget {
     color: #ffffff;
 }
-QLineEdit, QComboBox, QSlider {
-    color: #ffffff;
-}
+
 """
     
 # Green cymatic theme derived from the example in README
