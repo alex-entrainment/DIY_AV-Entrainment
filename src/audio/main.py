@@ -43,7 +43,8 @@ from PyQt5.QtMultimedia import (
 
 from functools import partial
 from ui import themes
-from preferences import load_preferences, save_preferences, Preferences
+from preferences import Preferences
+from settings_file import load_settings, save_settings
 from ui.preferences_dialog import PreferencesDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
@@ -132,7 +133,7 @@ except ImportError as e:
 class TrackEditorApp(QMainWindow):
     def __init__(self, prefs: Preferences = None):
         super().__init__()
-        self.prefs: Preferences = prefs or load_preferences()
+        self.prefs: Preferences = prefs or load_settings()
         self.apply_preferences()
         self.setWindowTitle("Binaural Track Editor (PyQt5)")
         self.setMinimumSize(950, 600)
@@ -216,18 +217,19 @@ class TrackEditorApp(QMainWindow):
             act.triggered.connect(partial(self.set_theme, name))
             theme_menu.addAction(act)
 
+
     def set_theme(self, name):
         themes.apply_theme(QApplication.instance(), name)
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
         if hasattr(self, "prefs"):
             self.prefs.theme = name
-            save_preferences(self.prefs)
+            save_settings(self.prefs)
 
     def open_preferences(self):
         dialog = PreferencesDialog(self.prefs, self)
         if dialog.exec_() == QDialog.Accepted:
             self.prefs = dialog.get_preferences()
-            save_preferences(self.prefs)
+            save_settings(self.prefs)
             self.apply_preferences()
 
     def apply_preferences(self):
@@ -1637,7 +1639,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     app = QApplication(sys.argv)
-    prefs = load_preferences()
+    prefs = load_settings()
     if prefs.font_family or prefs.font_size:
         font = QFont(prefs.font_family or app.font().family(), prefs.font_size)
         app.setFont(font)
