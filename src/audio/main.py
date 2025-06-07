@@ -1642,6 +1642,8 @@ if __name__ == "__main__":
         font = QFont(prefs.font_family or app.font().family(), prefs.font_size)
         app.setFont(font)
     themes.apply_theme(app, prefs.theme)
+    app.setStyle("Fusion")
+    
 
     window = TrackEditorApp(prefs)
     window.show()
