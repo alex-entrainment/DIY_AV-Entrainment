@@ -96,12 +96,12 @@ QPushButton {
 }
 QTreeWidget {
     background-color: #2b2b2b;
-    color: #dddddd;
+    color: #000000;
 }
 QLineEdit, QComboBox, QSlider {
     background-color: #202020;
     border: 1px solid #555555;
-    color: #dddddd;
+    color: #000000;
 }
 """
 
