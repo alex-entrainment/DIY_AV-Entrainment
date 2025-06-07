@@ -10,14 +10,14 @@ class Theme:
 def dark_palette() -> QPalette:
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(53, 53, 53))
-    palette.setColor(QPalette.WindowText, QColor(255, 255, 255))
+    palette.setColor(QPalette.WindowText, QColor(0, 0, 0))
     palette.setColor(QPalette.Base, QColor(25, 25, 25))
     palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
     palette.setColor(QPalette.ToolTipBase, QColor(0, 0, 0))
-    palette.setColor(QPalette.ToolTipText, QColor(255, 255, 255))
-    palette.setColor(QPalette.Text, QColor(255, 255, 255))
+    palette.setColor(QPalette.ToolTipText, QColor(0, 0, 0))
+    palette.setColor(QPalette.Text, QColor(0, 0, 0))
     palette.setColor(QPalette.Button, QColor(53, 53, 53))
-    palette.setColor(QPalette.ButtonText, QColor(255, 255, 255))
+    palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
     palette.setColor(QPalette.BrightText, QColor(255, 0, 0))
     palette.setColor(QPalette.Link, QColor(42, 130, 218))
     palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
@@ -75,6 +75,12 @@ QPushButton:disabled {
     background-color: rgba(0, 136, 68, 0.2);
     border: 1px solid rgba(0, 255, 136, 0.2);
     color: rgba(0, 255, 136, 0.5);
+}
+
+/* Column Headers */
+QHeaderView::section {
+    background-color: #000000;
+    color: #00ffaa;
 }
 """
 
