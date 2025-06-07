@@ -217,6 +217,7 @@ class TrackEditorApp(QMainWindow):
             act.triggered.connect(partial(self.set_theme, name))
             theme_menu.addAction(act)
 
+
     def set_theme(self, name):
         themes.apply_theme(QApplication.instance(), name)
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
@@ -1643,6 +1644,8 @@ if __name__ == "__main__":
         font = QFont(prefs.font_family or app.font().family(), prefs.font_size)
         app.setFont(font)
     themes.apply_theme(app, prefs.theme)
+    app.setStyle("Fusion")
+    
 
     window = TrackEditorApp(prefs)
     window.show()
