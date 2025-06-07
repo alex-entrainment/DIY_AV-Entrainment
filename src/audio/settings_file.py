@@ -2,10 +2,10 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from .preferences import Preferences
+from preferences import Preferences
 
-# Settings file path located in the user's home directory
-SETTINGS_FILE = Path.home() / ".entrainment_prefs.json"
+# Settings file path located in the local directory
+SETTINGS_FILE = Path.home() / "settings.json"
 
 
 def load_settings() -> Preferences:
