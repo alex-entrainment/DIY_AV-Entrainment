@@ -6,7 +6,11 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 
-from ..preferences import Preferences
+
+try:
+    from ..preferences import Preferences
+except ImportError:  # Running as a script without packages
+    from preferences import Preferences
 from .themes import *  # reuse themes from audio package
 
 class PreferencesDialog(QDialog):
