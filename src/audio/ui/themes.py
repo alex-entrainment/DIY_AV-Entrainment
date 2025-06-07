@@ -82,6 +82,12 @@ QHeaderView::section {
     background-color: #000000;
     color: #00ffaa;
 }
+
+QLineEdit, QComboBox, QSlider {
+    background-color: #202020;
+    border: 1px solid #555555;
+    color: #ffffff;     /* use white text */
+}
 """
 
 def green_palette() -> QPalette:
