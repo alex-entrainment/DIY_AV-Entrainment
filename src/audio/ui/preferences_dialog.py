@@ -11,7 +11,7 @@ try:
     from ..preferences import Preferences
 except ImportError:  # Running as a script without packages
     from preferences import Preferences
-from .themes import *  # reuse themes from audio package
+from . import themes  # reuse themes from audio package
 
 class PreferencesDialog(QDialog):
     def __init__(self, prefs: Preferences, parent=None):
