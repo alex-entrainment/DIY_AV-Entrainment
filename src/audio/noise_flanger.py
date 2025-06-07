@@ -46,40 +46,39 @@ def generate_pink_noise_samples(n_samples):
     return pink
 
 @numba.jit(nopython=True)
-def _phased_pink_generator_core(
-    pink_noise_input, 
-    sample_rate, 
+def _stereo_flanger_core(
+    input_left,
+    input_right,
+    sample_rate,
     lfo_freq,
-    min_delay_samples, 
+    min_delay_samples,
     max_delay_samples,
-    comb_mix_factor, 
-    lfo_phase_offset_right_rad 
+    comb_mix_factor,
+    lfo_phase_offset_right_rad,
 ):
-    """
-    Core Numba-accelerated loop for generating phased pink sound.
+    """Numba-accelerated stereo flanger.
 
     Args:
-        pink_noise_input (np.ndarray): The input pink noise signal.
-        sample_rate (float): The audio sample rate in Hz.
-        lfo_freq (float): The Low-Frequency Oscillator rate in Hz.
-        min_delay_samples (int): Minimum delay for the comb filter in samples.
-        max_delay_samples (int): Maximum delay for the comb filter in samples.
-        comb_mix_factor (float): Mix between direct and delayed sound (0.0 to 1.0).
-                                 0.5 means an equal average as suggested by the patent.
-        lfo_phase_offset_right_rad (float): Phase offset for the right channel's LFO in radians.
+        input_left (np.ndarray): Left channel input signal.
+        input_right (np.ndarray): Right channel input signal.
+        sample_rate (float): Audio sample rate in Hz.
+        lfo_freq (float): LFO frequency in Hz.
+        min_delay_samples (int): Minimum delay in samples.
+        max_delay_samples (int): Maximum delay in samples.
+        comb_mix_factor (float): Mix between dry and delayed signals (0-1).
+        lfo_phase_offset_right_rad (float): Phase offset for the right channel LFO.
 
     Returns:
-        tuple: (left_channel_output, right_channel_output) as np.ndarray.
+        tuple: Left and right processed channels.
     """
-    num_samples = len(pink_noise_input)
+    num_samples = len(input_left)
     left_channel_out = np.empty(num_samples, dtype=np.float32)
     right_channel_out = np.empty(num_samples, dtype=np.float32)
 
-    # Ensure delay_line_size is adequate for the maximum modulated delay.
-    # Add a small buffer just in case.
-    delay_line_size = int(max_delay_samples + 10) 
-    if delay_line_size <= 0: # Should not happen with proper inputs
-        delay_line_size = int(sample_rate * 0.05) # Fallback to 50ms
+    # Ensure the delay line is large enough for the maximum delay plus some margin
+    delay_line_size = int(max_delay_samples + 10)
+    if delay_line_size <= 0:
+        delay_line_size = int(sample_rate * 0.05)
 
     # Initialize delay lines (circular buffers) for left and right channels.
     # The same pink noise source is fed into two different comb filter paths.
@@ -98,7 +97,8 @@ def _phased_pink_generator_core(
     delay_center = (max_delay_samples + min_delay_samples) / 2.0
 
     for i in range(num_samples):
-        current_pink_sample = pink_noise_input[i]
+        current_sample_l = input_left[i]
+        current_sample_r = input_right[i]
         time_sec = t_indices[i] / sample_rate # current time in seconds
 
         # --- Left Channel LFO and Delay ---
@@ -118,10 +118,10 @@ def _phased_pink_generator_core(
         
         # Comb filter: "averaged with an earlier sample from the delay line"
         # output = (1-mix_factor)*current_pink_sample + mix_factor*delayed_sample
-        left_channel_out[i] = (1.0 - comb_mix_factor) * current_pink_sample + comb_mix_factor * delayed_sample_l
-        
-        # Write current pink sample (input to the comb filter) to its delay line
-        delay_line_l[write_ptr] = current_pink_sample 
+        left_channel_out[i] = (1.0 - comb_mix_factor) * current_sample_l + comb_mix_factor * delayed_sample_l
+
+        # Write current sample to delay line
+        delay_line_l[write_ptr] = current_sample_l
 
         # --- Right Channel LFO and Delay ---
         # "The delay on the other channel is controlled by some mix of the sine and cosine waves."
@@ -136,9 +136,9 @@ def _phased_pink_generator_core(
         read_ptr_r = (write_ptr - current_delay_r_samps + delay_line_size) % delay_line_size
         delayed_sample_r = delay_line_r[read_ptr_r]
         
-        right_channel_out[i] = (1.0 - comb_mix_factor) * current_pink_sample + comb_mix_factor * delayed_sample_r
-        
-        delay_line_r[write_ptr] = current_pink_sample # Also write the same pink sample
+        right_channel_out[i] = (1.0 - comb_mix_factor) * current_sample_r + comb_mix_factor * delayed_sample_r
+
+        delay_line_r[write_ptr] = current_sample_r
 
         # Advance write pointer for the next iteration
         write_ptr = (write_ptr + 1) % delay_line_size
@@ -155,33 +155,47 @@ def generate_phased_pink_sound_file(
     max_delay_ms=80.0,     # Maximum delay for comb filter sweep in milliseconds
     comb_mix_factor=0.5,   # Mix of direct vs. delayed sound in comb filter (0.0 to 1.0)
                            # 0.5 implies an equal average.
-    lfo_right_phase_deg=90,# Phase offset for the right channel's LFO in degrees.
-                               # 90 degrees makes it behave like a cosine if left is sine,
-                               # creating good stereo separation.
-    ):
+    lfo_right_phase_deg=90, # Phase offset for the right channel's LFO in degrees.
+    input_audio_path=None,
+):
     """
-    Generates a Phased Pink Sound audio file according to patent descriptions.
+    Generates the flanging effect on either generated pink noise or an input
+    audio file.
 
     Args:
         filename (str): Name of the output WAV file.
-        duration_seconds (float): Duration of the audio to generate.
+        duration_seconds (float): Duration of the generated noise when
+            ``input_audio_path`` is ``None``.
         sample_rate (int): Audio sample rate in Hz.
         lfo_freq (float): LFO frequency for sweeping the comb filter delays.
         min_delay_ms (float): Minimum delay for the comb filter in milliseconds.
         max_delay_ms (float): Maximum delay for the comb filter in milliseconds.
         comb_mix_factor (float): The balance between the original pink noise and the
                                  delayed version in the comb filter. 0.5 for equal mix.
-        lfo_right_phase_deg (float): The phase difference (in degrees) for the LFO
-                                     modulating the right channel's delay, relative to the left.
+        lfo_right_phase_deg (float): Phase offset for the right channel's LFO.
+        input_audio_path (str or None): Optional path to an audio file to
+            process instead of generating pink noise.
     """
     print(f"Starting Phased Pink Sound generation for '{filename}'...")
     print(f"Parameters: Duration={duration_seconds}s, Sample Rate={sample_rate}Hz, LFO Freq={lfo_freq}Hz")
     
-    num_samples = int(duration_seconds * sample_rate)
-
-    # Step 1: Generate base pink noise
-    print("Step 1/4: Generating base pink noise...")
-    base_pink_noise = generate_pink_noise_samples(num_samples)
+    if input_audio_path is None:
+        num_samples = int(duration_seconds * sample_rate)
+        print("Step 1/4: Generating base pink noise...")
+        input_left = generate_pink_noise_samples(num_samples)
+        input_right = input_left
+    else:
+        print(f"Step 1/4: Loading input audio from '{input_audio_path}'...")
+        data, in_sr = sf.read(input_audio_path, always_2d=True)
+        if in_sr != sample_rate:
+            import librosa
+            data = librosa.resample(data.T, orig_sr=in_sr, target_sr=sample_rate, axis=1).T
+        input_left = data[:, 0]
+        if data.shape[1] > 1:
+            input_right = data[:, 1]
+        else:
+            input_right = input_left
+        num_samples = len(input_left)
     
 
     # Step 2: Prepare parameters for the Numba core function
@@ -204,14 +218,15 @@ def generate_phased_pink_sound_file(
 
     # Step 3: Call the core Numba-JIT compiled generator
     print("Step 3/4: Applying phased comb filtering (Numba accelerated)...")
-    left_channel_output, right_channel_output = _phased_pink_generator_core(
-        base_pink_noise,
-        float(sample_rate), # Numba can be particular about float types for arguments
+    left_channel_output, right_channel_output = _stereo_flanger_core(
+        input_left,
+        input_right,
+        float(sample_rate),
         lfo_freq,
         min_delay_samps,
         max_delay_samps,
         comb_mix_factor,
-        lfo_right_phase_rad
+        lfo_right_phase_rad,
     )
 
     # Step 4: Combine into stereo and normalize for output
