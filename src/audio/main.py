@@ -218,6 +218,7 @@ class TrackEditorApp(QMainWindow):
 
     def set_theme(self, name):
         themes.apply_theme(QApplication.instance(), name)
+        self.setStyleSheet(GLOBAL_STYLE_SHEET)
         if hasattr(self, "prefs"):
             self.prefs.theme = name
             save_preferences(self.prefs)
@@ -235,6 +236,7 @@ class TrackEditorApp(QMainWindow):
             font = QFont(self.prefs.font_family or app.font().family(), self.prefs.font_size)
             app.setFont(font)
         themes.apply_theme(app, self.prefs.theme)
+        self.setStyleSheet(GLOBAL_STYLE_SHEET)
 
     def _setup_ui(self):
         # Central Widget and Main Layout
