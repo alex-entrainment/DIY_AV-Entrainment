@@ -23,6 +23,13 @@ def dark_palette() -> QPalette:
     palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
     palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
     return palette
+
+# Style sheet ensuring editable widgets use white text in the dark theme
+GLOBAL_STYLE_SHEET_DARK = """
+QLineEdit, QComboBox, QSlider {
+    color: #ffffff;
+}
+"""
     
 # Green cymatic theme derived from the example in README
 GLOBAL_STYLE_SHEET_GREEN = """
@@ -105,7 +112,7 @@ def green_palette() -> QPalette:
     return palette
 
 THEMES = {
-    "Dark": Theme(dark_palette, ""),
+    "Dark": Theme(dark_palette, GLOBAL_STYLE_SHEET_DARK),
     "Green": Theme(green_palette, GLOBAL_STYLE_SHEET_GREEN),
 }
 

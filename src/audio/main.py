@@ -102,7 +102,7 @@ QTreeWidget {
 QLineEdit, QComboBox, QSlider {
     background-color: #202020;
     border: 1px solid #555555;
-    color: #000000;
+    color: #ffffff;
 }
 """
 
