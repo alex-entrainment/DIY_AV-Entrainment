@@ -483,8 +483,20 @@ def apply_filters(signal_segment, fs):
     return signal_segment
 
 
-def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, post_offset=0.0):
-    """Create an interpolation factor array taking start/end offsets into account."""
+def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, post_offset=0.0, curve="linear"):
+    """Create an interpolation factor array taking start/end offsets into account.
+
+    Args:
+        total_duration (float): Length of the transition in seconds.
+        sample_rate (float): Sampling rate of the generated audio.
+        initial_offset (float): Time before the transition begins.
+        post_offset (float): Time after the transition ends.
+        curve (str): Name of the transition curve to apply. Supported values are
+            ``"linear"`` (default), ``"logarithmic"``, and ``"exponential"``.
+
+    Returns:
+        np.ndarray: Array of interpolation factors in the range [0, 1].
+    """
     total_duration = float(total_duration)
     sample_rate = float(sample_rate)
     initial_offset = max(0.0, float(initial_offset))
@@ -508,5 +520,15 @@ def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, 
 
     alpha = (t - start_t) / trans_time
     alpha = np.clip(alpha, 0.0, 1.0)
+
+    if curve == "linear":
+        pass  # already linear
+    elif curve == "logarithmic":
+        alpha = 1.0 - np.power(1.0 - alpha, 2.0)
+    elif curve == "exponential":
+        alpha = np.power(alpha, 2.0)
+    else:
+        raise ValueError(f"Unknown transition curve '{curve}'")
+
     return alpha
 

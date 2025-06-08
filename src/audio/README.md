@@ -145,6 +145,16 @@ Each voice may optionally include a volume envelope definition:
 - `adsr` – attack, decay, sustain, and release times.
 - Leaving the envelope undefined applies a small 10 ms fade to avoid clicks.
 
+## Transition Curves
+Transition voices accept a `transition_curve` parameter controlling how values
+move from their start settings to the final ones. Supported options are:
+
+- `linear` – constant rate from start to finish (default).
+- `logarithmic` – fast start that slows near the end.
+- `exponential` – slow start that accelerates toward the end.
+
+If omitted, `linear` is used.
+
 ---
 
 ## Tips
