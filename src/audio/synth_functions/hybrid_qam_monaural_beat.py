@@ -216,7 +216,8 @@ def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, initial_off
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
 
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+    curve = params.get('transition_curve', 'linear')
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
     raw_signal = _hybrid_qam_monaural_beat_transition_core(
         N, float(duration), float(sample_rate),

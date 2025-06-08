@@ -57,7 +57,8 @@ def rhythmic_waveshaping_transition(duration, sample_rate=44100, initial_offset=
     t_rel = np.linspace(0, duration, N, endpoint=False)
     t_abs = t_rel
 
-    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+    curve = params.get('transition_curve', 'linear')
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
     # Interpolate parameters using alpha
     currentCarrierFreq = startCarrierFreq + (endCarrierFreq - startCarrierFreq) * alpha
