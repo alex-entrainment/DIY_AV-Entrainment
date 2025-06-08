@@ -99,6 +99,18 @@ QLineEdit, QComboBox, QSlider {
 }
 """
 
+# Light blue theme with a neutral light palette and blue highlights
+GLOBAL_STYLE_SHEET_LIGHT_BLUE = """
+QTreeWidget {
+    color: #000000;
+}
+QLineEdit, QComboBox, QSlider {
+    background-color: #ffffff;
+    border: 1px solid #a0a0a0;
+    color: #000000;
+}
+"""
+
 def green_palette() -> QPalette:
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(0x0a, 0x0a, 0x0a))
@@ -113,9 +125,27 @@ def green_palette() -> QPalette:
     palette.setColor(QPalette.Link, QColor(0x00, 0xff, 0xcc))
     return palette
 
+def light_blue_palette() -> QPalette:
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(240, 248, 255))
+    palette.setColor(QPalette.WindowText, QColor(0, 0, 0))
+    palette.setColor(QPalette.Base, QColor(255, 255, 255))
+    palette.setColor(QPalette.AlternateBase, QColor(230, 240, 250))
+    palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 220))
+    palette.setColor(QPalette.ToolTipText, QColor(0, 0, 0))
+    palette.setColor(QPalette.Text, QColor(0, 0, 0))
+    palette.setColor(QPalette.Button, QColor(225, 238, 255))
+    palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
+    palette.setColor(QPalette.BrightText, QColor(255, 0, 0))
+    palette.setColor(QPalette.Link, QColor(0, 122, 204))
+    palette.setColor(QPalette.Highlight, QColor(0, 120, 215))
+    palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    return palette
+
 THEMES = {
     "Dark": Theme(dark_palette, GLOBAL_STYLE_SHEET_DARK),
     "Green": Theme(green_palette, GLOBAL_STYLE_SHEET_GREEN),
+    "light-blue": Theme(light_blue_palette, GLOBAL_STYLE_SHEET_LIGHT_BLUE),
 }
 
 def apply_theme(app: QApplication, name: str):
