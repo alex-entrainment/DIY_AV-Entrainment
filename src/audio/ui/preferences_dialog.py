@@ -58,7 +58,7 @@ class PreferencesDialog(QDialog):
         export_group.setLayout(export_layout)
         layout.addWidget(export_group)
 
-        # Sample rate and test step duration
+        # Sample rate, test step duration, and target amplitude
         audio_group = QGroupBox("Audio/Test")
         audio_form = QFormLayout()
         self.sample_rate_spin = QSpinBox()
@@ -68,10 +68,16 @@ class PreferencesDialog(QDialog):
         self.test_duration_spin.setRange(0.1, 600.0)
         self.test_duration_spin.setDecimals(1)
         self.test_duration_spin.setValue(prefs.test_step_duration)
+        self.target_amp_spin = QDoubleSpinBox()
+        self.target_amp_spin.setRange(0.0, 1.0)
+        self.target_amp_spin.setDecimals(3)
+        self.target_amp_spin.setSingleStep(0.05)
+        self.target_amp_spin.setValue(prefs.target_output_amplitude)
         self.track_metadata_chk = QCheckBox("Include track export metadata")
         self.track_metadata_chk.setChecked(prefs.track_metadata)
         audio_form.addRow("Sample Rate (Hz):", self.sample_rate_spin)
         audio_form.addRow("Test Step Duration (s):", self.test_duration_spin)
+        audio_form.addRow("Target Output Amplitude:", self.target_amp_spin)
         audio_form.addRow(self.track_metadata_chk)
         audio_group.setLayout(audio_form)
         layout.addWidget(audio_group)
@@ -96,5 +102,6 @@ class PreferencesDialog(QDialog):
             sample_rate=self.sample_rate_spin.value(),
             test_step_duration=self.test_duration_spin.value(),
             track_metadata=self.track_metadata_chk.isChecked(),
+            target_output_amplitude=self.target_amp_spin.value(),
         )
         return p

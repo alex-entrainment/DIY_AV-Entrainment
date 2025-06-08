@@ -576,7 +576,7 @@ def _write_audio_file(audio_int16, sample_rate, filename):
         return False
 
 
-def generate_audio(track_data, output_filename=None):
+def generate_audio(track_data, output_filename=None, target_level=0.25):
     """Generate and export an audio file (WAV/FLAC/MP3) based on track_data."""
     if not track_data:
         print("Error: Cannot generate audio, track data is missing.")
@@ -621,10 +621,8 @@ def generate_audio(track_data, output_filename=None):
     # --- Final Normalization ---
     max_abs_val = np.max(np.abs(track_audio))
 
-    if max_abs_val > 1e-9: # Avoid division by zero for silent tracks
-        # --- *** CHANGED: Increase target level *** ---
-        target_level = 0.2 # Normalize closer to full scale (e.g., -0.4 dBFS)
-        # --- *** End Change *** ---
+    if max_abs_val > 1e-9:  # Avoid division by zero for silent tracks
+        target_level = float(target_level)
         scaling_factor = target_level / max_abs_val
         print(f"Normalizing final track (peak value: {max_abs_val:.4f}) to target level: {target_level}")
         normalized_track = track_audio * scaling_factor
@@ -651,9 +649,9 @@ def generate_audio(track_data, output_filename=None):
     return success
 
 
-def generate_wav(track_data, output_filename=None):
+def generate_wav(track_data, output_filename=None, target_level=0.25):
     """Backward compatible wrapper for generate_audio."""
-    return generate_audio(track_data, output_filename)
+    return generate_audio(track_data, output_filename, target_level)
 
 def generate_single_step_audio_segment(step_data, global_settings, target_duration_seconds, duration_override=None):
     """

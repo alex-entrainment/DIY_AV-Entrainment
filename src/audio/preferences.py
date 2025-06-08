@@ -11,6 +11,8 @@ class Preferences:
     sample_rate: int = 44100
     test_step_duration: float = 30.0
     track_metadata: bool = False
+    # Peak amplitude for the final exported audio (0-1.0)
+    target_output_amplitude: float = 0.25
 
 PREF_FILE = Path.home() / ".entrainment_prefs.json"
 
