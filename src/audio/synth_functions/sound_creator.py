@@ -101,6 +101,36 @@ def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration):
     return blended_segment
 
 
+def phase_align_signal(prev_tail, next_audio, max_search_samples=2048):
+    """Shift ``next_audio`` so its start aligns in phase with ``prev_tail``.
+
+    The function uses cross-correlation on a small window from the end of
+    ``prev_tail`` and the beginning of ``next_audio`` to estimate the best
+    alignment.  ``next_audio`` is circularly shifted by the detected offset and
+    returned.  If the overlap is too short for analysis the audio is returned
+    unchanged.
+    """
+
+    n = min(len(prev_tail), len(next_audio), max_search_samples)
+    if n <= 1:
+        return next_audio
+
+    tail = prev_tail[-n:]
+    head = next_audio[:n]
+
+    # Calculate cross-correlation for each stereo channel and sum
+    corr_l = np.correlate(tail[:, 0], head[:, 0], mode="full")
+    corr_r = np.correlate(tail[:, 1], head[:, 1], mode="full")
+    corr = corr_l + corr_r
+
+    offset = int(np.argmax(corr) - (n - 1))
+    if offset == 0:
+        return next_audio
+
+    # Circular shift the entire segment so the first sample continues the phase
+    return np.roll(next_audio, offset, axis=0)
+
+
 # Dictionary mapping function names (strings) to actual functions
 # --- UPDATED SYNTH_FUNCTIONS DICTIONARY ---
 # Exclude helper/internal functions explicitly
@@ -109,7 +139,8 @@ _EXCLUDED_FUNCTION_NAMES = [
     'butter_bandstop', 'bandreject_filter', 'lowpass_filter', 'pink_noise',
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
-    'crossfade_signals', 'assemble_track_from_data', 'generate_voice_audio',
+    'crossfade_signals', 'phase_align_signal', 'steps_have_continuous_voices',
+    'assemble_track_from_data', 'generate_voice_audio',
     'load_track_from_json', 'save_track_to_json', 'generate_audio', 'generate_wav', 'get_synth_params',
     'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
     'butter', 'lfilter', 'write', 'ensure_stereo', 'apply_filters', 'design_filter', 
@@ -158,6 +189,26 @@ def get_synth_params(func_name):
         return {}
 
     return params
+
+
+def steps_have_continuous_voices(prev_step, next_step):
+    """Return True if ``next_step`` appears to continue the same voices as
+    ``prev_step``.  The heuristic simply compares synth function names and
+    parameter dictionaries for voices with the same index."""
+
+    voices_a = prev_step.get("voices", []) if prev_step else []
+    voices_b = next_step.get("voices", []) if next_step else []
+    if len(voices_a) != len(voices_b):
+        return False
+
+    for v_a, v_b in zip(voices_a, voices_b):
+        if v_a.get("synth_function_name") != v_b.get("synth_function_name"):
+            return False
+        if v_a.get("params") != v_b.get("params"):
+            return False
+        if v_a.get("is_transition") != v_b.get("is_transition"):
+            return False
+    return True
 
 
 def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
@@ -415,14 +466,24 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
             else:
                 audio_to_use = audio_to_use[:segment_len_in_track]
 
-        # --- Actual Crossfade Logic ---
+        # --- Decide if we should phase-stitch or crossfade ---
+        use_stitch = i > 0 and steps_have_continuous_voices(steps_data[i-1], step_data)
+
         overlap_start_sample_in_track = safe_place_start
         overlap_end_sample_in_track = min(safe_place_end, last_step_end_sample_in_track)
         overlap_samples = overlap_end_sample_in_track - overlap_start_sample_in_track
 
-        can_crossfade = i > 0 and overlap_samples > 0 and crossfade_samples > 0
+        can_crossfade = i > 0 and overlap_samples > 0 and crossfade_samples > 0 and not use_stitch
 
-        if can_crossfade:
+        if use_stitch and overlap_samples > 0:
+            print(f"        Phase stitching Step {i+1} with previous step.")
+            align_len = crossfade_samples if crossfade_samples > 0 else 1024
+            tail_start = max(0, last_step_end_sample_in_track - align_len)
+            prev_tail = track[tail_start:last_step_end_sample_in_track]
+            audio_to_use = phase_align_signal(prev_tail, audio_to_use, align_len)
+            track[safe_place_start:safe_place_end] = audio_to_use
+
+        elif can_crossfade:
             actual_crossfade_samples = min(overlap_samples, crossfade_samples)
             print(f"        Crossfading Step {i+1} with previous. Overlap: {overlap_samples / sample_rate:.3f}s, Actual CF: {actual_crossfade_samples / sample_rate:.3f}s")
 
@@ -453,9 +514,8 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
                  print(f"        Placing Step {i+1} without crossfade (actual_crossfade_samples=0). Adding.")
                  track[safe_place_start:safe_place_end] += audio_to_use # Add instead of overwrite
 
-        else: # No crossfade (first step or no overlap)
+        else:  # No crossfade or stitching needed
             print(f"        Placing Step {i+1} without crossfade. Adding.")
-            # Add the audio (use += because the space might be overlapped by the *next* step's fade)
             track[safe_place_start:safe_place_end] += audio_to_use
 
         # --- Update Markers for Next Loop ---
