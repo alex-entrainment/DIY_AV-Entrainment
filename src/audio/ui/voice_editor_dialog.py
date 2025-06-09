@@ -64,11 +64,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
         self._load_initial_data() # Loads or creates self.current_voice_data
         self._setup_ui()          # Creates UI elements
-        
+
         # Initial population after UI setup
         if self.current_voice_data.get("synth_function_name") != "Error": # Check if data load failed
             self.populate_parameters() # Populates synth parameters based on current_voice_data
             self._populate_envelope_controls() # Populates envelope controls
+        self._update_swap_button_visibility()
         
         self._populate_reference_step_combo()
 
@@ -188,6 +189,9 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.params_scroll_layout.setAlignment(Qt.AlignTop) # Important for parameter rows
         self.params_scroll_area.setWidget(self.params_scroll_content)
         params_groupbox_layout.addWidget(self.params_scroll_area)
+        self.swap_params_button = QPushButton("Swap Transition Parameters")
+        self.swap_params_button.clicked.connect(self.swap_transition_parameters)
+        params_groupbox_layout.addWidget(self.swap_params_button)
         h_splitter.addWidget(self.params_groupbox)
 
         # Right side: Reference Voice Viewer
@@ -620,8 +624,9 @@ class VoiceEditorDialog(QDialog): # Standard class name
         for name, default_val in new_default_params.items():
             updated_params[name] = current_params_in_data.get(name, default_val)
         self.current_voice_data["params"] = updated_params
-        
+
         self.populate_parameters() # Rebuild UI with (potentially new) params and (potentially updated) values
+        self._update_swap_button_visibility()
 
     @pyqtSlot(int)
     def on_transition_toggle(self, state):
@@ -662,6 +667,37 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.current_voice_data["params"] = updated_params
 
         self.populate_parameters()
+        self._update_swap_button_visibility()
+
+    def _update_swap_button_visibility(self):
+        if hasattr(self, "swap_params_button"):
+            self.swap_params_button.setVisible(self.transition_check.isChecked())
+
+    @pyqtSlot()
+    def swap_transition_parameters(self):
+        if not self.transition_check.isChecked():
+            return
+
+        for name, data in list(self.param_widgets.items()):
+            if name.startswith("start"):
+                base = name[len("start"):]
+                end_name = "end" + base
+                if end_name in self.param_widgets:
+                    start_w = self.param_widgets[name]["widget"]
+                    end_w = self.param_widgets[end_name]["widget"]
+                    if isinstance(start_w, QLineEdit) and isinstance(end_w, QLineEdit):
+                        tmp = start_w.text()
+                        start_w.setText(end_w.text())
+                        end_w.setText(tmp)
+                    elif isinstance(start_w, QComboBox) and isinstance(end_w, QComboBox):
+                        tmp = start_w.currentText()
+                        start_w.setCurrentText(end_w.currentText())
+                        end_w.setCurrentText(tmp)
+                    elif isinstance(start_w, QCheckBox) and isinstance(end_w, QCheckBox):
+                        tmp = start_w.isChecked()
+                        start_w.setChecked(end_w.isChecked())
+                        end_w.setChecked(tmp)
+
 
     # --- Helper methods for collecting UI data ---
     def _collect_data_for_main_app(self):
