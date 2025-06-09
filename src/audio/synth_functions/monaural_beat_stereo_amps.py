@@ -150,7 +150,8 @@ def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, initial_of
     eAOP = float(params.get('endAmpOscPhaseOffset', sAOP))
 
     N = int(duration * sample_rate)
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+    curve = params.get('transition_curve', 'linear')
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
     return _monaural_beat_stereo_amps_transition_core(
         N, float(duration), float(sample_rate),
         s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,

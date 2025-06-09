@@ -339,7 +339,8 @@ def qam_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_of
     if N <= 0:
         return np.zeros((0, 2), dtype=np.float32)
     
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+    curve = params.get('transition_curve', 'linear')
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
     raw_signal = _qam_beat_transition_core(
         N, float(duration), float(sample_rate),

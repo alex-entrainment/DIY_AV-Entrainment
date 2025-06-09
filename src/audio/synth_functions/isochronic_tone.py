@@ -84,7 +84,8 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
 
     t_abs = np.linspace(0, duration, N, endpoint=False)
 
-    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+    curve = params.get('transition_curve', 'linear')
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
     # --- Interpolate Frequencies ---
     base_freq_array = startBaseFreq + (endBaseFreq - startBaseFreq) * alpha

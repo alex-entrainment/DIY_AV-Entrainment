@@ -323,7 +323,8 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
         pos_arr   = np.empty(0, dtype=np.int32)
         burst_arr = np.empty(0, dtype=np.float32)
 
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset)
+    curve = params.get('transition_curve', 'linear')
+    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
     return _binaural_beat_transition_core(
         N, float(duration), float(sample_rate),
