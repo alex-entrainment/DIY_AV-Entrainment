@@ -809,7 +809,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startModFreq', 12), ('endModFreq', 7.83),
                     ('startModDepth', 1.0), ('endModDepth', 1.0),
                     ('startShapeAmount', 5.0), ('endShapeAmount', 5.0), ('pan', 0),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "stereo_am_independent": { # This is an example, ensure it's correct
@@ -827,7 +827,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startModDepthR', 0.8), ('endModDepthR', 0.8),
                     ('startModPhaseR', 0),
                     ('startStereoWidthHz', 0.2), ('endStereoWidthHz', 0.2),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "wave_shape_stereo_am": { # This is an example, ensure it's correct
@@ -849,7 +849,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startStereoModFreqR', 4.0), ('endStereoModFreqR', 6.1),
                     ('startStereoModDepthR', 0.9), ('endStereoModDepthR', 0.9),
                     ('startStereoModPhaseR', math.pi / 2),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "spatial_angle_modulation_engine": { # This is an example, ensure it's correct
@@ -868,7 +868,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startArcStartDeg', 0.0), ('endArcStartDeg', 0.0),
                     ('startArcEndDeg', 360.0), ('endArcEndDeg', 360.0),
                     ('frame_dur_ms', 46.4), ('overlap_factor', 8),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "binaural_beat": { # This is an example, ensure it's correct
@@ -909,7 +909,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startGlitchNoiseLevel', 0.0), ('endGlitchNoiseLevel', 0.0),
                     ('startGlitchFocusWidth', 0.0), ('endGlitchFocusWidth', 0.0),
                     ('startGlitchFocusExp', 0.0), ('endGlitchFocusExp', 0.0),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "monaural_beat_stereo_amps": { # This is an example, ensure it's correct
@@ -935,7 +935,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startAmpOscDepth', 0.0), ('endAmpOscDepth', 0.0),
                     ('startAmpOscFreq', 0.0), ('endAmpOscFreq', 0.0),
                     ('startAmpOscPhaseOffset', 0.0), ('endAmpOscPhaseOffset', 0.0),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "spatial_angle_modulation_monaural": { # This is an example, ensure it's correct
@@ -974,7 +974,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startPathRadius', 1.0), ('endPathRadius', 1.0),
                     ('startAmp', 0.7), ('endAmp', 0.7),
                     ('frame_dur_ms', 46.4), ('overlap_factor', 8),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "isochronic_tone": { # This is an example, ensure it's correct
@@ -986,7 +986,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('amp', 0.5), ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
                     ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
                     ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "qam_beat": { # CORRECTED AND COMPLETED for qam_beat based on qam_beat.py
@@ -1042,7 +1042,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('sidebandDepth', 0.1),
                     ('attackTime', 0.0),
                     ('releaseTime', 0.0),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
             "hybrid_qam_monaural_beat": { # This is an example, ensure it's correct
@@ -1077,7 +1077,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startMonoPhaseOscFreqR', 0.0), ('endMonoPhaseOscFreqR', 0.0),
                     ('startMonoPhaseOscRangeR', 0.0), ('endMonoPhaseOscRangeR', 0.0),
                     ('startMonoPhaseOscPhaseOffsetR', 0.0), ('endMonoPhaseOscPhaseOffsetR', 0.0),
-                    ('initial_offset', 0.0), ('post_offset', 0.0)
+                    ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             }
         }
