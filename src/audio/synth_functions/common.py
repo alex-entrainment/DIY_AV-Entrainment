@@ -493,6 +493,9 @@ def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, 
         post_offset (float): Time after the transition ends.
         curve (str): Name of the transition curve to apply. Supported values are
             ``"linear"`` (default), ``"logarithmic"``, and ``"exponential"``.
+            Any other string is interpreted as a Python expression using
+            ``alpha`` as the linear ramp (0-1). ``numpy`` can be accessed via
+            ``np`` and ``math`` for more advanced shapes.
 
     Returns:
         np.ndarray: Array of interpolation factors in the range [0, 1].
@@ -528,7 +531,12 @@ def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, 
     elif curve == "exponential":
         alpha = np.power(alpha, 2.0)
     else:
-        raise ValueError(f"Unknown transition curve '{curve}'")
+        try:
+            alpha = eval(str(curve), {"np": np, "math": math}, {"alpha": alpha})
+        except Exception as exc:
+            raise ValueError(
+                f"Invalid transition curve expression '{curve}': {exc}"
+            ) from exc
 
     return alpha
 
