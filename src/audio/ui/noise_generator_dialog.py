@@ -22,6 +22,7 @@ class NoiseGeneratorDialog(QDialog):
         # Output file
         file_layout = QHBoxLayout()
         self.file_edit = QLineEdit("swept_notch_pink_sound.wav")
+        self.file_edit.setToolTip("Where to save the generated audio file")
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_file)
         file_layout.addWidget(self.file_edit, 1)
@@ -32,12 +33,14 @@ class NoiseGeneratorDialog(QDialog):
         self.duration_spin = QDoubleSpinBox()
         self.duration_spin.setRange(1.0, 100000.0)
         self.duration_spin.setValue(60.0)
+        self.duration_spin.setToolTip("Length of the output audio in seconds")
         form.addRow("Duration (s):", self.duration_spin)
 
         # Sample rate
         self.sample_rate_spin = QSpinBox()
         self.sample_rate_spin.setRange(8000, 192000)
         self.sample_rate_spin.setValue(44100)
+        self.sample_rate_spin.setToolTip("Samples per second of the output file")
         form.addRow("Sample Rate:", self.sample_rate_spin)
 
         # LFO freq
@@ -45,24 +48,28 @@ class NoiseGeneratorDialog(QDialog):
         self.lfo_spin.setRange(0.001, 10.0)
         self.lfo_spin.setDecimals(4)
         self.lfo_spin.setValue(1.0 / 12.0)
+        self.lfo_spin.setToolTip("Rate of the sweeping notch movement")
         form.addRow("LFO Freq (Hz):", self.lfo_spin)
 
         # Min freq
         self.min_freq_spin = QSpinBox()
         self.min_freq_spin.setRange(20, 20000)
         self.min_freq_spin.setValue(1000)
+        self.min_freq_spin.setToolTip("Lowest center frequency of the sweep")
         form.addRow("Min Sweep Freq:", self.min_freq_spin)
 
         # Max freq
         self.max_freq_spin = QSpinBox()
         self.max_freq_spin.setRange(20, 22050)
         self.max_freq_spin.setValue(10000)
+        self.max_freq_spin.setToolTip("Highest center frequency of the sweep")
         form.addRow("Max Sweep Freq:", self.max_freq_spin)
 
         # Number of notches
         self.num_notches_spin = QSpinBox()
         self.num_notches_spin.setRange(1, 20)
         self.num_notches_spin.setValue(6)
+        self.num_notches_spin.setToolTip("How many parallel notch filters to use")
         form.addRow("Num Notches:", self.num_notches_spin)
 
         # Notch spacing ratio
@@ -71,29 +78,34 @@ class NoiseGeneratorDialog(QDialog):
         self.notch_spacing_spin.setDecimals(3)
         self.notch_spacing_spin.setSingleStep(0.01)
         self.notch_spacing_spin.setValue(1.1)
+        self.notch_spacing_spin.setToolTip("Spacing ratio between adjacent notches")
         form.addRow("Notch Spacing Ratio:", self.notch_spacing_spin)
 
         # Notch Q factor
         self.notch_q_spin = QSpinBox()
         self.notch_q_spin.setRange(1, 1000)
         self.notch_q_spin.setValue(100)
+        self.notch_q_spin.setToolTip("Q factor - higher values give narrower notches")
         form.addRow("Notch Q:", self.notch_q_spin)
 
         # Cascade count
         self.cascade_count_spin = QSpinBox()
         self.cascade_count_spin.setRange(1, 20)
         self.cascade_count_spin.setValue(3)
+        self.cascade_count_spin.setToolTip("Number of times each notch filter is applied")
         form.addRow("Cascade Count:", self.cascade_count_spin)
 
         # LFO phase offset
         self.lfo_phase_spin = QSpinBox()
         self.lfo_phase_spin.setRange(0, 360)
         self.lfo_phase_spin.setValue(90)
+        self.lfo_phase_spin.setToolTip("Phase offset for the right channel sweep")
         form.addRow("LFO Phase Offset (deg):", self.lfo_phase_spin)
 
         # Optional input file
         input_layout = QHBoxLayout()
         self.input_file_edit = QLineEdit()
+        self.input_file_edit.setToolTip("Optional file to process instead of generated noise")
         input_browse = QPushButton("Browse")
         input_browse.clicked.connect(self.browse_input_file)
         input_layout.addWidget(self.input_file_edit, 1)
