@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel,
                              QComboBox, QCheckBox, QSplitter, QGroupBox, QScrollArea,
                              QGridLayout, QPushButton, QTextEdit, QMessageBox,
-                             QSpacerItem, QSizePolicy, QLineEdit)
+                             QSpacerItem, QSizePolicy, QLineEdit, QInputDialog)
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
 import copy
@@ -386,6 +386,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val_to_set = str(int(current_value)) if isinstance(current_value, (int, float)) and int(current_value) in [1,2,3] else '1'
                     widget.setCurrentText(val_to_set)
                     widget.setMaximumWidth(100); row_layout.addWidget(widget, 0, 1, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                elif name == 'transition_curve' and param_type_hint == 'str':
+                    widget = QComboBox();
+                    widget.addItems(['linear', 'logarithmic', 'exponential', 'Custom...'])
+                    if isinstance(current_value, str) and current_value not in ['linear', 'logarithmic', 'exponential'] and current_value:
+                        widget.insertItem(widget.count() - 1, current_value)
+                        widget.setCurrentText(current_value)
+                    else:
+                        widget.setCurrentText(str(current_value) if current_value else 'linear')
+                    widget.currentIndexChanged.connect(lambda idx, w=widget: self._handle_custom_curve(w))
+                    widget.setEditable(False)
+                    widget.setMinimumWidth(120)
+                    row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
                 elif name == 'pathShape' and param_type_hint == 'str' and hasattr(sound_creator, 'VALID_SAM_PATHS'):
                     widget = QComboBox(); widget.addItems(sound_creator.VALID_SAM_PATHS)
                     val_to_set = str(current_value) if current_value in sound_creator.VALID_SAM_PATHS else sound_creator.VALID_SAM_PATHS[0]
@@ -697,6 +709,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         tmp = start_w.isChecked()
                         start_w.setChecked(end_w.isChecked())
                         end_w.setChecked(tmp)
+
+    def _handle_custom_curve(self, combo_box):
+        if combo_box.currentText() == 'Custom...':
+            text, ok = QInputDialog.getText(self, 'Custom Transition Formula',
+                                           'Enter custom transition formula:')
+            if ok and text.strip():
+                custom_text = text.strip()
+                if combo_box.findText(custom_text) == -1:
+                    combo_box.insertItem(combo_box.count() - 1, custom_text)
+                combo_box.setCurrentText(custom_text)
+            else:
+                combo_box.setCurrentIndex(0)
 
 
     # --- Helper methods for collecting UI data ---
