@@ -12,11 +12,12 @@ from .monaural_beat_stereo_amps import monaural_beat_stereo_amps, monaural_beat_
 from .qam_beat import qam_beat, qam_beat_transition
 from .hybrid_qam_monaural_beat import hybrid_qam_monaural_beat, hybrid_qam_monaural_beat_transition
 from .spatial_angle_modulation import (
-    spatial_angle_modulation, 
+    spatial_angle_modulation,
     spatial_angle_modulation_transition,
     spatial_angle_modulation_monaural_beat,
     spatial_angle_modulation_monaural_beat_transition
 )
+from .noise_flanger import generate_swept_notch_pink_sound
 
 __all__ = [
     'rhythmic_waveshaping',
@@ -39,4 +40,5 @@ __all__ = [
     'spatial_angle_modulation_transition', 
     'spatial_angle_modulation_monaural_beat',
     'spatial_angle_modulation_monaural_beat_transition',
+    'generate_swept_notch_pink_sound',
 ]
