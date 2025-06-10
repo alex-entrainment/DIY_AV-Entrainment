@@ -1,270 +1,299 @@
 import numpy as np
 import numba
 import soundfile as sf
+from scipy import signal
 
 # --- Parameters ---
 DEFAULT_SAMPLE_RATE = 44100  # Hz
-DEFAULT_LFO_FREQ = 1.0 / 8.0  # Hz, as per "approximate sweep rate is about 1/8 Hz"
+DEFAULT_LFO_FREQ = 1.0 / 12.0  # Hz, for 12-second period
 
 @numba.jit(nopython=True)
 def generate_pink_noise_samples(n_samples):
     """
-    Generates pink noise samples using Paul Kellett's "refined" method (a common interpretation).
-    This involves filtering white noise to achieve a 1/f spectral density.
-
-    Args:
-        n_samples (int): The number of pink noise samples to generate.
-
-    Returns:
-        np.ndarray: Array of pink noise samples, loosely in the range -1.0 to 1.0.
+    Generates pink noise samples with reduced high frequency content.
     """
     white = np.random.randn(n_samples).astype(np.float32)
     pink = np.empty_like(white)
 
-    # State variables for the pinking filter (poles)
+    # State variables for the pinking filter
     b0, b1, b2, b3, b4, b5 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
     for i in range(n_samples):
         w = white[i]
         
-        # Paul Kellett's "refined" method filter coefficients
+        # Paul Kellett's method
         b0 = 0.99886 * b0 + w * 0.0555179
         b1 = 0.99332 * b1 + w * 0.0750759
         b2 = 0.96900 * b2 + w * 0.1538520
         b3 = 0.86650 * b3 + w * 0.3104856
         b4 = 0.55000 * b4 + w * 0.5329522
-        b5 = -0.7616 * b5 - w * 0.0168980 
+        b5 = -0.7616 * b5 - w * 0.0168980
         
         pink_val = b0 + b1 + b2 + b3 + b4 + b5
-        # The sum of these poles gives the pink noise.
-        # An additional term (b6 = w * 0.115926) and direct white noise (w * 0.5362)
-        # are sometimes included in other variations. This version uses 6 poles.
+        pink[i] = pink_val * 0.11
         
-        pink[i] = pink_val * 0.11 # Scaler to keep amplitude reasonable (empirical)
-                                   # The sum of many random processes can lead to large values.
-                                   # This helps to roughly normalize the output.
     return pink
 
-@numba.jit(nopython=True)
-def _stereo_flanger_core(
-    input_left,
-    input_right,
-    sample_rate,
-    lfo_freq,
-    min_delay_samples,
-    max_delay_samples,
-    comb_mix_factor,
-    lfo_phase_offset_right_rad,
-):
-    """Numba-accelerated stereo flanger.
 
-    Args:
-        input_left (np.ndarray): Left channel input signal.
-        input_right (np.ndarray): Right channel input signal.
-        sample_rate (float): Audio sample rate in Hz.
-        lfo_freq (float): LFO frequency in Hz.
-        min_delay_samples (int): Minimum delay in samples.
-        max_delay_samples (int): Maximum delay in samples.
-        comb_mix_factor (float): Mix between dry and delayed signals (0-1).
-        lfo_phase_offset_right_rad (float): Phase offset for the right channel LFO.
-
-    Returns:
-        tuple: Left and right processed channels.
+def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
+                            min_freq=1000, max_freq=10000,
+                            num_notches=6, notch_spacing_ratio=1.1,
+                            notch_q=100, cascade_count=3,
+                            phase_offset=0):
     """
-    num_samples = len(input_left)
-    left_channel_out = np.empty(num_samples, dtype=np.float32)
-    right_channel_out = np.empty(num_samples, dtype=np.float32)
-
-    # Ensure the delay line is large enough for the maximum delay plus some margin
-    delay_line_size = int(max_delay_samples + 10)
-    if delay_line_size <= 0:
-        delay_line_size = int(sample_rate * 0.05)
-
-    # Initialize delay lines (circular buffers) for left and right channels.
-    # The same pink noise source is fed into two different comb filter paths.
-    delay_line_l = np.zeros(delay_line_size, dtype=np.float32)
-    delay_line_r = np.zeros(delay_line_size, dtype=np.float32)
-
-    # Current write position in the circular delay lines
-    write_ptr = 0 # Can use a single write pointer if pink_noise_input is mono
-                  # and written to both delay lines identically.
+    Apply very deep swept notch filters without harmonics.
     
-    # Time vector for LFO calculation
-    t_indices = np.arange(num_samples) # Using indices for direct use in loop
-
-    # Calculate LFO modulation range
-    delay_span = max_delay_samples - min_delay_samples
-    delay_center = (max_delay_samples + min_delay_samples) / 2.0
-
-    for i in range(num_samples):
-        current_sample_l = input_left[i]
-        current_sample_r = input_right[i]
-        time_sec = t_indices[i] / sample_rate # current time in seconds
-
-        # --- Left Channel LFO and Delay ---
-        # "The low-frequency sine wave is used directly to sweep the delay on one channel."
-        lfo_val_l = np.sin(2 * np.pi * lfo_freq * time_sec) # Ranges from -1 to 1
-        # Modulate delay: LFO maps its -1 to 1 range to [min_delay_samples, max_delay_samples]
-        current_delay_l_exact = delay_center + (lfo_val_l * delay_span / 2.0)
-        # Ensure delay is an integer and within buffer bounds
-        current_delay_l_samps = int(round(current_delay_l_exact))
-        if current_delay_l_samps < 1: current_delay_l_samps = 1
-        if current_delay_l_samps >= delay_line_size: current_delay_l_samps = delay_line_size - 1
+    Args:
+        input_signal: Input signal
+        sample_rate: Sample rate
+        lfo_freq: LFO frequency for sweep
+        min_freq: Minimum sweep frequency
+        max_freq: Maximum sweep frequency
+        num_notches: Number of parallel notches (not harmonics)
+        notch_spacing_ratio: Frequency ratio between adjacent notches
+        notch_q: Q factor (higher = narrower notch)
+        cascade_count: Number of times to apply each notch for depth
+        phase_offset: Phase offset for LFO
+    
+    Returns:
+        Filtered signal
+    """
+    n_samples = len(input_signal)
+    output = input_signal.copy()
+    
+    # Generate smooth LFO sweep using cosine for better continuity
+    t = np.arange(n_samples) / sample_rate
+    # Use cosine to ensure smooth periodic motion without flat spots
+    lfo = np.cos(2 * np.pi * lfo_freq * t + phase_offset)
+    
+    # Linear frequency sweep (not logarithmic) for smoother motion
+    center_freq = (min_freq + max_freq) / 2
+    freq_range = (max_freq - min_freq) / 2
+    base_freq_sweep = center_freq + freq_range * lfo
+    
+    # Process in overlapping blocks for smooth transitions
+    block_size = 4096
+    hop_size = block_size // 2  # 50% overlap
+    window = np.hanning(block_size)
+    
+    # Output accumulator for overlap-add
+    output_accumulator = np.zeros(n_samples + block_size)
+    window_accumulator = np.zeros(n_samples + block_size)
+    
+    # Process each block
+    num_blocks = (n_samples + hop_size - 1) // hop_size
+    
+    for block_idx in range(num_blocks):
+        start_idx = block_idx * hop_size
+        end_idx = min(start_idx + block_size, n_samples)
+        actual_block_size = end_idx - start_idx
         
-        # Read from left delay line (using integer indexing for simplicity with Numba)
-        # Interpolated reads would be smoother but add complexity.
-        read_ptr_l = (write_ptr - current_delay_l_samps + delay_line_size) % delay_line_size
-        delayed_sample_l = delay_line_l[read_ptr_l]
+        if actual_block_size < 100:  # Skip very small blocks
+            continue
         
-        # Comb filter: "averaged with an earlier sample from the delay line"
-        # output = (1-mix_factor)*current_pink_sample + mix_factor*delayed_sample
-        left_channel_out[i] = (1.0 - comb_mix_factor) * current_sample_l + comb_mix_factor * delayed_sample_l
-
-        # Write current sample to delay line
-        delay_line_l[write_ptr] = current_sample_l
-
-        # --- Right Channel LFO and Delay ---
-        # "The delay on the other channel is controlled by some mix of the sine and cosine waves."
-        # This is achieved by a phase-shifted sine wave.
-        lfo_val_r_arg = 2 * np.pi * lfo_freq * time_sec + lfo_phase_offset_right_rad
-        lfo_val_r = np.sin(lfo_val_r_arg) # Ranges from -1 to 1
-        current_delay_r_exact = delay_center + (lfo_val_r * delay_span / 2.0)
-        current_delay_r_samps = int(round(current_delay_r_exact))
-        if current_delay_r_samps < 1: current_delay_r_samps = 1
-        if current_delay_r_samps >= delay_line_size: current_delay_r_samps = delay_line_size - 1
-
-        read_ptr_r = (write_ptr - current_delay_r_samps + delay_line_size) % delay_line_size
-        delayed_sample_r = delay_line_r[read_ptr_r]
+        # Get input block
+        if actual_block_size < block_size:
+            # Pad the last block
+            block = np.zeros(block_size)
+            block[:actual_block_size] = output[start_idx:end_idx]
+        else:
+            block = output[start_idx:end_idx].copy()
         
-        right_channel_out[i] = (1.0 - comb_mix_factor) * current_sample_r + comb_mix_factor * delayed_sample_r
-
-        delay_line_r[write_ptr] = current_sample_r
-
-        # Advance write pointer for the next iteration
-        write_ptr = (write_ptr + 1) % delay_line_size
+        # Apply window
+        windowed_block = block * window[:len(block)]
         
-    return left_channel_out, right_channel_out
+        # Get center frequency for this block
+        block_center_idx = start_idx + actual_block_size // 2
+        if block_center_idx < len(base_freq_sweep):
+            center_freq_for_block = base_freq_sweep[block_center_idx]
+        else:
+            center_freq_for_block = base_freq_sweep[-1]
+        
+        # Apply multiple notches at different frequencies
+        filtered_block = windowed_block.copy()
+        
+        for notch_idx in range(num_notches):
+            # Calculate notch frequency (not harmonic, just spaced)
+            notch_freq = center_freq_for_block * (notch_spacing_ratio ** notch_idx)
+            
+            # Skip if too high
+            if notch_freq > sample_rate * 0.48:
+                continue
+            
+            # Apply the same notch multiple times for deeper effect
+            for cascade in range(cascade_count):
+                # Design narrow notch filter
+                try:
+                    b, a = signal.iirnotch(notch_freq, notch_q, sample_rate)
+                    # Apply zero-phase filtering for no phase distortion
+                    filtered_block = signal.filtfilt(b, a, filtered_block)
+                except:
+                    # Skip if filter design fails
+                    continue
+        
+        # Accumulate output with overlap-add
+        output_accumulator[start_idx:start_idx + len(filtered_block)] += filtered_block
+        window_accumulator[start_idx:start_idx + len(filtered_block)] += window[:len(filtered_block)]
+    
+    # Normalize by window accumulation
+    valid_idx = window_accumulator > 0.1
+    output_accumulator[valid_idx] /= window_accumulator[valid_idx]
+    
+    # Extract the output
+    output = output_accumulator[:n_samples]
+    
+    return output
 
 
-def generate_phased_pink_sound_file(
-    filename="phased_pink_sound.wav",
-    duration_seconds=100,
+def generate_swept_notch_pink_sound(
+    filename="swept_notch_pink_sound.wav",
+    duration_seconds=60,
     sample_rate=DEFAULT_SAMPLE_RATE,
     lfo_freq=DEFAULT_LFO_FREQ,
-    min_delay_ms=60,      # Minimum delay for comb filter sweep in milliseconds
-    max_delay_ms=80.0,     # Maximum delay for comb filter sweep in milliseconds
-    comb_mix_factor=0.5,   # Mix of direct vs. delayed sound in comb filter (0.0 to 1.0)
-                           # 0.5 implies an equal average.
-    lfo_right_phase_deg=90, # Phase offset for the right channel's LFO in degrees.
+    min_freq=1000,          # Minimum sweep frequency
+    max_freq=10000,         # Maximum sweep frequency
+    num_notches=6,          # Number of parallel notches
+    notch_spacing_ratio=1.1,  # Spacing between notches (1.1 = 10% apart)
+    notch_q=100,            # Q factor for notches
+    cascade_count=3,        # Apply each notch this many times
+    lfo_phase_offset_deg=90,  # Phase offset for right channel
     input_audio_path=None,
 ):
     """
-    Generates the flanging effect on either generated pink noise or an input
-    audio file.
-
-    Args:
-        filename (str): Name of the output WAV file.
-        duration_seconds (float): Duration of the generated noise when
-            ``input_audio_path`` is ``None``.
-        sample_rate (int): Audio sample rate in Hz.
-        lfo_freq (float): LFO frequency for sweeping the comb filter delays.
-        min_delay_ms (float): Minimum delay for the comb filter in milliseconds.
-        max_delay_ms (float): Maximum delay for the comb filter in milliseconds.
-        comb_mix_factor (float): The balance between the original pink noise and the
-                                 delayed version in the comb filter. 0.5 for equal mix.
-        lfo_right_phase_deg (float): Phase offset for the right channel's LFO.
-        input_audio_path (str or None): Optional path to an audio file to
-            process instead of generating pink noise.
+    Generates pink noise with deep swept notches (no harmonics).
     """
-    print(f"Starting Phased Pink Sound generation for '{filename}'...")
-    print(f"Parameters: Duration={duration_seconds}s, Sample Rate={sample_rate}Hz, LFO Freq={lfo_freq}Hz")
+    print(f"Starting Deep Swept Notch generation for '{filename}'...")
+    print(f"Parameters: Duration={duration_seconds}s, Sample Rate={sample_rate}Hz")
+    print(f"LFO Freq={lfo_freq}Hz (Period={1/lfo_freq:.1f}s)")
+    print(f"Frequency sweep: {min_freq}Hz to {max_freq}Hz")
+    print(f"Notches: {num_notches} parallel notches, Q={notch_q}")
+    print(f"Cascade count: {cascade_count} (for deeper notches)")
     
+    # Step 1: Generate or load input audio
     if input_audio_path is None:
         num_samples = int(duration_seconds * sample_rate)
-        print("Step 1/4: Generating base pink noise...")
-        input_left = generate_pink_noise_samples(num_samples)
-        input_right = input_left
+        print("Step 1/3: Generating base pink noise...")
+        pink_mono = generate_pink_noise_samples(num_samples)
+        
+        # Additional filtering for warmer sound
+        # Gentle high-frequency rolloff
+        b_warmth, a_warmth = signal.butter(1, 10000, btype='low', fs=sample_rate)
+        pink_mono = signal.filtfilt(b_warmth, a_warmth, pink_mono)
+        
+        # Gentle low-cut to remove rumble
+        b_hpf, a_hpf = signal.butter(2, 50, btype='high', fs=sample_rate)
+        pink_mono = signal.filtfilt(b_hpf, a_hpf, pink_mono)
+        
+        # Normalize
+        pink_mono = pink_mono / (np.max(np.abs(pink_mono)) + 1e-8) * 0.8
+        input_left = pink_mono.copy()
+        input_right = pink_mono.copy()
     else:
-        print(f"Step 1/4: Loading input audio from '{input_audio_path}'...")
+        print(f"Step 1/3: Loading input audio from '{input_audio_path}'...")
         data, in_sr = sf.read(input_audio_path, always_2d=True)
         if in_sr != sample_rate:
-            import librosa
-            data = librosa.resample(data.T, orig_sr=in_sr, target_sr=sample_rate, axis=1).T
+            # Resample if needed
+            num_samples = int(len(data) * sample_rate / in_sr)
+            data_resampled = np.zeros((num_samples, data.shape[1]))
+            for ch in range(data.shape[1]):
+                data_resampled[:, ch] = signal.resample(data[:, ch], num_samples)
+            data = data_resampled
+        
         input_left = data[:, 0]
         if data.shape[1] > 1:
             input_right = data[:, 1]
         else:
-            input_right = input_left
-        num_samples = len(input_left)
+            input_right = input_left.copy()
+        
+        # Normalize
+        max_val = max(np.max(np.abs(input_left)), np.max(np.abs(input_right)))
+        if max_val > 0:
+            input_left = input_left / max_val * 0.8
+            input_right = input_right / max_val * 0.8
     
-
-    # Step 2: Prepare parameters for the Numba core function
-    print("Step 2/4: Preparing parameters for core processing...")
-    min_delay_samps = int((min_delay_ms / 1000.0) * sample_rate)
-    max_delay_samps = int((max_delay_ms / 1000.0) * sample_rate)
+    # Step 2: Apply deep swept notches
+    print("Step 2/3: Applying deep swept notches...")
     
-    # Ensure valid delay ranges
-    if min_delay_samps < 1: 
-        print(f"Warning: min_delay_ms ({min_delay_ms}ms) is too short for current sample rate. Setting to 1 sample.")
-        min_delay_samps = 1
-    if max_delay_samps <= min_delay_samps:
-        max_delay_samps = min_delay_samps + int(0.01 * sample_rate) # Ensure a sweep range of at least 10ms
-        print(f"Warning: max_delay_ms was less than or equal to min_delay_ms. Adjusted max_delay_samps to {max_delay_samps}.")
-    
-    lfo_right_phase_rad = np.deg2rad(lfo_right_phase_deg)
-    
-    print(f"  Comb filter delay range: {min_delay_samps} samples to {max_delay_samps} samples.")
-    print(f"  LFO for right channel phase offset: {lfo_right_phase_deg} degrees ({lfo_right_phase_rad:.2f} radians).")
-
-    # Step 3: Call the core Numba-JIT compiled generator
-    print("Step 3/4: Applying phased comb filtering (Numba accelerated)...")
-    left_channel_output, right_channel_output = _stereo_flanger_core(
-        input_left,
-        input_right,
-        float(sample_rate),
+    # Left channel
+    print("  Processing left channel...")
+    left_output = apply_deep_swept_notches(
+        input_left, 
+        sample_rate, 
         lfo_freq,
-        min_delay_samps,
-        max_delay_samps,
-        comb_mix_factor,
-        lfo_right_phase_rad,
+        min_freq=min_freq,
+        max_freq=max_freq,
+        num_notches=num_notches,
+        notch_spacing_ratio=notch_spacing_ratio,
+        notch_q=notch_q,
+        cascade_count=cascade_count,
+        phase_offset=0
     )
-
-    # Step 4: Combine into stereo and normalize for output
-    print("Step 4/4: Normalizing and saving audio...")
-    stereo_signal = np.stack((left_channel_output, right_channel_output), axis=-1)
     
-    # Normalize the final stereo output to prevent clipping (max absolute value to +/- 1.0)
-    max_abs_final = np.max(np.abs(stereo_signal))
-    if max_abs_final == 0:
-        print("Warning: Generated signal is completely silent.")
-    elif max_abs_final > 1.0 : # Only normalize if values exceed the standard -1 to 1 range
-         stereo_signal /= max_abs_final
-    # Optionally, apply a final gain reduction if desired, e.g., stereo_signal *= 0.8
-
-    # Save to WAV file
+    # Right channel with phase offset
+    print("  Processing right channel...")
+    phase_offset_rad = np.deg2rad(lfo_phase_offset_deg)
+    right_output = apply_deep_swept_notches(
+        input_right,
+        sample_rate,
+        lfo_freq,
+        min_freq=min_freq,
+        max_freq=max_freq,
+        num_notches=num_notches,
+        notch_spacing_ratio=notch_spacing_ratio,
+        notch_q=notch_q,
+        cascade_count=cascade_count,
+        phase_offset=phase_offset_rad
+    )
+    
+    # Step 3: Final processing and save
+    print("Step 3/3: Final processing and saving...")
+    
+    # Combine channels
+    stereo_output = np.stack((left_output, right_output), axis=-1)
+    
+    # Final gentle compression to even out levels
+    # Soft clipping
+    stereo_output = np.tanh(stereo_output * 0.7) / 0.7
+    
+    # Final normalization
+    max_val = np.max(np.abs(stereo_output))
+    if max_val > 0:
+        stereo_output = stereo_output / max_val * 0.95
+    
+    # Save
     try:
-        sf.write(filename, stereo_signal, sample_rate, subtype='PCM_16') # 16-bit PCM
-        print(f"Successfully generated and saved Phased Pink Sound to '{filename}'")
+        sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
+        print(f"Successfully generated and saved to '{filename}'")
+        print("\nThe notches should now:")
+        print("- Be very deep due to cascading")
+        print("- Sweep smoothly without flat spots")
+        print("- Have NO harmonic relationship (no 2x, 3x, etc.)")
+        print("\nTo adjust:")
+        print("  - cascade_count: More cascades = deeper notches (try 4-5)")
+        print("  - notch_q: Higher Q = narrower notches (try 150-200)")
+        print("  - notch_spacing_ratio: 1.05-1.2 for different spacing")
     except Exception as e:
         print(f"Error saving audio file: {e}")
-        print("Please ensure you have 'soundfile' and its dependencies (like libsndfile) installed.")
-        print("You can install it via pip: pip install soundfile")
+
 
 # --- Main execution ---
 if __name__ == '__main__':
     
     output_filename = "monroe_phased_pink_sound.wav"
-    duration = 3600# seconds, for a good sample
+    duration = 4000  # 2 minutes
     
-    generate_phased_pink_sound_file(
+    # Generate with smooth swept notches (no harmonics)
+    generate_swept_notch_pink_sound(
         filename=output_filename,
         duration_seconds=duration,
-        sample_rate=44100,         # Standard CD quality sample rate
-        lfo_freq=1.0/8.0,          # As per patent: "approximate sweep rate is about 1/8 Hz"
-        min_delay_ms=0.5,          # Typical short delay for flanging/phasing (e.g., 1-5 ms)
-        max_delay_ms=10,         # Typical longer delay for phasing (e.g., 10-25 ms)
-        comb_mix_factor=0.75,       # Slightly more delayed signal, adjust to taste (0.5 is equal)
-        lfo_right_phase_deg=90   # 90 degrees creates a quadrature LFO pair (sine/cosine like)
-                                   # for strong stereo imaging.
+        sample_rate=44100,
+        lfo_freq=1.0/12.0,         # 12-second period
+        min_freq=1000,             # 1 kHz minimum
+        max_freq=10000,            # 10 kHz maximum  
+        num_notches=1,             # 6 parallel notches
+        notch_spacing_ratio=1.25,   # 10% spacing between notches
+        notch_q=25,               # Very narrow notches
+        cascade_count=20,           # Apply 3 times for depth
+        lfo_phase_offset_deg=90,   # 90-degree phase offset
+        input_audio_path=None,
     )
-
