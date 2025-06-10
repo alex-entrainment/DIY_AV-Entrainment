@@ -102,6 +102,15 @@ class NoiseGeneratorDialog(QDialog):
         self.lfo_phase_spin.setToolTip("Phase offset for the right channel sweep")
         form.addRow("LFO Phase Offset (deg):", self.lfo_phase_spin)
 
+        # Intra-channel offset
+        self.intra_phase_spin = QSpinBox()
+        self.intra_phase_spin.setRange(0, 360)
+        self.intra_phase_spin.setValue(0)
+        self.intra_phase_spin.setToolTip(
+            "Phase offset between two swept filters in each channel"
+        )
+        form.addRow("Intra-Phase Offset (deg):", self.intra_phase_spin)
+
         # Optional input file
         input_layout = QHBoxLayout()
         self.input_file_edit = QLineEdit()
@@ -144,6 +153,7 @@ class NoiseGeneratorDialog(QDialog):
                 notch_q=int(self.notch_q_spin.value()),
                 cascade_count=int(self.cascade_count_spin.value()),
                 lfo_phase_offset_deg=int(self.lfo_phase_spin.value()),
+                intra_phase_offset_deg=int(self.intra_phase_spin.value()),
                 input_audio_path=input_path,
             )
             QMessageBox.information(self, "Success", f"Generated {filename}")
