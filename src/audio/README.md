@@ -153,6 +153,14 @@ move from their start settings to the final ones. Supported options are:
 - `logarithmic` – fast start that slows near the end.
 - `exponential` – slow start that accelerates toward the end.
 
+Any other string will be evaluated as a Python expression using `alpha` as the
+linear ramp from 0 to 1. `numpy` is available via `np` and `math` functions may
+be used as well. For example:
+
+```python
+transition_curve="np.sin(alpha * np.pi / 2)"
+```
+
 If omitted, `linear` is used.
 
 ---
