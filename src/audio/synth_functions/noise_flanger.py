@@ -35,6 +35,15 @@ def generate_pink_noise_samples(n_samples):
     return pink
 
 
+@numba.jit(nopython=True)
+def generate_brown_noise_samples(n_samples):
+    """Generate brown (red) noise samples."""
+    white = np.random.randn(n_samples).astype(np.float32)
+    brown = np.cumsum(white)
+    max_abs = np.max(np.abs(brown)) + 1e-8
+    return (brown / max_abs).astype(np.float32)
+
+
 def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
                                            min_freq=1000, max_freq=10000,
                                            num_notches=6, notch_spacing_ratio=1.1,
@@ -202,9 +211,16 @@ def generate_swept_notch_pink_sound(
     lfo_phase_offset_deg=90,  # Phase offset for right channel
     intra_phase_offset_deg=0,  # Optional second filter phase offset per channel
     input_audio_path=None,
+    noise_type="pink",
 ):
     """
-    Generates pink noise with deep swept notches (no harmonics).
+    Generates noise with deep swept notches (no harmonics).
+    
+    Parameters
+    ----------
+    noise_type : str, optional
+        Base noise type to generate when ``input_audio_path`` is ``None``.
+        Supported values are ``"pink"`` and ``"brown"``.
     """
     print(f"Starting Deep Swept Notch generation for '{filename}'...")
     print(f"Parameters: Duration={duration_seconds}s, Sample Rate={sample_rate}Hz")
@@ -218,22 +234,25 @@ def generate_swept_notch_pink_sound(
     # Step 1: Generate or load input audio
     if input_audio_path is None:
         num_samples = int(duration_seconds * sample_rate)
-        print("Step 1/3: Generating base pink noise...")
-        pink_mono = generate_pink_noise_samples(num_samples)
+        print(f"Step 1/3: Generating base {noise_type} noise...")
+        if noise_type.lower() == "brown":
+            noise_mono = generate_brown_noise_samples(num_samples)
+        else:
+            noise_mono = generate_pink_noise_samples(num_samples)
         
         # Additional filtering for warmer sound
         # Gentle high-frequency rolloff
         b_warmth, a_warmth = signal.butter(1, 10000, btype='low', fs=sample_rate)
-        pink_mono = signal.filtfilt(b_warmth, a_warmth, pink_mono)
+        noise_mono = signal.filtfilt(b_warmth, a_warmth, noise_mono)
         
         # Gentle low-cut to remove rumble
         b_hpf, a_hpf = signal.butter(2, 50, btype='high', fs=sample_rate)
-        pink_mono = signal.filtfilt(b_hpf, a_hpf, pink_mono)
+        noise_mono = signal.filtfilt(b_hpf, a_hpf, noise_mono)
         
         # Normalize
-        pink_mono = pink_mono / (np.max(np.abs(pink_mono)) + 1e-8) * 0.8
-        input_left = pink_mono.copy()
-        input_right = pink_mono.copy()
+        noise_mono = noise_mono / (np.max(np.abs(noise_mono)) + 1e-8) * 0.8
+        input_left = noise_mono.copy()
+        input_right = noise_mono.copy()
     else:
         print(f"Step 1/3: Loading input audio from '{input_audio_path}'...")
         data, in_sr = sf.read(input_audio_path, always_2d=True)

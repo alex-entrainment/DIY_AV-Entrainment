@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QLineEdit,
     QPushButton, QFileDialog, QMessageBox, QLabel, QDoubleSpinBox,
-    QSpinBox
+    QSpinBox, QComboBox
 )
 from PyQt5.QtCore import Qt
 
@@ -21,7 +21,7 @@ class NoiseGeneratorDialog(QDialog):
 
         # Output file
         file_layout = QHBoxLayout()
-        self.file_edit = QLineEdit("swept_notch_pink_sound.wav")
+        self.file_edit = QLineEdit("swept_notch_noise.wav")
         self.file_edit.setToolTip("Where to save the generated audio file")
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_file)
@@ -42,6 +42,12 @@ class NoiseGeneratorDialog(QDialog):
         self.sample_rate_spin.setValue(44100)
         self.sample_rate_spin.setToolTip("Samples per second of the output file")
         form.addRow("Sample Rate:", self.sample_rate_spin)
+
+        # Noise type
+        self.noise_type_combo = QComboBox()
+        self.noise_type_combo.addItems(["Pink", "Brown"])
+        self.noise_type_combo.setToolTip("Base noise colour to generate")
+        form.addRow("Noise Type:", self.noise_type_combo)
 
         # LFO freq
         self.lfo_spin = QDoubleSpinBox()
@@ -129,7 +135,7 @@ class NoiseGeneratorDialog(QDialog):
             self.input_file_edit.setText(path)
 
     def on_generate(self):
-        filename = self.file_edit.text() or "swept_notch_pink_sound.wav"
+        filename = self.file_edit.text() or "swept_notch_noise.wav"
         input_path = self.input_file_edit.text() or None
         try:
             generate_swept_notch_pink_sound(
@@ -145,6 +151,7 @@ class NoiseGeneratorDialog(QDialog):
                 cascade_count=int(self.cascade_count_spin.value()),
                 lfo_phase_offset_deg=int(self.lfo_phase_spin.value()),
                 input_audio_path=input_path,
+                noise_type=self.noise_type_combo.currentText().lower(),
             )
             QMessageBox.information(self, "Success", f"Generated {filename}")
         except Exception as exc:
