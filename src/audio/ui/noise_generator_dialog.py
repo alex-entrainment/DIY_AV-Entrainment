@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-from audio.synth_functions.noise_flanger import generate_swept_notch_pink_sound
+from synth_functions.noise_flanger import generate_swept_notch_pink_sound
 
 
 class NoiseGeneratorDialog(QDialog):
