@@ -35,13 +35,14 @@ def generate_pink_noise_samples(n_samples):
     return pink
 
 
-def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
-                            min_freq=1000, max_freq=10000,
-                            num_notches=6, notch_spacing_ratio=1.1,
-                            notch_q=100, cascade_count=3,
-                            phase_offset=0):
+def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
+                                           min_freq=1000, max_freq=10000,
+                                           num_notches=6, notch_spacing_ratio=1.1,
+                                           notch_q=100, cascade_count=3,
+                                           phase_offset=0):
     """
-    Apply very deep swept notch filters without harmonics.
+    Apply very deep swept notch filters without harmonics for a single LFO
+    phase.
     
     Args:
         input_signal: Input signal
@@ -141,7 +142,49 @@ def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
     
     # Extract the output
     output = output_accumulator[:n_samples]
-    
+
+    return output
+
+
+def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
+                            min_freq=1000, max_freq=10000,
+                            num_notches=6, notch_spacing_ratio=1.1,
+                            notch_q=100, cascade_count=3,
+                            phase_offset=0, extra_phase_offset=0.0):
+    """Apply deep swept notch filters optionally using a second phase offset.
+
+    Parameters match :func:`_apply_deep_swept_notches_single_phase` with the
+    addition of ``extra_phase_offset`` which, when non-zero, applies a second
+    set of notches using ``phase_offset + extra_phase_offset``.
+    """
+
+    output = _apply_deep_swept_notches_single_phase(
+        input_signal,
+        sample_rate,
+        lfo_freq,
+        min_freq=min_freq,
+        max_freq=max_freq,
+        num_notches=num_notches,
+        notch_spacing_ratio=notch_spacing_ratio,
+        notch_q=notch_q,
+        cascade_count=cascade_count,
+        phase_offset=phase_offset,
+    )
+
+    if extra_phase_offset:
+        output = _apply_deep_swept_notches_single_phase(
+            output,
+            sample_rate,
+            lfo_freq,
+            min_freq=min_freq,
+            max_freq=max_freq,
+            num_notches=num_notches,
+            notch_spacing_ratio=notch_spacing_ratio,
+            notch_q=notch_q,
+            cascade_count=cascade_count,
+            phase_offset=phase_offset + extra_phase_offset,
+        )
+
     return output
 
 
@@ -157,6 +200,7 @@ def generate_swept_notch_pink_sound(
     notch_q=100,            # Q factor for notches
     cascade_count=3,        # Apply each notch this many times
     lfo_phase_offset_deg=90,  # Phase offset for right channel
+    intra_phase_offset_deg=0,  # Optional second filter phase offset per channel
     input_audio_path=None,
 ):
     """
@@ -168,6 +212,8 @@ def generate_swept_notch_pink_sound(
     print(f"Frequency sweep: {min_freq}Hz to {max_freq}Hz")
     print(f"Notches: {num_notches} parallel notches, Q={notch_q}")
     print(f"Cascade count: {cascade_count} (for deeper notches)")
+    if intra_phase_offset_deg:
+        print(f"Intra-channel phase offset: {intra_phase_offset_deg} deg")
     
     # Step 1: Generate or load input audio
     if input_audio_path is None:
@@ -216,9 +262,11 @@ def generate_swept_notch_pink_sound(
     
     # Left channel
     print("  Processing left channel...")
+    intra_phase_rad = np.deg2rad(intra_phase_offset_deg)
+
     left_output = apply_deep_swept_notches(
-        input_left, 
-        sample_rate, 
+        input_left,
+        sample_rate,
         lfo_freq,
         min_freq=min_freq,
         max_freq=max_freq,
@@ -226,7 +274,8 @@ def generate_swept_notch_pink_sound(
         notch_spacing_ratio=notch_spacing_ratio,
         notch_q=notch_q,
         cascade_count=cascade_count,
-        phase_offset=0
+        phase_offset=0,
+        extra_phase_offset=intra_phase_rad
     )
     
     # Right channel with phase offset
@@ -242,7 +291,8 @@ def generate_swept_notch_pink_sound(
         notch_spacing_ratio=notch_spacing_ratio,
         notch_q=notch_q,
         cascade_count=cascade_count,
-        phase_offset=phase_offset_rad
+        phase_offset=phase_offset_rad,
+        extra_phase_offset=intra_phase_rad
     )
     
     # Step 3: Final processing and save
@@ -295,5 +345,6 @@ if __name__ == '__main__':
         notch_q=25,               # Very narrow notches
         cascade_count=20,           # Apply 3 times for depth
         lfo_phase_offset_deg=90,   # 90-degree phase offset
+        intra_phase_offset_deg=0,
         input_audio_path=None,
     )
