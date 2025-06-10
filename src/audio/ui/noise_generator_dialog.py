@@ -59,6 +59,47 @@ class NoiseGeneratorDialog(QDialog):
         self.max_freq_spin.setValue(10000)
         form.addRow("Max Sweep Freq:", self.max_freq_spin)
 
+        # Number of notches
+        self.num_notches_spin = QSpinBox()
+        self.num_notches_spin.setRange(1, 20)
+        self.num_notches_spin.setValue(6)
+        form.addRow("Num Notches:", self.num_notches_spin)
+
+        # Notch spacing ratio
+        self.notch_spacing_spin = QDoubleSpinBox()
+        self.notch_spacing_spin.setRange(1.0, 2.0)
+        self.notch_spacing_spin.setDecimals(3)
+        self.notch_spacing_spin.setSingleStep(0.01)
+        self.notch_spacing_spin.setValue(1.1)
+        form.addRow("Notch Spacing Ratio:", self.notch_spacing_spin)
+
+        # Notch Q factor
+        self.notch_q_spin = QSpinBox()
+        self.notch_q_spin.setRange(1, 1000)
+        self.notch_q_spin.setValue(100)
+        form.addRow("Notch Q:", self.notch_q_spin)
+
+        # Cascade count
+        self.cascade_count_spin = QSpinBox()
+        self.cascade_count_spin.setRange(1, 20)
+        self.cascade_count_spin.setValue(3)
+        form.addRow("Cascade Count:", self.cascade_count_spin)
+
+        # LFO phase offset
+        self.lfo_phase_spin = QSpinBox()
+        self.lfo_phase_spin.setRange(0, 360)
+        self.lfo_phase_spin.setValue(90)
+        form.addRow("LFO Phase Offset (deg):", self.lfo_phase_spin)
+
+        # Optional input file
+        input_layout = QHBoxLayout()
+        self.input_file_edit = QLineEdit()
+        input_browse = QPushButton("Browse")
+        input_browse.clicked.connect(self.browse_input_file)
+        input_layout.addWidget(self.input_file_edit, 1)
+        input_layout.addWidget(input_browse)
+        form.addRow("Input Audio (optional):", input_layout)
+
         layout.addLayout(form)
 
         self.generate_btn = QPushButton("Generate")
@@ -70,8 +111,14 @@ class NoiseGeneratorDialog(QDialog):
         if path:
             self.file_edit.setText(path)
 
+    def browse_input_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load Audio", "", "Audio Files (*.wav *.flac *.mp3)")
+        if path:
+            self.input_file_edit.setText(path)
+
     def on_generate(self):
         filename = self.file_edit.text() or "swept_notch_pink_sound.wav"
+        input_path = self.input_file_edit.text() or None
         try:
             generate_swept_notch_pink_sound(
                 filename=filename,
@@ -80,6 +127,12 @@ class NoiseGeneratorDialog(QDialog):
                 lfo_freq=float(self.lfo_spin.value()),
                 min_freq=int(self.min_freq_spin.value()),
                 max_freq=int(self.max_freq_spin.value()),
+                num_notches=int(self.num_notches_spin.value()),
+                notch_spacing_ratio=float(self.notch_spacing_spin.value()),
+                notch_q=int(self.notch_q_spin.value()),
+                cascade_count=int(self.cascade_count_spin.value()),
+                lfo_phase_offset_deg=int(self.lfo_phase_spin.value()),
+                input_audio_path=input_path,
             )
             QMessageBox.information(self, "Success", f"Generated {filename}")
         except Exception as exc:
