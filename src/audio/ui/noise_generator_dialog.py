@@ -80,7 +80,7 @@ class NoiseGeneratorDialog(QDialog):
         # Number of notches
         self.num_notches_spin = QSpinBox()
         self.num_notches_spin.setRange(1, 20)
-        self.num_notches_spin.setValue(6)
+        self.num_notches_spin.setValue(1)
         self.num_notches_spin.setToolTip("How many parallel notch filters to use")
         form.addRow("Num Notches:", self.num_notches_spin)
 
@@ -89,28 +89,28 @@ class NoiseGeneratorDialog(QDialog):
         self.notch_spacing_spin.setRange(1.0, 2.0)
         self.notch_spacing_spin.setDecimals(3)
         self.notch_spacing_spin.setSingleStep(0.01)
-        self.notch_spacing_spin.setValue(1.1)
+        self.notch_spacing_spin.setValue(1.25)
         self.notch_spacing_spin.setToolTip("Spacing ratio between adjacent notches")
         form.addRow("Notch Spacing Ratio:", self.notch_spacing_spin)
 
         # Notch Q factor
         self.notch_q_spin = QSpinBox()
         self.notch_q_spin.setRange(1, 1000)
-        self.notch_q_spin.setValue(100)
+        self.notch_q_spin.setValue(10)
         self.notch_q_spin.setToolTip("Q factor - higher values give narrower notches")
         form.addRow("Notch Q:", self.notch_q_spin)
 
         # Cascade count
         self.cascade_count_spin = QSpinBox()
         self.cascade_count_spin.setRange(1, 20)
-        self.cascade_count_spin.setValue(3)
+        self.cascade_count_spin.setValue(5)
         self.cascade_count_spin.setToolTip("Number of times each notch filter is applied")
         form.addRow("Cascade Count:", self.cascade_count_spin)
 
         # LFO phase offset
         self.lfo_phase_spin = QSpinBox()
         self.lfo_phase_spin.setRange(0, 360)
-        self.lfo_phase_spin.setValue(90)
+        self.lfo_phase_spin.setValue(0)
         self.lfo_phase_spin.setToolTip("Phase offset for the right channel sweep")
         form.addRow("LFO Phase Offset (deg):", self.lfo_phase_spin)
 
