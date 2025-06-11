@@ -47,6 +47,7 @@ from preferences import Preferences
 from settings_file import load_settings, save_settings
 from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog
+from ui.frequency_tester_dialog import FrequencyTesterDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -239,6 +240,10 @@ class TrackEditorApp(QMainWindow):
         dialog = NoiseGeneratorDialog(self)
         dialog.exec_()
 
+    def open_frequency_tester(self):
+        dialog = FrequencyTesterDialog(self, self.prefs)
+        dialog.exec_()
+
     def apply_preferences(self):
         app = QApplication.instance()
         if self.prefs.font_family or self.prefs.font_size:
@@ -278,6 +283,9 @@ class TrackEditorApp(QMainWindow):
         self.open_noise_button = QPushButton("Open Noise Generator")
         self.open_noise_button.clicked.connect(self.open_noise_generator)
         file_ops_layout.addWidget(self.open_noise_button)
+        self.open_freq_tester_button = QPushButton("Frequency Tester")
+        self.open_freq_tester_button.clicked.connect(self.open_frequency_tester)
+        file_ops_layout.addWidget(self.open_freq_tester_button)
         file_ops_layout.addStretch(1)
         control_layout.addWidget(file_ops_groupbox)
 
