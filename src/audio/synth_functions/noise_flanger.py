@@ -50,10 +50,16 @@ def generate_brown_noise_samples(n_samples):
     return (brown / max_abs).astype(np.float32)
 
 
-def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
-                                           filter_sweeps,
-                                           notch_q=30, cascade_count=10,
-                                           phase_offset=90, lfo_waveform='sine'):
+def _apply_deep_swept_notches_single_phase(
+    input_signal,
+    sample_rate,
+    lfo_freq,
+    filter_sweeps,
+    notch_q=30,
+    cascade_count=10,
+    phase_offset=90,
+    lfo_waveform='sine',
+):
     """
     Apply one or more deep swept notch filters for a single LFO phase.
     This function is the core processing unit.
@@ -77,6 +83,18 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
         center_freq = (min_freq + max_freq) / 2
         freq_range = (max_freq - min_freq) / 2
         base_freq_sweeps.append(center_freq + freq_range * lfo)
+
+    # Normalize parameter shapes
+    if isinstance(notch_q, (int, float)):
+        notch_qs = [float(notch_q)] * len(filter_sweeps)
+    else:
+        notch_qs = list(notch_q)
+    if isinstance(cascade_count, int):
+        cascade_counts = [int(cascade_count)] * len(filter_sweeps)
+    else:
+        cascade_counts = list(cascade_count)
+    if len(notch_qs) != len(filter_sweeps) or len(cascade_counts) != len(filter_sweeps):
+        raise ValueError("Length of notch_q and cascade_count must match number of filter_sweeps")
 
     # Process in overlapping blocks for smooth transitions (Overlap-Add method)
     block_size = 4096
@@ -105,15 +123,17 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
         block_center_idx = start_idx + actual_block_size // 2
 
         # --- Apply each independent notch filter sweep ---
-        for sweep in base_freq_sweeps:
+        for sweep_idx, sweep in enumerate(base_freq_sweeps):
             notch_freq = sweep[block_center_idx]
-            
+
             if notch_freq >= sample_rate * 0.49:
                 continue
-            
-            for _ in range(cascade_count):
+
+            q_val = notch_qs[sweep_idx]
+            cascades = cascade_counts[sweep_idx]
+            for _ in range(cascades):
                 try:
-                    b, a = signal.iirnotch(notch_freq, notch_q, sample_rate)
+                    b, a = signal.iirnotch(notch_freq, q_val, sample_rate)
                     # filtfilt can produce extremely loud transients with high Q
                     # settings. Using lfilter prevents those spikes at the cost
                     # of phase shifts which are not perceptible in this use case.
@@ -130,23 +150,41 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
     return output_accumulator[:n_samples]
 
 
-def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
-                            filter_sweeps,
-                            notch_q=30, cascade_count=10,
-                            phase_offset=0, extra_phase_offset=0.0,
-                            lfo_waveform='sine'):
+def apply_deep_swept_notches(
+    input_signal,
+    sample_rate,
+    lfo_freq,
+    filter_sweeps,
+    notch_q=30,
+    cascade_count=10,
+    phase_offset=0,
+    extra_phase_offset=0.0,
+    lfo_waveform='sine',
+):
     """
     Wrapper to apply deep swept notch filters.
     """
     output = _apply_deep_swept_notches_single_phase(
-        input_signal, sample_rate, lfo_freq, filter_sweeps,
-        notch_q, cascade_count, phase_offset, lfo_waveform
+        input_signal,
+        sample_rate,
+        lfo_freq,
+        filter_sweeps,
+        notch_q,
+        cascade_count,
+        phase_offset,
+        lfo_waveform,
     )
 
     if extra_phase_offset:
         output = _apply_deep_swept_notches_single_phase(
-            output, sample_rate, lfo_freq, filter_sweeps,
-            notch_q, cascade_count, phase_offset + extra_phase_offset, lfo_waveform
+            output,
+            sample_rate,
+            lfo_freq,
+            filter_sweeps,
+            notch_q,
+            cascade_count,
+            phase_offset + extra_phase_offset,
+            lfo_waveform,
         )
 
     return output
@@ -175,9 +213,29 @@ def generate_swept_notch_pink_sound(
         A list defining the frequency sweeps. Each tuple should be
         (min_freq, max_freq) for one notch.
         Example: [(500, 1000), (1850, 3350)]
+    notch_q : int, float, or sequence, optional
+        Q factor(s) for the notch filters. Provide either a single value or
+        one value per sweep.
+    cascade_count : int or sequence, optional
+        Number of cascaded filters for each sweep. Provide a single value or
+        one value per sweep.
     """
     if filter_sweeps is None:
-        filter_sweeps = [(1000, 10000)] # Default to old behavior
+        filter_sweeps = [(1000, 10000)]  # Default to old behavior
+
+    # Normalize parameter shapes
+    if isinstance(notch_q, (int, float)):
+        notch_q = [float(notch_q)] * len(filter_sweeps)
+    else:
+        notch_q = list(notch_q)
+    if isinstance(cascade_count, int):
+        cascade_count = [int(cascade_count)] * len(filter_sweeps)
+    else:
+        cascade_count = list(cascade_count)
+    if len(notch_q) != len(filter_sweeps) or len(cascade_count) != len(filter_sweeps):
+        raise ValueError(
+            "Length of notch_q and cascade_count must match number of filter_sweeps"
+        )
 
     print(f"Starting Deep Swept Notch generation for '{filename}'...")
     print(f"LFO Waveform: {lfo_waveform}, Freq: {lfo_freq:.3f} Hz")
@@ -220,13 +278,27 @@ def generate_swept_notch_pink_sound(
 
     tasks = [
         delayed(apply_deep_swept_notches)(
-            input_signal, sample_rate, lfo_freq, filter_sweeps,
-            notch_q, cascade_count, 0, intra_phase_rad, lfo_waveform
+            input_signal,
+            sample_rate,
+            lfo_freq,
+            filter_sweeps,
+            notch_q,
+            cascade_count,
+            0,
+            intra_phase_rad,
+            lfo_waveform,
         ),
         delayed(apply_deep_swept_notches)(
-            input_signal, sample_rate, lfo_freq, filter_sweeps,
-            notch_q, cascade_count, right_channel_phase_offset_rad, intra_phase_rad, lfo_waveform
-        )
+            input_signal,
+            sample_rate,
+            lfo_freq,
+            filter_sweeps,
+            notch_q,
+            cascade_count,
+            right_channel_phase_offset_rad,
+            intra_phase_rad,
+            lfo_waveform,
+        ),
     ]
 
     with Parallel(n_jobs=2, backend='loky') as parallel:
