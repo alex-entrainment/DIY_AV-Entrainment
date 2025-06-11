@@ -5,10 +5,23 @@ import soundfile as sf
 from scipy import signal
 from joblib import Parallel, delayed
 import time
+import tempfile
 
 # --- Parameters ---
 DEFAULT_SAMPLE_RATE = 44100  # Hz
 DEFAULT_LFO_FREQ = 1.0 / 12.0  # Hz, for 12-second period
+
+
+def _compute_rms_memmap(arr, chunk_size=1_000_000):
+    """Compute RMS of a potentially memory-mapped array in chunks."""
+    n = len(arr)
+    if n == 0:
+        return 0.0
+    sq_sum = 0.0
+    for i in range(0, n, chunk_size):
+        chunk = arr[i : i + chunk_size]
+        sq_sum += np.sum(chunk.astype(np.float64) ** 2)
+    return np.sqrt(sq_sum / n)
 
 @numba.jit(nopython=True)
 def generate_pink_noise_samples(n_samples):
@@ -59,13 +72,20 @@ def _apply_deep_swept_notches_single_phase(
     cascade_count=10,
     phase_offset=90,
     lfo_waveform='sine',
+    use_memmap=False,
 ):
     """
     Apply one or more deep swept notch filters for a single LFO phase.
     This function is the core processing unit.
     """
     n_samples = len(input_signal)
-    output = input_signal.copy()
+
+    if use_memmap:
+        tmp_output = tempfile.NamedTemporaryFile(delete=False)
+        output = np.memmap(tmp_output.name, dtype=np.float32, mode='w+', shape=n_samples)
+        output[:] = input_signal[:]
+    else:
+        output = input_signal.copy()
     
     t = np.arange(n_samples) / sample_rate
     
@@ -101,8 +121,14 @@ def _apply_deep_swept_notches_single_phase(
     hop_size = block_size // 2
     window = np.hanning(block_size)
     
-    output_accumulator = np.zeros(n_samples + block_size)
-    window_accumulator = np.zeros(n_samples + block_size)
+    if use_memmap:
+        tmp_out_acc = tempfile.NamedTemporaryFile(delete=False)
+        tmp_win_acc = tempfile.NamedTemporaryFile(delete=False)
+        output_accumulator = np.memmap(tmp_out_acc.name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
+        window_accumulator = np.memmap(tmp_win_acc.name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
+    else:
+        output_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
+        window_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
     
     num_blocks = (n_samples + hop_size - 1) // hop_size
     
@@ -160,6 +186,7 @@ def apply_deep_swept_notches(
     phase_offset=0,
     extra_phase_offset=0.0,
     lfo_waveform='sine',
+    use_memmap=False,
 ):
     """
     Wrapper to apply deep swept notch filters.
@@ -173,6 +200,7 @@ def apply_deep_swept_notches(
         cascade_count,
         phase_offset,
         lfo_waveform,
+        use_memmap=use_memmap,
     )
 
     if extra_phase_offset:
@@ -185,6 +213,7 @@ def apply_deep_swept_notches(
             cascade_count,
             phase_offset + extra_phase_offset,
             lfo_waveform,
+            use_memmap=use_memmap,
         )
 
     return output
@@ -202,7 +231,9 @@ def generate_swept_notch_pink_sound(
     intra_phase_offset_deg=0,
     input_audio_path=None,
     noise_type="pink",
-    lfo_waveform="sine"
+    lfo_waveform="sine",
+    memory_efficient=False,
+    n_jobs=2,
 ):
     """
     Generates stereo noise with one or more independent deep swept notches.
@@ -219,6 +250,12 @@ def generate_swept_notch_pink_sound(
     cascade_count : int or sequence, optional
         Number of cascaded filters for each sweep. Provide a single value or
         one value per sweep.
+    memory_efficient : bool, optional
+        If True, uses disk-backed arrays and processes channels sequentially to
+        reduce RAM usage. Defaults to False.
+    n_jobs : int, optional
+        Number of parallel jobs. Setting this to 1 can further lower memory
+        load when generating very long files.
     """
     if filter_sweeps is None:
         filter_sweeps = [(1000, 10000)]  # Default to old behavior
@@ -248,10 +285,18 @@ def generate_swept_notch_pink_sound(
     if input_audio_path is None:
         num_samples = int(duration_seconds * sample_rate)
         print(f"Step 1/4: Generating base {noise_type} noise...")
-        if noise_type.lower() == "brown":
-            input_signal = generate_brown_noise_samples(num_samples)
+        if memory_efficient:
+            tmp_input = tempfile.NamedTemporaryFile(delete=False)
+            input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode='w+', shape=num_samples)
+            if noise_type.lower() == "brown":
+                input_signal[:] = generate_brown_noise_samples(num_samples)
+            else:
+                input_signal[:] = generate_pink_noise_samples(num_samples)
         else:
-            input_signal = generate_pink_noise_samples(num_samples)
+            if noise_type.lower() == "brown":
+                input_signal = generate_brown_noise_samples(num_samples)
+            else:
+                input_signal = generate_pink_noise_samples(num_samples)
     else:
         print(f"Step 1/4: Loading input audio from '{input_audio_path}'...")
         data, _ = sf.read(input_audio_path)
@@ -287,6 +332,7 @@ def generate_swept_notch_pink_sound(
             0,
             intra_phase_rad,
             lfo_waveform,
+            use_memmap=memory_efficient,
         ),
         delayed(apply_deep_swept_notches)(
             input_signal,
@@ -298,42 +344,66 @@ def generate_swept_notch_pink_sound(
             right_channel_phase_offset_rad,
             intra_phase_rad,
             lfo_waveform,
+            use_memmap=memory_efficient,
         ),
     ]
 
-    with Parallel(n_jobs=2, backend='loky') as parallel:
+    if memory_efficient and n_jobs > 1:
+        n_jobs = 1
+
+    with Parallel(n_jobs=n_jobs, backend='loky') as parallel:
         results = parallel(tasks)
-    
+
     left_output, right_output = results
 
     # --- Step 4: Final processing and save ---
     print("Step 4/4: Applying volume correction and saving...")
     
-    rms_left = np.sqrt(np.mean(left_output**2))
+    if memory_efficient:
+        rms_left = _compute_rms_memmap(left_output)
+    else:
+        rms_left = np.sqrt(np.mean(left_output**2))
     if rms_left > 1e-8:
         left_output *= (rms_in / rms_left)
-    
-    rms_right = np.sqrt(np.mean(right_output**2))
+
+    if memory_efficient:
+        rms_right = _compute_rms_memmap(right_output)
+    else:
+        rms_right = np.sqrt(np.mean(right_output**2))
     if rms_right > 1e-8:
         right_output *= (rms_in / rms_right)
 
-    stereo_output = np.stack((left_output, right_output), axis=-1)
-    
-    max_val = np.max(np.abs(stereo_output))
-    if max_val > 0.95:
-        # If peaks are excessively high, just clip them to avoid dropping the
-        # overall level. This keeps perceived loudness consistent even when
-        # filter resonance causes transient spikes.
-        stereo_output = np.clip(stereo_output, -0.95, 0.95)
-    elif max_val > 0:
-        stereo_output = stereo_output / max_val * 0.95
-    
-    try:
-        sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
+    if memory_efficient:
+        with sf.SoundFile(filename, mode='w', samplerate=sample_rate, channels=2, subtype='PCM_16') as f:
+            block = 1_000_000
+            total = len(left_output)
+            for i in range(0, total, block):
+                chunk_left = left_output[i : i + block]
+                chunk_right = right_output[i : i + block]
+                stereo_chunk = np.stack((chunk_left, chunk_right), axis=-1)
+                max_val = np.max(np.abs(stereo_chunk))
+                if max_val > 0.95:
+                    stereo_chunk = np.clip(stereo_chunk, -0.95, 0.95)
+                elif max_val > 0:
+                    stereo_chunk = stereo_chunk / max_val * 0.95
+                f.write(stereo_chunk)
         total_time = time.time() - start_time
         print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
-    except Exception as e:
-        print(f"Error saving audio file: {e}")
+    else:
+        stereo_output = np.stack((left_output, right_output), axis=-1)
+
+        max_val = np.max(np.abs(stereo_output))
+        if max_val > 0.95:
+            stereo_output = np.clip(stereo_output, -0.95, 0.95)
+        elif max_val > 0:
+            stereo_output = stereo_output / max_val * 0.95
+
+        try:
+            sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
+            total_time = time.time() - start_time
+            print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
+        except Exception as e:
+            print(f"Error saving audio file: {e}")
 
 
 # --- Main execution ---
