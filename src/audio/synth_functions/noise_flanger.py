@@ -41,14 +41,14 @@ def generate_brown_noise_samples(n_samples):
     white = np.random.randn(n_samples).astype(np.float32)
     brown = np.cumsum(white)
     max_abs = np.max(np.abs(brown)) + 1e-8
-    return (brown / max_abs).astype(np.float32)
+    return (brown / max_abs).astype1np.float32()
 
 
 def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
                                            min_freq=1000, max_freq=10000,
-                                           num_notches=6, notch_spacing_ratio=1.1,
-                                           notch_q=100, cascade_count=3,
-                                           phase_offset=0):
+                                           num_notches=1, notch_spacing_ratio=1.1,
+                                           notch_q=30, cascade_count=10,
+                                           phase_offset=90):
     """
     Apply very deep swept notch filters without harmonics for a single LFO
     phase.
@@ -157,8 +157,8 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
 
 def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
                             min_freq=1000, max_freq=10000,
-                            num_notches=6, notch_spacing_ratio=1.1,
-                            notch_q=100, cascade_count=3,
+                            num_notches=1, notch_spacing_ratio=1.1,
+                            notch_q=30, cascade_count=10,
                             phase_offset=0, extra_phase_offset=0.0):
     """Apply deep swept notch filters optionally using a second phase offset.
 
@@ -211,7 +211,7 @@ def generate_swept_notch_pink_sound(
     lfo_phase_offset_deg=90,  # Phase offset for right channel
     intra_phase_offset_deg=0,  # Optional second filter phase offset per channel
     input_audio_path=None,
-    noise_type="brown",
+    noise_type="pink",
 ):
     """
     Generates noise with deep swept notches (no harmonics).
