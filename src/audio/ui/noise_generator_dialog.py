@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QLineEdit,
     QPushButton, QFileDialog, QMessageBox, QLabel, QDoubleSpinBox,
-    QSpinBox, QComboBox
+    QSpinBox, QComboBox, QWidget
 )
 from PyQt5.QtCore import Qt
 
@@ -63,35 +63,41 @@ class NoiseGeneratorDialog(QDialog):
         self.lfo_spin.setToolTip("Rate of the sweeping notch movement")
         form.addRow("LFO Freq (Hz):", self.lfo_spin)
 
-        # Min freq
-        self.min_freq_spin = QSpinBox()
-        self.min_freq_spin.setRange(20, 20000)
-        self.min_freq_spin.setValue(1000)
-        self.min_freq_spin.setToolTip("Lowest center frequency of the sweep")
-        form.addRow("Min Sweep Freq:", self.min_freq_spin)
+        # Number of sweeps
+        self.num_sweeps_spin = QSpinBox()
+        self.num_sweeps_spin.setRange(1, 3)
+        self.num_sweeps_spin.setValue(1)
+        self.num_sweeps_spin.setToolTip("How many independent sweeps to apply")
+        self.num_sweeps_spin.valueChanged.connect(self.update_sweep_visibility)
+        form.addRow("Num Sweeps:", self.num_sweeps_spin)
 
-        # Max freq
-        self.max_freq_spin = QSpinBox()
-        self.max_freq_spin.setRange(20, 22050)
-        self.max_freq_spin.setValue(10000)
-        self.max_freq_spin.setToolTip("Highest center frequency of the sweep")
-        form.addRow("Max Sweep Freq:", self.max_freq_spin)
+        # Sweep frequency ranges
+        self.sweep_rows = []
+        default_values = [(1000, 10000), (500, 1000), (1850, 3350)]
+        for i in range(3):
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Number of notches
-        self.num_notches_spin = QSpinBox()
-        self.num_notches_spin.setRange(1, 20)
-        self.num_notches_spin.setValue(1)
-        self.num_notches_spin.setToolTip("How many parallel notch filters to use")
-        form.addRow("Num Notches:", self.num_notches_spin)
+            min_spin = QSpinBox()
+            min_spin.setRange(20, 20000)
+            min_spin.setValue(default_values[i][0])
+            min_spin.setToolTip(f"Minimum frequency for sweep {i+1}")
 
-        # Notch spacing ratio
-        self.notch_spacing_spin = QDoubleSpinBox()
-        self.notch_spacing_spin.setRange(1.0, 2.0)
-        self.notch_spacing_spin.setDecimals(3)
-        self.notch_spacing_spin.setSingleStep(0.01)
-        self.notch_spacing_spin.setValue(1.25)
-        self.notch_spacing_spin.setToolTip("Spacing ratio between adjacent notches")
-        form.addRow("Notch Spacing Ratio:", self.notch_spacing_spin)
+            max_spin = QSpinBox()
+            max_spin.setRange(20, 22050)
+            max_spin.setValue(default_values[i][1])
+            max_spin.setToolTip(f"Maximum frequency for sweep {i+1}")
+
+            row_layout.addWidget(QLabel("Min:"))
+            row_layout.addWidget(min_spin)
+            row_layout.addWidget(QLabel("Max:"))
+            row_layout.addWidget(max_spin)
+
+            form.addRow(f"Sweep {i+1}:", row_widget)
+            self.sweep_rows.append((row_widget, min_spin, max_spin))
+
+        self.update_sweep_visibility(self.num_sweeps_spin.value())
 
         # Notch Q factor
         self.notch_q_spin = QSpinBox()
@@ -139,6 +145,10 @@ class NoiseGeneratorDialog(QDialog):
         self.generate_btn.clicked.connect(self.on_generate)
         layout.addWidget(self.generate_btn, alignment=Qt.AlignRight)
 
+    def update_sweep_visibility(self, count):
+        for i, (row_widget, _min, _max) in enumerate(self.sweep_rows):
+            row_widget.setVisible(i < count)
+
     def browse_file(self):
         path, _ = QFileDialog.getSaveFileName(self, "Save Audio", "", "WAV Files (*.wav)")
         if path:
@@ -153,15 +163,17 @@ class NoiseGeneratorDialog(QDialog):
         filename = self.file_edit.text() or "swept_notch_noise.wav"
         input_path = self.input_file_edit.text() or None
         try:
+            sweeps = []
+            for i in range(self.num_sweeps_spin.value()):
+                _, min_spin, max_spin = self.sweep_rows[i]
+                sweeps.append((int(min_spin.value()), int(max_spin.value())))
+
             generate_swept_notch_pink_sound(
                 filename=filename,
                 duration_seconds=float(self.duration_spin.value()),
                 sample_rate=int(self.sample_rate_spin.value()),
                 lfo_freq=float(self.lfo_spin.value()),
-                min_freq=int(self.min_freq_spin.value()),
-                max_freq=int(self.max_freq_spin.value()),
-                num_notches=int(self.num_notches_spin.value()),
-                notch_spacing_ratio=float(self.notch_spacing_spin.value()),
+                filter_sweeps=sweeps,
                 notch_q=int(self.notch_q_spin.value()),
                 cascade_count=int(self.cascade_count_spin.value()),
                 lfo_phase_offset_deg=int(self.lfo_phase_spin.value()),
