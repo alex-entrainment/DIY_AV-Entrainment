@@ -1,5 +1,4 @@
 
-
 import numpy as np
 import numba
 import soundfile as sf
@@ -52,14 +51,12 @@ def generate_brown_noise_samples(n_samples):
 
 
 def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
-                                           min_freq=1000, max_freq=10000,
-                                           num_notches=1, notch_spacing_ratio=1.1,
+                                           filter_sweeps,
                                            notch_q=30, cascade_count=10,
                                            phase_offset=90, lfo_waveform='sine'):
     """
-    Apply very deep swept notch filters without harmonics for a single LFO
-    phase. This function is the core processing unit and is designed to be
-    run in parallel for different channels or phase offsets.
+    Apply one or more deep swept notch filters for a single LFO phase.
+    This function is the core processing unit.
     """
     n_samples = len(input_signal)
     output = input_signal.copy()
@@ -67,30 +64,28 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
     t = np.arange(n_samples) / sample_rate
     
     # --- LFO Generation ---
-    # Generate the LFO signal based on the chosen waveform
     if lfo_waveform.lower() == 'triangle':
-        # Triangle wave oscillates linearly between -1 and 1
         lfo = signal.sawtooth(2 * np.pi * lfo_freq * t + phase_offset, width=0.5)
     elif lfo_waveform.lower() == 'sine':
-        # Cosine wave (a phase-shifted sine) oscillates smoothly between -1 and 1
         lfo = np.cos(2 * np.pi * lfo_freq * t + phase_offset)
     else:
         raise ValueError(f"Unsupported LFO waveform: {lfo_waveform}. Choose 'sine' or 'triangle'.")
 
-    # Linear frequency sweep for smoother motion
-    center_freq = (min_freq + max_freq) / 2
-    freq_range = (max_freq - min_freq) / 2
-    base_freq_sweep = center_freq + freq_range * lfo
-    
+    # --- Generate Frequency Sweeps for each filter ---
+    base_freq_sweeps = []
+    for min_freq, max_freq in filter_sweeps:
+        center_freq = (min_freq + max_freq) / 2
+        freq_range = (max_freq - min_freq) / 2
+        base_freq_sweeps.append(center_freq + freq_range * lfo)
+
     # Process in overlapping blocks for smooth transitions (Overlap-Add method)
     block_size = 4096
-    hop_size = block_size // 2  # 50% overlap
+    hop_size = block_size // 2
     window = np.hanning(block_size)
     
     output_accumulator = np.zeros(n_samples + block_size)
     window_accumulator = np.zeros(n_samples + block_size)
     
-    # Process each block
     num_blocks = (n_samples + hop_size - 1) // hop_size
     
     for block_idx in range(num_blocks):
@@ -105,34 +100,27 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
         block[:actual_block_size] = output[start_idx:end_idx]
         
         windowed_block = block * window
-
-        # Get the representative center frequency for this block
-        block_center_idx = start_idx + actual_block_size // 2
-        center_freq_for_block = base_freq_sweep[block_center_idx]
-        
         filtered_block = windowed_block.copy()
-        
-        # Apply multiple notches at different frequencies
-        for notch_idx in range(num_notches):
-            notch_freq = center_freq_for_block * (notch_spacing_ratio ** notch_idx)
+
+        block_center_idx = start_idx + actual_block_size // 2
+
+        # --- Apply each independent notch filter sweep ---
+        for sweep in base_freq_sweeps:
+            notch_freq = sweep[block_center_idx]
             
-            if notch_freq >= sample_rate * 0.49: # Nyquist limit safety
+            if notch_freq >= sample_rate * 0.49:
                 continue
             
-            # Applying the same notch multiple times (cascading) makes it deeper.
-            # Using filtfilt ensures zero phase distortion.
             for _ in range(cascade_count):
                 try:
                     b, a = signal.iirnotch(notch_freq, notch_q, sample_rate)
                     filtered_block = signal.filtfilt(b, a, filtered_block)
-                except ValueError: # Filter design can fail if freq is too high/low
+                except ValueError:
                     continue
         
-        # Accumulate output with overlap-add
         output_accumulator[start_idx:start_idx + block_size] += filtered_block
         window_accumulator[start_idx:start_idx + block_size] += window
     
-    # Normalize by window accumulation to avoid amplitude bumps
     valid_idx = window_accumulator > 1e-8
     output_accumulator[valid_idx] /= window_accumulator[valid_idx]
     
@@ -140,40 +128,33 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
 
 
 def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
-                            min_freq=1000, max_freq=10000,
-                            num_notches=1, notch_spacing_ratio=1.1,
+                            filter_sweeps,
                             notch_q=30, cascade_count=10,
                             phase_offset=0, extra_phase_offset=0.0,
                             lfo_waveform='sine'):
     """
-    Wrapper function to apply deep swept notch filters. It can apply a second
-    set of notches with an additional phase offset if specified.
+    Wrapper to apply deep swept notch filters.
     """
     output = _apply_deep_swept_notches_single_phase(
-        input_signal, sample_rate, lfo_freq, min_freq, max_freq,
-        num_notches, notch_spacing_ratio, notch_q, cascade_count, phase_offset,
-        lfo_waveform=lfo_waveform
+        input_signal, sample_rate, lfo_freq, filter_sweeps,
+        notch_q, cascade_count, phase_offset, lfo_waveform
     )
 
     if extra_phase_offset:
         output = _apply_deep_swept_notches_single_phase(
-            output, sample_rate, lfo_freq, min_freq, max_freq,
-            num_notches, notch_spacing_ratio, notch_q, cascade_count,
-            phase_offset + extra_phase_offset, lfo_waveform=lfo_waveform
+            output, sample_rate, lfo_freq, filter_sweeps,
+            notch_q, cascade_count, phase_offset + extra_phase_offset, lfo_waveform
         )
 
     return output
 
 
 def generate_swept_notch_pink_sound(
-    filename="swept_notch_pink_sound.wav",
+    filename="swept_notch_sound.wav",
     duration_seconds=60,
     sample_rate=DEFAULT_SAMPLE_RATE,
     lfo_freq=DEFAULT_LFO_FREQ,
-    min_freq=1000,
-    max_freq=10000,
-    num_notches=1,
-    notch_spacing_ratio=1.25,
+    filter_sweeps=None,
     notch_q=25,
     cascade_count=10,
     lfo_phase_offset_deg=90,
@@ -183,21 +164,23 @@ def generate_swept_notch_pink_sound(
     lfo_waveform="sine"
 ):
     """
-    Generates stereo noise with deep swept notches, optimized for speed by
-    processing left and right channels in parallel.
+    Generates stereo noise with one or more independent deep swept notches.
 
     Parameters
     ----------
-    lfo_waveform : str, optional
-        The shape of the LFO wave. Supported values are 'sine' (default)
-        and 'triangle'.
-        
-    NOTE: This script now requires the 'joblib' library.
-    Install it with: pip install joblib
+    filter_sweeps : list of tuples, optional
+        A list defining the frequency sweeps. Each tuple should be
+        (min_freq, max_freq) for one notch.
+        Example: [(500, 1000), (1850, 3350)]
     """
+    if filter_sweeps is None:
+        filter_sweeps = [(1000, 10000)] # Default to old behavior
+
     print(f"Starting Deep Swept Notch generation for '{filename}'...")
-    print(f"LFO Waveform: {lfo_waveform}")
-    # ... (print other parameters)
+    print(f"LFO Waveform: {lfo_waveform}, Freq: {lfo_freq:.3f} Hz")
+    print("Filter Sweeps:")
+    for i, (min_f, max_f) in enumerate(filter_sweeps):
+        print(f"  - Sweep {i+1}: {min_f} Hz -> {max_f} Hz")
 
     # --- Step 1: Generate or load input audio ---
     start_time = time.time()
@@ -205,33 +188,26 @@ def generate_swept_notch_pink_sound(
         num_samples = int(duration_seconds * sample_rate)
         print(f"Step 1/4: Generating base {noise_type} noise...")
         if noise_type.lower() == "brown":
-            noise_mono = generate_brown_noise_samples(num_samples)
+            input_signal = generate_brown_noise_samples(num_samples)
         else:
-            noise_mono = generate_pink_noise_samples(num_samples)
-        
-        # Pre-conditioning filters for a warmer sound
-        b_warmth, a_warmth = signal.butter(1, 10000, btype='low', fs=sample_rate)
-        noise_mono = signal.filtfilt(b_warmth, a_warmth, noise_mono)
-        b_hpf, a_hpf = signal.butter(2, 50, btype='high', fs=sample_rate)
-        noise_mono = signal.filtfilt(b_hpf, a_hpf, noise_mono)
-        
-        noise_mono = noise_mono / (np.max(np.abs(noise_mono)) + 1e-8) * 0.8
-        input_signal = noise_mono
+            input_signal = generate_pink_noise_samples(num_samples)
     else:
-        # ... (loading logic remains the same)
         print(f"Step 1/4: Loading input audio from '{input_audio_path}'...")
-        data, in_sr = sf.read(input_audio_path)
-        if data.ndim > 1:
-            input_signal = data[:, 0]
-        else:
-            input_signal = data
-        input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
+        data, _ = sf.read(input_audio_path)
+        input_signal = data[:, 0] if data.ndim > 1 else data
 
+    # Pre-conditioning and normalization
+    b_warmth, a_warmth = signal.butter(1, 10000, btype='low', fs=sample_rate)
+    input_signal = signal.filtfilt(b_warmth, a_warmth, input_signal)
+    b_hpf, a_hpf = signal.butter(2, 50, btype='high', fs=sample_rate)
+    input_signal = signal.filtfilt(b_hpf, a_hpf, input_signal)
+    input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
+    
     # Calculate input RMS for later volume correction
     print("Step 2/4: Calculating input signal RMS for volume compensation...")
     rms_in = np.sqrt(np.mean(input_signal**2))
     if rms_in < 1e-8:
-        rms_in = 1e-8 # Avoid division by zero for silent inputs
+        rms_in = 1e-8
 
     # --- Step 3: Apply deep swept notches in parallel ---
     print("Step 3/4: Applying deep swept notches (in parallel for stereo)...")
@@ -241,16 +217,12 @@ def generate_swept_notch_pink_sound(
 
     tasks = [
         delayed(apply_deep_swept_notches)(
-            input_signal, sample_rate, lfo_freq, min_freq, max_freq,
-            num_notches, notch_spacing_ratio, notch_q, cascade_count,
-            phase_offset=0, extra_phase_offset=intra_phase_rad,
-            lfo_waveform=lfo_waveform
+            input_signal, sample_rate, lfo_freq, filter_sweeps,
+            notch_q, cascade_count, 0, intra_phase_rad, lfo_waveform
         ),
         delayed(apply_deep_swept_notches)(
-            input_signal, sample_rate, lfo_freq, min_freq, max_freq,
-            num_notches, notch_spacing_ratio, notch_q, cascade_count,
-            phase_offset=right_channel_phase_offset_rad, extra_phase_offset=intra_phase_rad,
-            lfo_waveform=lfo_waveform
+            input_signal, sample_rate, lfo_freq, filter_sweeps,
+            notch_q, cascade_count, right_channel_phase_offset_rad, intra_phase_rad, lfo_waveform
         )
     ]
 
@@ -262,13 +234,11 @@ def generate_swept_notch_pink_sound(
     # --- Step 4: Final processing and save ---
     print("Step 4/4: Applying volume correction and saving...")
     
-    # --- VOLUME CORRECTION ---
     rms_left = np.sqrt(np.mean(left_output**2))
-    rms_right = np.sqrt(np.mean(right_output**2))
-
     if rms_left > 1e-8:
         left_output *= (rms_in / rms_left)
     
+    rms_right = np.sqrt(np.mean(right_output**2))
     if rms_right > 1e-8:
         right_output *= (rms_in / rms_right)
 
@@ -289,33 +259,22 @@ def generate_swept_notch_pink_sound(
 # --- Main execution ---
 if __name__ == '__main__':
     
-    # Example 1: Generate with the new Triangle LFO
-    generate_swept_notch_pink_sound(
-        filename="swept_notch_triangle_lfo.wav",
-        duration_seconds=60,
-        sample_rate=44100,
-        lfo_freq=1.0/12.0,
-        min_freq=1000,
-        max_freq=10000,
-        num_notches=1,
-        notch_q=25,
-        cascade_count=20,
-        lfo_phase_offset_deg=90,
-        lfo_waveform='triangle'  # Specify the new waveform here
-    )
+    # --- Configuration to match the spectrogram image ---
+    # Define the two separate sweeps as a list of tuples
+    dual_sweeps_config = [
+        (500, 1000),      # Lower sweep: 500 Hz to 1000 Hz
+        (1850, 3350)      # Upper sweep: 1850 Hz to 3350 Hz
+    ]
 
-    # Example 2: Generate with the classic Sine LFO
     generate_swept_notch_pink_sound(
-        filename="swept_notch_sine_lfo.wav",
+        filename="dual_sweep_triangle_lfo.wav",
         duration_seconds=60,
         sample_rate=44100,
         lfo_freq=1.0/12.0,
-        min_freq=1000,
-        max_freq=10000,
-        num_notches=1,
-        notch_q=25,
-        cascade_count=20,
+        filter_sweeps=dual_sweeps_config, # Use the new multi-sweep config
+        notch_q=40,                       # A slightly higher Q might look closer to the image
+        cascade_count=15,
         lfo_phase_offset_deg=90,
-        lfo_waveform='sine' # Explicitly using the default
+        lfo_waveform='triangle'           # Use triangle wave for linear sweeps
     )
 
