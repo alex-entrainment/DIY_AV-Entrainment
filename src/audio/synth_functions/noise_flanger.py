@@ -204,7 +204,7 @@ def process_channel(args):
     return output
 
 
-def generate_swept_notch_pink_sound_optimized(
+def generate_swept_notch_pink_sound(
     filename="swept_notch_pink_sound.wav",
     duration_seconds=60,
     sample_rate=DEFAULT_SAMPLE_RATE,
