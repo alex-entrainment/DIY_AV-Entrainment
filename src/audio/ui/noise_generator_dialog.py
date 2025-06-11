@@ -89,29 +89,34 @@ class NoiseGeneratorDialog(QDialog):
             max_spin.setValue(default_values[i][1])
             max_spin.setToolTip(f"Maximum frequency for sweep {i+1}")
 
+            q_spin = QSpinBox()
+            q_spin.setRange(1, 1000)
+            q_spin.setValue(25)
+            q_spin.setToolTip(f"Q factor for sweep {i+1}")
+
+            cascade_spin = QSpinBox()
+            cascade_spin.setRange(1, 20)
+            cascade_spin.setValue(10)
+            cascade_spin.setToolTip(
+                f"Cascade count for sweep {i+1}"
+            )
+
             row_layout.addWidget(QLabel("Min:"))
             row_layout.addWidget(min_spin)
             row_layout.addWidget(QLabel("Max:"))
             row_layout.addWidget(max_spin)
+            row_layout.addWidget(QLabel("Q:"))
+            row_layout.addWidget(q_spin)
+            row_layout.addWidget(QLabel("Cascade:"))
+            row_layout.addWidget(cascade_spin)
 
             form.addRow(f"Sweep {i+1}:", row_widget)
-            self.sweep_rows.append((row_widget, min_spin, max_spin))
+            self.sweep_rows.append(
+                (row_widget, min_spin, max_spin, q_spin, cascade_spin)
+            )
 
         self.update_sweep_visibility(self.num_sweeps_spin.value())
 
-        # Notch Q factor
-        self.notch_q_spin = QSpinBox()
-        self.notch_q_spin.setRange(1, 1000)
-        self.notch_q_spin.setValue(10)
-        self.notch_q_spin.setToolTip("Q factor - higher values give narrower notches")
-        form.addRow("Notch Q:", self.notch_q_spin)
-
-        # Cascade count
-        self.cascade_count_spin = QSpinBox()
-        self.cascade_count_spin.setRange(1, 20)
-        self.cascade_count_spin.setValue(5)
-        self.cascade_count_spin.setToolTip("Number of times each notch filter is applied")
-        form.addRow("Cascade Count:", self.cascade_count_spin)
 
         # LFO phase offset
         self.lfo_phase_spin = QSpinBox()
@@ -146,7 +151,7 @@ class NoiseGeneratorDialog(QDialog):
         layout.addWidget(self.generate_btn, alignment=Qt.AlignRight)
 
     def update_sweep_visibility(self, count):
-        for i, (row_widget, _min, _max) in enumerate(self.sweep_rows):
+        for i, (row_widget, *_rest) in enumerate(self.sweep_rows):
             row_widget.setVisible(i < count)
 
     def browse_file(self):
@@ -164,9 +169,13 @@ class NoiseGeneratorDialog(QDialog):
         input_path = self.input_file_edit.text() or None
         try:
             sweeps = []
+            q_vals = []
+            cascade_vals = []
             for i in range(self.num_sweeps_spin.value()):
-                _, min_spin, max_spin = self.sweep_rows[i]
+                _, min_spin, max_spin, q_spin, cascade_spin = self.sweep_rows[i]
                 sweeps.append((int(min_spin.value()), int(max_spin.value())))
+                q_vals.append(int(q_spin.value()))
+                cascade_vals.append(int(cascade_spin.value()))
 
             generate_swept_notch_pink_sound(
                 filename=filename,
@@ -174,8 +183,8 @@ class NoiseGeneratorDialog(QDialog):
                 sample_rate=int(self.sample_rate_spin.value()),
                 lfo_freq=float(self.lfo_spin.value()),
                 filter_sweeps=sweeps,
-                notch_q=int(self.notch_q_spin.value()),
-                cascade_count=int(self.cascade_count_spin.value()),
+                notch_q=q_vals if len(q_vals) > 1 else q_vals[0],
+                cascade_count=cascade_vals if len(cascade_vals) > 1 else cascade_vals[0],
                 lfo_phase_offset_deg=int(self.lfo_phase_spin.value()),
                 intra_phase_offset_deg=int(self.intra_phase_spin.value()),
                 input_audio_path=input_path,
