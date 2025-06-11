@@ -41,7 +41,7 @@ def generate_brown_noise_samples(n_samples):
     white = np.random.randn(n_samples).astype(np.float32)
     brown = np.cumsum(white)
     max_abs = np.max(np.abs(brown)) + 1e-8
-    return (brown / max_abs).astype1np.float32()
+    return (brown / max_abs).astype1np(np.float32)
 
 
 def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
