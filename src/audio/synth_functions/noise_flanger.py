@@ -114,7 +114,10 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
             for _ in range(cascade_count):
                 try:
                     b, a = signal.iirnotch(notch_freq, notch_q, sample_rate)
-                    filtered_block = signal.filtfilt(b, a, filtered_block)
+                    # filtfilt can produce extremely loud transients with high Q
+                    # settings. Using lfilter prevents those spikes at the cost
+                    # of phase shifts which are not perceptible in this use case.
+                    filtered_block = signal.lfilter(b, a, filtered_block)
                 except ValueError:
                     continue
         
@@ -245,7 +248,12 @@ def generate_swept_notch_pink_sound(
     stereo_output = np.stack((left_output, right_output), axis=-1)
     
     max_val = np.max(np.abs(stereo_output))
-    if max_val > 0:
+    if max_val > 0.95:
+        # If peaks are excessively high, just clip them to avoid dropping the
+        # overall level. This keeps perceived loudness consistent even when
+        # filter resonance causes transient spikes.
+        stereo_output = np.clip(stereo_output, -0.95, 0.95)
+    elif max_val > 0:
         stereo_output = stereo_output / max_val * 0.95
     
     try:
