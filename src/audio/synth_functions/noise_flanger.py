@@ -1,4 +1,5 @@
 
+
 import numpy as np
 import numba
 import soundfile as sf
@@ -54,7 +55,7 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
                                            min_freq=1000, max_freq=10000,
                                            num_notches=1, notch_spacing_ratio=1.1,
                                            notch_q=30, cascade_count=10,
-                                           phase_offset=90):
+                                           phase_offset=90, lfo_waveform='sine'):
     """
     Apply very deep swept notch filters without harmonics for a single LFO
     phase. This function is the core processing unit and is designed to be
@@ -63,10 +64,19 @@ def _apply_deep_swept_notches_single_phase(input_signal, sample_rate, lfo_freq,
     n_samples = len(input_signal)
     output = input_signal.copy()
     
-    # Generate smooth LFO sweep using cosine for better continuity
     t = np.arange(n_samples) / sample_rate
-    lfo = np.cos(2 * np.pi * lfo_freq * t + phase_offset)
     
+    # --- LFO Generation ---
+    # Generate the LFO signal based on the chosen waveform
+    if lfo_waveform.lower() == 'triangle':
+        # Triangle wave oscillates linearly between -1 and 1
+        lfo = signal.sawtooth(2 * np.pi * lfo_freq * t + phase_offset, width=0.5)
+    elif lfo_waveform.lower() == 'sine':
+        # Cosine wave (a phase-shifted sine) oscillates smoothly between -1 and 1
+        lfo = np.cos(2 * np.pi * lfo_freq * t + phase_offset)
+    else:
+        raise ValueError(f"Unsupported LFO waveform: {lfo_waveform}. Choose 'sine' or 'triangle'.")
+
     # Linear frequency sweep for smoother motion
     center_freq = (min_freq + max_freq) / 2
     freq_range = (max_freq - min_freq) / 2
@@ -133,21 +143,23 @@ def apply_deep_swept_notches(input_signal, sample_rate, lfo_freq,
                             min_freq=1000, max_freq=10000,
                             num_notches=1, notch_spacing_ratio=1.1,
                             notch_q=30, cascade_count=10,
-                            phase_offset=0, extra_phase_offset=0.0):
+                            phase_offset=0, extra_phase_offset=0.0,
+                            lfo_waveform='sine'):
     """
     Wrapper function to apply deep swept notch filters. It can apply a second
     set of notches with an additional phase offset if specified.
     """
     output = _apply_deep_swept_notches_single_phase(
         input_signal, sample_rate, lfo_freq, min_freq, max_freq,
-        num_notches, notch_spacing_ratio, notch_q, cascade_count, phase_offset
+        num_notches, notch_spacing_ratio, notch_q, cascade_count, phase_offset,
+        lfo_waveform=lfo_waveform
     )
 
     if extra_phase_offset:
         output = _apply_deep_swept_notches_single_phase(
             output, sample_rate, lfo_freq, min_freq, max_freq,
             num_notches, notch_spacing_ratio, notch_q, cascade_count,
-            phase_offset + extra_phase_offset
+            phase_offset + extra_phase_offset, lfo_waveform=lfo_waveform
         )
 
     return output
@@ -168,16 +180,24 @@ def generate_swept_notch_pink_sound(
     intra_phase_offset_deg=0,
     input_audio_path=None,
     noise_type="pink",
+    lfo_waveform="sine"
 ):
     """
     Generates stereo noise with deep swept notches, optimized for speed by
     processing left and right channels in parallel.
 
+    Parameters
+    ----------
+    lfo_waveform : str, optional
+        The shape of the LFO wave. Supported values are 'sine' (default)
+        and 'triangle'.
+        
     NOTE: This script now requires the 'joblib' library.
     Install it with: pip install joblib
     """
     print(f"Starting Deep Swept Notch generation for '{filename}'...")
-    # ... (print parameters)
+    print(f"LFO Waveform: {lfo_waveform}")
+    # ... (print other parameters)
 
     # --- Step 1: Generate or load input audio ---
     start_time = time.time()
@@ -198,15 +218,13 @@ def generate_swept_notch_pink_sound(
         noise_mono = noise_mono / (np.max(np.abs(noise_mono)) + 1e-8) * 0.8
         input_signal = noise_mono
     else:
-        # ... (loading logic remains the same, simplified for brevity)
+        # ... (loading logic remains the same)
         print(f"Step 1/4: Loading input audio from '{input_audio_path}'...")
         data, in_sr = sf.read(input_audio_path)
-        # Assuming mono or taking first channel if stereo
         if data.ndim > 1:
             input_signal = data[:, 0]
         else:
             input_signal = data
-        # Resampling logic would go here if needed
         input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
 
     # Calculate input RMS for later volume correction
@@ -214,7 +232,6 @@ def generate_swept_notch_pink_sound(
     rms_in = np.sqrt(np.mean(input_signal**2))
     if rms_in < 1e-8:
         rms_in = 1e-8 # Avoid division by zero for silent inputs
-
 
     # --- Step 3: Apply deep swept notches in parallel ---
     print("Step 3/4: Applying deep swept notches (in parallel for stereo)...")
@@ -226,12 +243,14 @@ def generate_swept_notch_pink_sound(
         delayed(apply_deep_swept_notches)(
             input_signal, sample_rate, lfo_freq, min_freq, max_freq,
             num_notches, notch_spacing_ratio, notch_q, cascade_count,
-            phase_offset=0, extra_phase_offset=intra_phase_rad
+            phase_offset=0, extra_phase_offset=intra_phase_rad,
+            lfo_waveform=lfo_waveform
         ),
         delayed(apply_deep_swept_notches)(
             input_signal, sample_rate, lfo_freq, min_freq, max_freq,
             num_notches, notch_spacing_ratio, notch_q, cascade_count,
-            phase_offset=right_channel_phase_offset_rad, extra_phase_offset=intra_phase_rad
+            phase_offset=right_channel_phase_offset_rad, extra_phase_offset=intra_phase_rad,
+            lfo_waveform=lfo_waveform
         )
     ]
 
@@ -244,11 +263,9 @@ def generate_swept_notch_pink_sound(
     print("Step 4/4: Applying volume correction and saving...")
     
     # --- VOLUME CORRECTION ---
-    # Calculate output RMS
     rms_left = np.sqrt(np.mean(left_output**2))
     rms_right = np.sqrt(np.mean(right_output**2))
 
-    # Apply corrective gain to match input RMS
     if rms_left > 1e-8:
         left_output *= (rms_in / rms_left)
     
@@ -257,7 +274,6 @@ def generate_swept_notch_pink_sound(
 
     stereo_output = np.stack((left_output, right_output), axis=-1)
     
-    # Final peak normalization (still a good idea to prevent clipping)
     max_val = np.max(np.abs(stereo_output))
     if max_val > 0:
         stereo_output = stereo_output / max_val * 0.95
@@ -266,7 +282,6 @@ def generate_swept_notch_pink_sound(
         sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
         total_time = time.time() - start_time
         print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
-        # ... (print adjustment tips)
     except Exception as e:
         print(f"Error saving audio file: {e}")
 
@@ -274,21 +289,33 @@ def generate_swept_notch_pink_sound(
 # --- Main execution ---
 if __name__ == '__main__':
     
-    output_filename = "monroe_phased_pink_sound_optimized_vol_corrected.wav"
-    duration = 120  # 2 minutes
-    
+    # Example 1: Generate with the new Triangle LFO
     generate_swept_notch_pink_sound(
-        filename=output_filename,
-        duration_seconds=duration,
+        filename="swept_notch_triangle_lfo.wav",
+        duration_seconds=60,
         sample_rate=44100,
         lfo_freq=1.0/12.0,
-        min_freq=4000,
-        max_freq=4100, # Small delta to test the volume correction
+        min_freq=1000,
+        max_freq=10000,
         num_notches=1,
-        notch_spacing_ratio=1.25,
         notch_q=25,
         cascade_count=20,
         lfo_phase_offset_deg=90,
-        intra_phase_offset_deg=0
+        lfo_waveform='triangle'  # Specify the new waveform here
+    )
+
+    # Example 2: Generate with the classic Sine LFO
+    generate_swept_notch_pink_sound(
+        filename="swept_notch_sine_lfo.wav",
+        duration_seconds=60,
+        sample_rate=44100,
+        lfo_freq=1.0/12.0,
+        min_freq=1000,
+        max_freq=10000,
+        num_notches=1,
+        notch_q=25,
+        cascade_count=20,
+        lfo_phase_offset_deg=90,
+        lfo_waveform='sine' # Explicitly using the default
     )
 
