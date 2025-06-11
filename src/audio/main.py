@@ -183,7 +183,7 @@ class TrackEditorApp(QMainWindow):
     def _get_default_track_data(self):
         return {
             "global_settings": {
-                "sample_rate": DEFAULT_SAMPLE_RATE,
+                "sample_rate": self.prefs.sample_rate if hasattr(self, "prefs") else DEFAULT_SAMPLE_RATE,
                 "crossfade_duration": DEFAULT_CROSSFADE,
                 "output_filename": "my_track.flac"
             },
@@ -235,6 +235,12 @@ class TrackEditorApp(QMainWindow):
             self.prefs = dialog.get_preferences()
             save_settings(self.prefs)
             self.apply_preferences()
+            # Update runtime values from new preferences
+            self.test_step_duration = self.prefs.test_step_duration
+            # Update sample rate field if preferences changed
+            if hasattr(self, "sr_entry"):
+                self.sr_entry.setText(str(self.prefs.sample_rate))
+                self._update_global_settings_from_ui()
 
     def open_noise_generator(self):
         dialog = NoiseGeneratorDialog(self)
@@ -1236,7 +1242,11 @@ class TrackEditorApp(QMainWindow):
         if not self._update_global_settings_from_ui(): return
         current_track_data = self.track_data
         output_filepath = current_track_data["global_settings"].get("output_filename")
-        if not output_filepath:
+        if output_filepath and self.prefs.export_dir and not os.path.isabs(output_filepath):
+            final_output_path = os.path.join(self.prefs.export_dir, output_filepath)
+        else:
+            final_output_path = output_filepath
+        if not final_output_path:
             QMessageBox.critical(self, "Output Error", "Output filename is not specified in global settings. Please set it and try again.")
             return
         if not hasattr(sound_creator, 'generate_audio'):
@@ -1252,15 +1262,15 @@ class TrackEditorApp(QMainWindow):
             self.generate_button.setEnabled(False)
             self.statusBar().showMessage("Generating audio file, please wait...")
             QApplication.processEvents()
-            print(f"Initiating audio generation for: {output_filepath}")
+            print(f"Initiating audio generation for: {final_output_path}")
             success = sound_creator.generate_audio(
                 current_track_data,
-                output_filename=output_filepath,
+                output_filename=final_output_path,
                 target_level=self.prefs.target_output_amplitude,
             )
             if success:
-                abs_path = os.path.abspath(output_filepath)
-                QMessageBox.information(self, "Generation Complete", f"Audio file '{os.path.basename(output_filepath)}' generated successfully!\nFull path: {abs_path}")
+                abs_path = os.path.abspath(final_output_path)
+                QMessageBox.information(self, "Generation Complete", f"Audio file '{os.path.basename(final_output_path)}' generated successfully!\nFull path: {abs_path}")
             else:
                 QMessageBox.critical(self, "Generation Failed", "Failed to generate audio file. Please check the console output for more details and error messages from the sound engine.")
         except Exception as e:
