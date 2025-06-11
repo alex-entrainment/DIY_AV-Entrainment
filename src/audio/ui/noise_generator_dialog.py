@@ -49,6 +49,12 @@ class NoiseGeneratorDialog(QDialog):
         self.noise_type_combo.setToolTip("Base noise colour to generate")
         form.addRow("Noise Type:", self.noise_type_combo)
 
+        # LFO waveform
+        self.lfo_waveform_combo = QComboBox()
+        self.lfo_waveform_combo.addItems(["Sine", "Triangle"])
+        self.lfo_waveform_combo.setToolTip("Shape of the LFO controlling the sweep")
+        form.addRow("LFO Waveform:", self.lfo_waveform_combo)
+
         # LFO freq
         self.lfo_spin = QDoubleSpinBox()
         self.lfo_spin.setRange(0.001, 10.0)
@@ -162,6 +168,7 @@ class NoiseGeneratorDialog(QDialog):
                 intra_phase_offset_deg=int(self.intra_phase_spin.value()),
                 input_audio_path=input_path,
                 noise_type=self.noise_type_combo.currentText().lower(),
+                lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
             )
             QMessageBox.information(self, "Success", f"Generated {filename}")
         except Exception as exc:
