@@ -72,7 +72,7 @@ def _apply_deep_swept_notches_single_phase(
     cascade_count=10,
     phase_offset=90,
     lfo_waveform='sine',
-    use_memmap=False,
+    use_memmap=True,
 ):
     """
     Apply one or more deep swept notch filters for a single LFO phase.
