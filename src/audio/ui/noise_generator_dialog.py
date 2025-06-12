@@ -1,11 +1,14 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QLineEdit,
     QPushButton, QFileDialog, QMessageBox, QLabel, QDoubleSpinBox,
-    QSpinBox, QComboBox, QWidget
+    QSpinBox, QComboBox, QWidget, QCheckBox
 )
 from PyQt5.QtCore import Qt
 
-from synth_functions.noise_flanger import generate_swept_notch_pink_sound
+from synth_functions.noise_flanger import (
+    generate_swept_notch_pink_sound,
+    generate_swept_notch_pink_sound_transition,
+)
 
 
 class NoiseGeneratorDialog(QDialog):
@@ -49,19 +52,33 @@ class NoiseGeneratorDialog(QDialog):
         self.noise_type_combo.setToolTip("Base noise colour to generate")
         form.addRow("Noise Type:", self.noise_type_combo)
 
+        # Transition enable
+        self.transition_check = QCheckBox("Enable Transition")
+        form.addRow("Transition:", self.transition_check)
+
         # LFO waveform
         self.lfo_waveform_combo = QComboBox()
         self.lfo_waveform_combo.addItems(["Sine", "Triangle"])
         self.lfo_waveform_combo.setToolTip("Shape of the LFO controlling the sweep")
         form.addRow("LFO Waveform:", self.lfo_waveform_combo)
 
-        # LFO freq
-        self.lfo_spin = QDoubleSpinBox()
-        self.lfo_spin.setRange(0.001, 10.0)
-        self.lfo_spin.setDecimals(4)
-        self.lfo_spin.setValue(1.0 / 12.0)
-        self.lfo_spin.setToolTip("Rate of the sweeping notch movement")
-        form.addRow("LFO Freq (Hz):", self.lfo_spin)
+        # LFO freq start/end
+        lfo_layout = QHBoxLayout()
+        self.lfo_start_spin = QDoubleSpinBox()
+        self.lfo_start_spin.setRange(0.001, 10.0)
+        self.lfo_start_spin.setDecimals(4)
+        self.lfo_start_spin.setValue(1.0 / 12.0)
+        self.lfo_start_spin.setToolTip("Start LFO frequency")
+        self.lfo_end_spin = QDoubleSpinBox()
+        self.lfo_end_spin.setRange(0.001, 10.0)
+        self.lfo_end_spin.setDecimals(4)
+        self.lfo_end_spin.setValue(1.0 / 12.0)
+        self.lfo_end_spin.setToolTip("End LFO frequency")
+        lfo_layout.addWidget(QLabel("Start:"))
+        lfo_layout.addWidget(self.lfo_start_spin)
+        lfo_layout.addWidget(QLabel("End:"))
+        lfo_layout.addWidget(self.lfo_end_spin)
+        form.addRow("LFO Freq (Hz):", lfo_layout)
 
         # Number of sweeps
         self.num_sweeps_spin = QSpinBox()
@@ -76,63 +93,62 @@ class NoiseGeneratorDialog(QDialog):
         default_values = [(1000, 10000), (500, 1000), (1850, 3350)]
         for i in range(3):
             row_widget = QWidget()
-            row_layout = QHBoxLayout(row_widget)
+            row_layout = QGridLayout(row_widget)
             row_layout.setContentsMargins(0, 0, 0, 0)
 
-            min_spin = QSpinBox()
-            min_spin.setRange(20, 20000)
-            min_spin.setValue(default_values[i][0])
-            min_spin.setToolTip(f"Minimum frequency for sweep {i+1}")
+            s_min = QSpinBox(); s_min.setRange(20, 20000); s_min.setValue(default_values[i][0])
+            e_min = QSpinBox(); e_min.setRange(20, 20000); e_min.setValue(default_values[i][0])
+            s_max = QSpinBox(); s_max.setRange(20, 22050); s_max.setValue(default_values[i][1])
+            e_max = QSpinBox(); e_max.setRange(20, 22050); e_max.setValue(default_values[i][1])
+            s_q = QSpinBox(); s_q.setRange(1, 1000); s_q.setValue(25)
+            e_q = QSpinBox(); e_q.setRange(1, 1000); e_q.setValue(25)
+            s_casc = QSpinBox(); s_casc.setRange(1, 20); s_casc.setValue(10)
+            e_casc = QSpinBox(); e_casc.setRange(1, 20); e_casc.setValue(10)
 
-            max_spin = QSpinBox()
-            max_spin.setRange(20, 22050)
-            max_spin.setValue(default_values[i][1])
-            max_spin.setToolTip(f"Maximum frequency for sweep {i+1}")
-
-            q_spin = QSpinBox()
-            q_spin.setRange(1, 1000)
-            q_spin.setValue(25)
-            q_spin.setToolTip(f"Q factor for sweep {i+1}")
-
-            cascade_spin = QSpinBox()
-            cascade_spin.setRange(1, 20)
-            cascade_spin.setValue(10)
-            cascade_spin.setToolTip(
-                f"Cascade count for sweep {i+1}"
-            )
-
-            row_layout.addWidget(QLabel("Min:"))
-            row_layout.addWidget(min_spin)
-            row_layout.addWidget(QLabel("Max:"))
-            row_layout.addWidget(max_spin)
-            row_layout.addWidget(QLabel("Q:"))
-            row_layout.addWidget(q_spin)
-            row_layout.addWidget(QLabel("Cascade:"))
-            row_layout.addWidget(cascade_spin)
+            row_layout.addWidget(QLabel("Start Min:"), 0, 0)
+            row_layout.addWidget(s_min, 0, 1)
+            row_layout.addWidget(QLabel("End Min:"), 0, 2)
+            row_layout.addWidget(e_min, 0, 3)
+            row_layout.addWidget(QLabel("Start Max:"), 1, 0)
+            row_layout.addWidget(s_max, 1, 1)
+            row_layout.addWidget(QLabel("End Max:"), 1, 2)
+            row_layout.addWidget(e_max, 1, 3)
+            row_layout.addWidget(QLabel("Start Q:"), 2, 0)
+            row_layout.addWidget(s_q, 2, 1)
+            row_layout.addWidget(QLabel("End Q:"), 2, 2)
+            row_layout.addWidget(e_q, 2, 3)
+            row_layout.addWidget(QLabel("Start Casc:"), 3, 0)
+            row_layout.addWidget(s_casc, 3, 1)
+            row_layout.addWidget(QLabel("End Casc:"), 3, 2)
+            row_layout.addWidget(e_casc, 3, 3)
 
             form.addRow(f"Sweep {i+1}:", row_widget)
             self.sweep_rows.append(
-                (row_widget, min_spin, max_spin, q_spin, cascade_spin)
+                (row_widget, s_min, e_min, s_max, e_max, s_q, e_q, s_casc, e_casc)
             )
 
         self.update_sweep_visibility(self.num_sweeps_spin.value())
 
 
-        # LFO phase offset
-        self.lfo_phase_spin = QSpinBox()
-        self.lfo_phase_spin.setRange(0, 360)
-        self.lfo_phase_spin.setValue(0)
-        self.lfo_phase_spin.setToolTip("Phase offset for the right channel sweep")
-        form.addRow("LFO Phase Offset (deg):", self.lfo_phase_spin)
+        # LFO phase offset start/end
+        phase_layout = QHBoxLayout()
+        self.lfo_phase_start_spin = QSpinBox(); self.lfo_phase_start_spin.setRange(0, 360); self.lfo_phase_start_spin.setValue(0)
+        self.lfo_phase_end_spin = QSpinBox(); self.lfo_phase_end_spin.setRange(0, 360); self.lfo_phase_end_spin.setValue(0)
+        phase_layout.addWidget(QLabel("Start:"))
+        phase_layout.addWidget(self.lfo_phase_start_spin)
+        phase_layout.addWidget(QLabel("End:"))
+        phase_layout.addWidget(self.lfo_phase_end_spin)
+        form.addRow("LFO Phase Offset (deg):", phase_layout)
 
-        # Intra-channel offset
-        self.intra_phase_spin = QSpinBox()
-        self.intra_phase_spin.setRange(0, 360)
-        self.intra_phase_spin.setValue(0)
-        self.intra_phase_spin.setToolTip(
-            "Phase offset between two swept filters in each channel"
-        )
-        form.addRow("Intra-Phase Offset (deg):", self.intra_phase_spin)
+        # Intra-channel offset start/end
+        intra_layout = QHBoxLayout()
+        self.intra_phase_start_spin = QSpinBox(); self.intra_phase_start_spin.setRange(0, 360); self.intra_phase_start_spin.setValue(0)
+        self.intra_phase_end_spin = QSpinBox(); self.intra_phase_end_spin.setRange(0, 360); self.intra_phase_end_spin.setValue(0)
+        intra_layout.addWidget(QLabel("Start:"))
+        intra_layout.addWidget(self.intra_phase_start_spin)
+        intra_layout.addWidget(QLabel("End:"))
+        intra_layout.addWidget(self.intra_phase_end_spin)
+        form.addRow("Intra-Phase Offset (deg):", intra_layout)
 
         # Optional input file
         input_layout = QHBoxLayout()
@@ -168,29 +184,59 @@ class NoiseGeneratorDialog(QDialog):
         filename = self.file_edit.text() or "swept_notch_noise.wav"
         input_path = self.input_file_edit.text() or None
         try:
-            sweeps = []
-            q_vals = []
-            cascade_vals = []
+            start_sweeps = []
+            end_sweeps = []
+            start_q_vals = []
+            end_q_vals = []
+            start_casc = []
+            end_casc = []
             for i in range(self.num_sweeps_spin.value()):
-                _, min_spin, max_spin, q_spin, cascade_spin = self.sweep_rows[i]
-                sweeps.append((int(min_spin.value()), int(max_spin.value())))
-                q_vals.append(int(q_spin.value()))
-                cascade_vals.append(int(cascade_spin.value()))
+                (
+                    _, s_min, e_min, s_max, e_max, s_q, e_q, s_casc, e_casc
+                ) = self.sweep_rows[i]
+                start_sweeps.append((int(s_min.value()), int(s_max.value())))
+                end_sweeps.append((int(e_min.value()), int(e_max.value())))
+                start_q_vals.append(int(s_q.value()))
+                end_q_vals.append(int(e_q.value()))
+                start_casc.append(int(s_casc.value()))
+                end_casc.append(int(e_casc.value()))
 
-            generate_swept_notch_pink_sound(
-                filename=filename,
-                duration_seconds=float(self.duration_spin.value()),
-                sample_rate=int(self.sample_rate_spin.value()),
-                lfo_freq=float(self.lfo_spin.value()),
-                filter_sweeps=sweeps,
-                notch_q=q_vals if len(q_vals) > 1 else q_vals[0],
-                cascade_count=cascade_vals if len(cascade_vals) > 1 else cascade_vals[0],
-                lfo_phase_offset_deg=int(self.lfo_phase_spin.value()),
-                intra_phase_offset_deg=int(self.intra_phase_spin.value()),
-                input_audio_path=input_path,
-                noise_type=self.noise_type_combo.currentText().lower(),
-                lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
-            )
+            if self.transition_check.isChecked():
+                generate_swept_notch_pink_sound_transition(
+                    filename=filename,
+                    duration_seconds=float(self.duration_spin.value()),
+                    sample_rate=int(self.sample_rate_spin.value()),
+                    start_lfo_freq=float(self.lfo_start_spin.value()),
+                    end_lfo_freq=float(self.lfo_end_spin.value()),
+                    start_filter_sweeps=start_sweeps,
+                    end_filter_sweeps=end_sweeps,
+                    start_notch_q=start_q_vals if len(start_q_vals) > 1 else start_q_vals[0],
+                    end_notch_q=end_q_vals if len(end_q_vals) > 1 else end_q_vals[0],
+                    start_cascade_count=start_casc if len(start_casc) > 1 else start_casc[0],
+                    end_cascade_count=end_casc if len(end_casc) > 1 else end_casc[0],
+                    start_lfo_phase_offset_deg=int(self.lfo_phase_start_spin.value()),
+                    end_lfo_phase_offset_deg=int(self.lfo_phase_end_spin.value()),
+                    start_intra_phase_offset_deg=int(self.intra_phase_start_spin.value()),
+                    end_intra_phase_offset_deg=int(self.intra_phase_end_spin.value()),
+                    input_audio_path=input_path,
+                    noise_type=self.noise_type_combo.currentText().lower(),
+                    lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
+                )
+            else:
+                generate_swept_notch_pink_sound(
+                    filename=filename,
+                    duration_seconds=float(self.duration_spin.value()),
+                    sample_rate=int(self.sample_rate_spin.value()),
+                    lfo_freq=float(self.lfo_start_spin.value()),
+                    filter_sweeps=start_sweeps,
+                    notch_q=start_q_vals if len(start_q_vals) > 1 else start_q_vals[0],
+                    cascade_count=start_casc if len(start_casc) > 1 else start_casc[0],
+                    lfo_phase_offset_deg=int(self.lfo_phase_start_spin.value()),
+                    intra_phase_offset_deg=int(self.intra_phase_start_spin.value()),
+                    input_audio_path=input_path,
+                    noise_type=self.noise_type_combo.currentText().lower(),
+                    lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
+                )
             QMessageBox.information(self, "Success", f"Generated {filename}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
