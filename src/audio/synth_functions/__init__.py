@@ -41,4 +41,5 @@ __all__ = [
     'spatial_angle_modulation_monaural_beat',
     'spatial_angle_modulation_monaural_beat_transition',
     'generate_swept_notch_pink_sound',
+    'generate_swept_notch_pink_sound_transition',
 ]
