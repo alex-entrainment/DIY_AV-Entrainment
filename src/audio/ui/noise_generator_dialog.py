@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
     QWidget,
     QCheckBox,
     QGridLayout,
+
 )
 from PyQt5.QtCore import Qt
 
@@ -180,6 +181,7 @@ class NoiseGeneratorDialog(QDialog):
         offset_layout.addWidget(self.post_offset_spin)
         form.addRow("Offsets (s):", offset_layout)
 
+
         # Optional input file
         input_layout = QHBoxLayout()
         self.input_file_edit = QLineEdit()
@@ -248,8 +250,10 @@ class NoiseGeneratorDialog(QDialog):
                     end_lfo_phase_offset_deg=int(self.lfo_phase_end_spin.value()),
                     start_intra_phase_offset_deg=int(self.intra_phase_start_spin.value()),
                     end_intra_phase_offset_deg=int(self.intra_phase_end_spin.value()),
+
                     initial_offset=float(self.initial_offset_spin.value()),
                     post_offset=float(self.post_offset_spin.value()),
+
                     input_audio_path=input_path,
                     noise_type=self.noise_type_combo.currentText().lower(),
                     lfo_waveform=self.lfo_waveform_combo.currentText().lower(),

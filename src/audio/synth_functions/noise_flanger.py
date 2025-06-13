@@ -418,6 +418,7 @@ def generate_swept_notch_pink_sound_transition(
     behaviour of other transition helpers in this package.
     """
 
+
     start_audio, _ = _generate_swept_notch_arrays(
         duration_seconds,
         sample_rate,
