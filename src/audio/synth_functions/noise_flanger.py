@@ -712,12 +712,14 @@ def generate_swept_notch_pink_sound_transition(
 ):
     """Generate swept notch noise with parameters transitioning from start to end.
 
-    The ``initial_offset`` and ``post_offset`` parameters specify regions at the
+    The output is created by progressively modifying the notch filter sweep
+    parameters over ``duration_seconds``; no crossfading between two pre-rendered
+    sounds occurs.  ``initial_offset`` and ``post_offset`` specify regions at the
     beginning and end of the file where no transition is applied, matching the
     behaviour of other transition helpers in this package.
     """
 
-    stereo_output, _ = _generate_swept_notch_arrays_transition(
+    stereo_output, total_time = _generate_swept_notch_arrays_transition(
         duration_seconds,
         sample_rate,
         start_lfo_freq,
@@ -742,52 +744,11 @@ def generate_swept_notch_pink_sound_transition(
         n_jobs,
     )
 
-
-    start_audio, _ = _generate_swept_notch_arrays(
-        duration_seconds,
-        sample_rate,
-        start_lfo_freq,
-        start_filter_sweeps,
-        start_notch_q,
-        start_cascade_count,
-        start_lfo_phase_offset_deg,
-        start_intra_phase_offset_deg,
-        input_audio_path,
-        noise_type,
-        lfo_waveform,
-        memory_efficient,
-        n_jobs,
-    )
-
-    end_audio, _ = _generate_swept_notch_arrays(
-        duration_seconds,
-        sample_rate,
-        end_lfo_freq,
-        end_filter_sweeps if end_filter_sweeps is not None else start_filter_sweeps,
-        end_notch_q,
-        end_cascade_count,
-        end_lfo_phase_offset_deg,
-        end_intra_phase_offset_deg,
-        input_audio_path,
-        noise_type,
-        lfo_waveform,
-        memory_efficient,
-        n_jobs,
-    )
-
-    alpha = calculate_transition_alpha(
-        duration_seconds, sample_rate, initial_offset, post_offset, transition_curve
-    )
-    if len(alpha) != start_audio.shape[0]:
-        alpha = np.interp(
-            np.linspace(0, 1, start_audio.shape[0]),
-            np.linspace(0, 1, len(alpha)),
-            alpha,
-        )
-
-    stereo_output = start_audio * (1.0 - alpha[:, None]) + end_audio * alpha[:, None]
     try:
         sf.write(filename, stereo_output, sample_rate, subtype="PCM_16")
+        print(
+            f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds."
+        )
     except Exception as e:
         print(f"Error saving audio file: {e}")
 
