@@ -731,6 +731,7 @@ def generate_swept_notch_pink_sound_transition(
         start_lfo_phase_offset_deg,
         end_lfo_phase_offset_deg,
         start_intra_phase_offset_deg,
+    )
 
 
     start_audio, _ = _generate_swept_notch_arrays(
