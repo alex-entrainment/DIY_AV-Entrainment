@@ -64,6 +64,97 @@ def generate_brown_noise_samples(n_samples):
     return (brown / max_abs).astype(np.float32)
 
 
+def triangle_wave_varying(freq_array, t, sample_rate=44100):
+    """Generate a triangle wave with a time-varying frequency."""
+    freq_array = np.maximum(np.asarray(freq_array, dtype=float), 1e-9)
+    t = np.asarray(t, dtype=float)
+    if len(t) <= 1:
+        return np.zeros_like(t)
+    dt = np.diff(t, prepend=t[0])
+    phase = 2 * np.pi * np.cumsum(freq_array * dt)
+    return signal.sawtooth(phase, width=0.5)
+
+
+def _apply_deep_swept_notches_varying(
+    input_signal,
+    sample_rate,
+    lfo_array,
+    min_freq_arrays,
+    max_freq_arrays,
+    notch_q_arrays,
+    cascade_count_arrays,
+    use_memmap=True,
+):
+    """Apply swept notch filters where parameters vary over time."""
+    n_samples = len(input_signal)
+
+    if use_memmap:
+        tmp_output = tempfile.NamedTemporaryFile(delete=False)
+        output = np.memmap(tmp_output.name, dtype=np.float32, mode="w+", shape=n_samples)
+        output[:] = input_signal[:]
+    else:
+        output = input_signal.copy()
+
+    block_size = 4096
+    hop_size = block_size // 2
+    window = np.hanning(block_size)
+
+    if use_memmap:
+        tmp_out_acc = tempfile.NamedTemporaryFile(delete=False)
+        tmp_win_acc = tempfile.NamedTemporaryFile(delete=False)
+        output_accumulator = np.memmap(tmp_out_acc.name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+        window_accumulator = np.memmap(tmp_win_acc.name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+    else:
+        output_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
+        window_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
+
+    num_blocks = (n_samples + hop_size - 1) // hop_size
+    num_sweeps = len(min_freq_arrays)
+
+    for block_idx in range(num_blocks):
+        start_idx = block_idx * hop_size
+        end_idx = min(start_idx + block_size, n_samples)
+        actual_block_size = end_idx - start_idx
+
+        if actual_block_size < 100:
+            continue
+
+        block = np.zeros(block_size)
+        block[:actual_block_size] = output[start_idx:end_idx]
+
+        windowed_block = block * window
+        filtered_block = windowed_block.copy()
+
+        center_idx = start_idx + actual_block_size // 2
+
+        for i in range(num_sweeps):
+            min_f = min_freq_arrays[i][center_idx]
+            max_f = max_freq_arrays[i][center_idx]
+            center_freq = (min_f + max_f) / 2.0
+            freq_range = (max_f - min_f) / 2.0
+            notch_freq = center_freq + freq_range * lfo_array[center_idx]
+
+            if notch_freq >= sample_rate * 0.49:
+                continue
+
+            q_val = float(notch_q_arrays[i][center_idx])
+            casc = int(round(cascade_count_arrays[i][center_idx]))
+            casc = max(1, casc)
+            for _ in range(casc):
+                try:
+                    b, a = signal.iirnotch(notch_freq, q_val, sample_rate)
+                    filtered_block = signal.lfilter(b, a, filtered_block)
+                except ValueError:
+                    continue
+
+        output_accumulator[start_idx:start_idx + block_size] += filtered_block
+        window_accumulator[start_idx:start_idx + block_size] += window
+
+    valid_idx = window_accumulator > 1e-8
+    output_accumulator[valid_idx] /= window_accumulator[valid_idx]
+    return output_accumulator[:n_samples]
+
+
 def _apply_deep_swept_notches_single_phase(
     input_signal,
     sample_rate,
@@ -343,6 +434,214 @@ def _generate_swept_notch_arrays(
     return stereo_output, time.time() - start_time
 
 
+
+def _generate_swept_notch_arrays_transition(
+    duration_seconds,
+    sample_rate,
+    start_lfo_freq,
+    end_lfo_freq,
+    start_filter_sweeps,
+    end_filter_sweeps,
+    start_notch_q,
+    end_notch_q,
+    start_cascade_count,
+    end_cascade_count,
+    start_lfo_phase_offset_deg,
+    end_lfo_phase_offset_deg,
+    start_intra_phase_offset_deg,
+    end_intra_phase_offset_deg,
+    input_audio_path,
+    noise_type,
+    lfo_waveform,
+    initial_offset,
+    post_offset,
+    transition_curve,
+    memory_efficient,
+    n_jobs,
+):
+    """Internal helper generating swept notch noise with parameter transitions."""
+
+    if start_filter_sweeps is None:
+        start_filter_sweeps = [(1000, 10000)]
+    if end_filter_sweeps is None:
+        end_filter_sweeps = start_filter_sweeps
+
+    num_sweeps = len(start_filter_sweeps)
+
+    if isinstance(start_notch_q, (int, float)):
+        start_notch_q = [float(start_notch_q)] * num_sweeps
+    else:
+        start_notch_q = list(start_notch_q)
+    if isinstance(end_notch_q, (int, float)):
+        end_notch_q = [float(end_notch_q)] * num_sweeps
+    else:
+        end_notch_q = list(end_notch_q)
+
+    if isinstance(start_cascade_count, int):
+        start_cascade_count = [int(start_cascade_count)] * num_sweeps
+    else:
+        start_cascade_count = list(start_cascade_count)
+    if isinstance(end_cascade_count, int):
+        end_cascade_count = [int(end_cascade_count)] * num_sweeps
+    else:
+        end_cascade_count = list(end_cascade_count)
+
+    if (
+        len(start_notch_q) != num_sweeps
+        or len(end_notch_q) != num_sweeps
+        or len(start_cascade_count) != num_sweeps
+        or len(end_cascade_count) != num_sweeps
+    ):
+        raise ValueError("Length mismatch between sweep parameters")
+
+    start_time = time.time()
+    if input_audio_path is None:
+        num_samples = int(duration_seconds * sample_rate)
+        if memory_efficient:
+            tmp_input = tempfile.NamedTemporaryFile(delete=False)
+            input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode="w+", shape=num_samples)
+            if noise_type.lower() == "brown":
+                input_signal[:] = generate_brown_noise_samples(num_samples)
+            else:
+                input_signal[:] = generate_pink_noise_samples(num_samples)
+        else:
+            if noise_type.lower() == "brown":
+                input_signal = generate_brown_noise_samples(num_samples)
+            else:
+                input_signal = generate_pink_noise_samples(num_samples)
+    else:
+        data, _ = sf.read(input_audio_path)
+        input_signal = data[:, 0] if data.ndim > 1 else data
+
+    b_warmth, a_warmth = signal.butter(1, 10000, btype="low", fs=sample_rate)
+    input_signal = signal.filtfilt(b_warmth, a_warmth, input_signal)
+    b_hpf, a_hpf = signal.butter(2, 50, btype="high", fs=sample_rate)
+    input_signal = signal.filtfilt(b_hpf, a_hpf, input_signal)
+    input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
+
+    rms_in = np.sqrt(np.mean(input_signal ** 2))
+    if rms_in < 1e-8:
+        rms_in = 1e-8
+
+    num_samples = len(input_signal)
+    t = np.arange(num_samples) / sample_rate
+    alpha = calculate_transition_alpha(
+        duration_seconds, sample_rate, initial_offset, post_offset, transition_curve
+    )
+    if len(alpha) != num_samples:
+        alpha = np.interp(
+            np.linspace(0, 1, num_samples),
+            np.linspace(0, 1, len(alpha)),
+            alpha,
+        )
+
+    lfo_freq_array = start_lfo_freq + (end_lfo_freq - start_lfo_freq) * alpha
+
+    phase_base = np.cumsum(2 * np.pi * lfo_freq_array / sample_rate)
+
+    if lfo_waveform.lower() == "triangle":
+        base_wave_fn = lambda ph: signal.sawtooth(ph, width=0.5)
+    elif lfo_waveform.lower() == "sine":
+        base_wave_fn = np.cos
+    else:
+        raise ValueError(
+            f"Unsupported LFO waveform: {lfo_waveform}. Choose 'sine' or 'triangle'."
+        )
+
+    right_phase_rad = np.deg2rad(
+        start_lfo_phase_offset_deg
+        + (end_lfo_phase_offset_deg - start_lfo_phase_offset_deg) * alpha
+    )
+    intra_phase_rad = np.deg2rad(
+        start_intra_phase_offset_deg
+        + (end_intra_phase_offset_deg - start_intra_phase_offset_deg) * alpha
+    )
+
+    lfo_left = base_wave_fn(phase_base)
+    lfo_left_2 = base_wave_fn(phase_base + intra_phase_rad)
+    lfo_right = base_wave_fn(phase_base + right_phase_rad)
+    lfo_right_2 = base_wave_fn(phase_base + right_phase_rad + intra_phase_rad)
+
+    min_arrays = []
+    max_arrays = []
+    q_arrays = []
+    casc_arrays = []
+    for idx in range(num_sweeps):
+        s_min, s_max = start_filter_sweeps[idx]
+        e_min, e_max = end_filter_sweeps[idx]
+        min_arrays.append(s_min + (e_min - s_min) * alpha)
+        max_arrays.append(s_max + (e_max - s_max) * alpha)
+        q_arrays.append(start_notch_q[idx] + (end_notch_q[idx] - start_notch_q[idx]) * alpha)
+        casc_arrays.append(start_cascade_count[idx] + (end_cascade_count[idx] - start_cascade_count[idx]) * alpha)
+
+    left_output = _apply_deep_swept_notches_varying(
+        input_signal,
+        sample_rate,
+        lfo_left,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+    left_output = _apply_deep_swept_notches_varying(
+        left_output,
+        sample_rate,
+        lfo_left_2,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+
+    right_output = _apply_deep_swept_notches_varying(
+        input_signal,
+        sample_rate,
+        lfo_right,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+    right_output = _apply_deep_swept_notches_varying(
+        right_output,
+        sample_rate,
+        lfo_right_2,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+
+    if memory_efficient:
+        rms_left = _compute_rms_memmap(left_output)
+    else:
+        rms_left = np.sqrt(np.mean(left_output ** 2))
+    if rms_left > 1e-8:
+        left_output *= rms_in / rms_left
+
+    if memory_efficient:
+        rms_right = _compute_rms_memmap(right_output)
+    else:
+        rms_right = np.sqrt(np.mean(right_output ** 2))
+    if rms_right > 1e-8:
+        right_output *= rms_in / rms_right
+
+    stereo_output = np.stack((left_output, right_output), axis=-1)
+
+    max_val = np.max(np.abs(stereo_output))
+    if max_val > 0.95:
+        stereo_output = np.clip(stereo_output, -0.95, 0.95)
+    elif max_val > 0:
+        stereo_output = stereo_output / max_val * 0.95
+
+    return stereo_output, time.time() - start_time
+
+
+
 def generate_swept_notch_pink_sound(
     filename="swept_notch_sound.wav",
     duration_seconds=60,
@@ -418,6 +717,21 @@ def generate_swept_notch_pink_sound_transition(
     behaviour of other transition helpers in this package.
     """
 
+    stereo_output, _ = _generate_swept_notch_arrays_transition(
+        duration_seconds,
+        sample_rate,
+        start_lfo_freq,
+        end_lfo_freq,
+        start_filter_sweeps,
+        end_filter_sweeps if end_filter_sweeps is not None else start_filter_sweeps,
+        start_notch_q,
+        end_notch_q,
+        start_cascade_count,
+        end_cascade_count,
+        start_lfo_phase_offset_deg,
+        end_lfo_phase_offset_deg,
+        start_intra_phase_offset_deg,
+
 
     start_audio, _ = _generate_swept_notch_arrays(
         duration_seconds,
@@ -443,10 +757,15 @@ def generate_swept_notch_pink_sound_transition(
         end_notch_q,
         end_cascade_count,
         end_lfo_phase_offset_deg,
+
         end_intra_phase_offset_deg,
         input_audio_path,
         noise_type,
         lfo_waveform,
+
+        initial_offset,
+        post_offset,
+        transition_curve,
         memory_efficient,
         n_jobs,
     )
@@ -462,7 +781,6 @@ def generate_swept_notch_pink_sound_transition(
         )
 
     stereo_output = start_audio * (1.0 - alpha[:, None]) + end_audio * alpha[:, None]
-
     try:
         sf.write(filename, stereo_output, sample_rate, subtype="PCM_16")
     except Exception as e:
