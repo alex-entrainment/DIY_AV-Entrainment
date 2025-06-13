@@ -252,10 +252,6 @@ class NoiseGeneratorDialog(QDialog):
                     initial_offset=float(self.initial_offset_spin.value()),
                     post_offset=float(self.post_offset_spin.value()),
 
-
-                    initial_offset=float(self.initial_offset_spin.value()),
-                    post_offset=float(self.post_offset_spin.value()),
-
                     input_audio_path=input_path,
                     noise_type=self.noise_type_combo.currentText().lower(),
                     lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
