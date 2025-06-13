@@ -731,6 +731,15 @@ def generate_swept_notch_pink_sound_transition(
         start_lfo_phase_offset_deg,
         end_lfo_phase_offset_deg,
         start_intra_phase_offset_deg,
+        end_intra_phase_offset_deg,
+        input_audio_path,
+        noise_type,
+        lfo_waveform,
+        initial_offset,
+        post_offset,
+        transition_curve,
+        memory_efficient,
+        n_jobs,
     )
 
 
@@ -758,15 +767,10 @@ def generate_swept_notch_pink_sound_transition(
         end_notch_q,
         end_cascade_count,
         end_lfo_phase_offset_deg,
-
         end_intra_phase_offset_deg,
         input_audio_path,
         noise_type,
         lfo_waveform,
-
-        initial_offset,
-        post_offset,
-        transition_curve,
         memory_efficient,
         n_jobs,
     )
