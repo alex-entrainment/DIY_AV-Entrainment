@@ -6,6 +6,7 @@ from scipy import signal
 from joblib import Parallel, delayed
 import time
 import tempfile
+from .common import calculate_transition_alpha
 
 # --- Parameters ---
 DEFAULT_SAMPLE_RATE = 44100  # Hz
@@ -61,6 +62,97 @@ def generate_brown_noise_samples(n_samples):
     brown = np.cumsum(white)
     max_abs = np.max(np.abs(brown)) + 1e-8
     return (brown / max_abs).astype(np.float32)
+
+
+def triangle_wave_varying(freq_array, t, sample_rate=44100):
+    """Generate a triangle wave with a time-varying frequency."""
+    freq_array = np.maximum(np.asarray(freq_array, dtype=float), 1e-9)
+    t = np.asarray(t, dtype=float)
+    if len(t) <= 1:
+        return np.zeros_like(t)
+    dt = np.diff(t, prepend=t[0])
+    phase = 2 * np.pi * np.cumsum(freq_array * dt)
+    return signal.sawtooth(phase, width=0.5)
+
+
+def _apply_deep_swept_notches_varying(
+    input_signal,
+    sample_rate,
+    lfo_array,
+    min_freq_arrays,
+    max_freq_arrays,
+    notch_q_arrays,
+    cascade_count_arrays,
+    use_memmap=True,
+):
+    """Apply swept notch filters where parameters vary over time."""
+    n_samples = len(input_signal)
+
+    if use_memmap:
+        tmp_output = tempfile.NamedTemporaryFile(delete=False)
+        output = np.memmap(tmp_output.name, dtype=np.float32, mode="w+", shape=n_samples)
+        output[:] = input_signal[:]
+    else:
+        output = input_signal.copy()
+
+    block_size = 4096
+    hop_size = block_size // 2
+    window = np.hanning(block_size)
+
+    if use_memmap:
+        tmp_out_acc = tempfile.NamedTemporaryFile(delete=False)
+        tmp_win_acc = tempfile.NamedTemporaryFile(delete=False)
+        output_accumulator = np.memmap(tmp_out_acc.name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+        window_accumulator = np.memmap(tmp_win_acc.name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+    else:
+        output_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
+        window_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
+
+    num_blocks = (n_samples + hop_size - 1) // hop_size
+    num_sweeps = len(min_freq_arrays)
+
+    for block_idx in range(num_blocks):
+        start_idx = block_idx * hop_size
+        end_idx = min(start_idx + block_size, n_samples)
+        actual_block_size = end_idx - start_idx
+
+        if actual_block_size < 100:
+            continue
+
+        block = np.zeros(block_size)
+        block[:actual_block_size] = output[start_idx:end_idx]
+
+        windowed_block = block * window
+        filtered_block = windowed_block.copy()
+
+        center_idx = start_idx + actual_block_size // 2
+
+        for i in range(num_sweeps):
+            min_f = min_freq_arrays[i][center_idx]
+            max_f = max_freq_arrays[i][center_idx]
+            center_freq = (min_f + max_f) / 2.0
+            freq_range = (max_f - min_f) / 2.0
+            notch_freq = center_freq + freq_range * lfo_array[center_idx]
+
+            if notch_freq >= sample_rate * 0.49:
+                continue
+
+            q_val = float(notch_q_arrays[i][center_idx])
+            casc = int(round(cascade_count_arrays[i][center_idx]))
+            casc = max(1, casc)
+            for _ in range(casc):
+                try:
+                    b, a = signal.iirnotch(notch_freq, q_val, sample_rate)
+                    filtered_block = signal.lfilter(b, a, filtered_block)
+                except ValueError:
+                    continue
+
+        output_accumulator[start_idx:start_idx + block_size] += filtered_block
+        window_accumulator[start_idx:start_idx + block_size] += window
+
+    valid_idx = window_accumulator > 1e-8
+    output_accumulator[valid_idx] /= window_accumulator[valid_idx]
+    return output_accumulator[:n_samples]
 
 
 def _apply_deep_swept_notches_single_phase(
@@ -219,48 +311,26 @@ def apply_deep_swept_notches(
     return output
 
 
-def generate_swept_notch_pink_sound(
-    filename="swept_notch_sound.wav",
-    duration_seconds=60,
-    sample_rate=DEFAULT_SAMPLE_RATE,
-    lfo_freq=DEFAULT_LFO_FREQ,
-    filter_sweeps=None,
-    notch_q=25,
-    cascade_count=10,
-    lfo_phase_offset_deg=90,
-    intra_phase_offset_deg=0,
-    input_audio_path=None,
-    noise_type="pink",
-    lfo_waveform="sine",
-    memory_efficient=False,
-    n_jobs=2,
+def _generate_swept_notch_arrays(
+    duration_seconds,
+    sample_rate,
+    lfo_freq,
+    filter_sweeps,
+    notch_q,
+    cascade_count,
+    lfo_phase_offset_deg,
+    intra_phase_offset_deg,
+    input_audio_path,
+    noise_type,
+    lfo_waveform,
+    memory_efficient,
+    n_jobs,
 ):
-    """
-    Generates stereo noise with one or more independent deep swept notches.
+    """Internal helper to generate swept notch noise and return stereo array."""
 
-    Parameters
-    ----------
-    filter_sweeps : list of tuples, optional
-        A list defining the frequency sweeps. Each tuple should be
-        (min_freq, max_freq) for one notch.
-        Example: [(500, 1000), (1850, 3350)]
-    notch_q : int, float, or sequence, optional
-        Q factor(s) for the notch filters. Provide either a single value or
-        one value per sweep.
-    cascade_count : int or sequence, optional
-        Number of cascaded filters for each sweep. Provide a single value or
-        one value per sweep.
-    memory_efficient : bool, optional
-        If True, uses disk-backed arrays and processes channels sequentially to
-        reduce RAM usage. Defaults to False.
-    n_jobs : int, optional
-        Number of parallel jobs. Setting this to 1 can further lower memory
-        load when generating very long files.
-    """
     if filter_sweeps is None:
-        filter_sweeps = [(1000, 10000)]  # Default to old behavior
+        filter_sweeps = [(1000, 10000)]
 
-    # Normalize parameter shapes
     if isinstance(notch_q, (int, float)):
         notch_q = [float(notch_q)] * len(filter_sweeps)
     else:
@@ -270,21 +340,11 @@ def generate_swept_notch_pink_sound(
     else:
         cascade_count = list(cascade_count)
     if len(notch_q) != len(filter_sweeps) or len(cascade_count) != len(filter_sweeps):
-        raise ValueError(
-            "Length of notch_q and cascade_count must match number of filter_sweeps"
-        )
+        raise ValueError("Length of notch_q and cascade_count must match number of filter_sweeps")
 
-    print(f"Starting Deep Swept Notch generation for '{filename}'...")
-    print(f"LFO Waveform: {lfo_waveform}, Freq: {lfo_freq:.3f} Hz")
-    print("Filter Sweeps:")
-    for i, (min_f, max_f) in enumerate(filter_sweeps):
-        print(f"  - Sweep {i+1}: {min_f} Hz -> {max_f} Hz")
-
-    # --- Step 1: Generate or load input audio ---
     start_time = time.time()
     if input_audio_path is None:
         num_samples = int(duration_seconds * sample_rate)
-        print(f"Step 1/4: Generating base {noise_type} noise...")
         if memory_efficient:
             tmp_input = tempfile.NamedTemporaryFile(delete=False)
             input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode='w+', shape=num_samples)
@@ -298,26 +358,19 @@ def generate_swept_notch_pink_sound(
             else:
                 input_signal = generate_pink_noise_samples(num_samples)
     else:
-        print(f"Step 1/4: Loading input audio from '{input_audio_path}'...")
         data, _ = sf.read(input_audio_path)
         input_signal = data[:, 0] if data.ndim > 1 else data
 
-    # Pre-conditioning and normalization
     b_warmth, a_warmth = signal.butter(1, 10000, btype='low', fs=sample_rate)
     input_signal = signal.filtfilt(b_warmth, a_warmth, input_signal)
     b_hpf, a_hpf = signal.butter(2, 50, btype='high', fs=sample_rate)
     input_signal = signal.filtfilt(b_hpf, a_hpf, input_signal)
     input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
-    
-    # Calculate input RMS for later volume correction
-    print("Step 2/4: Calculating input signal RMS for volume compensation...")
+
     rms_in = np.sqrt(np.mean(input_signal**2))
     if rms_in < 1e-8:
         rms_in = 1e-8
 
-    # --- Step 3: Apply deep swept notches in parallel ---
-    print("Step 3/4: Applying deep swept notches (in parallel for stereo)...")
-    
     intra_phase_rad = np.deg2rad(intra_phase_offset_deg)
     right_channel_phase_offset_rad = np.deg2rad(lfo_phase_offset_deg)
 
@@ -356,9 +409,6 @@ def generate_swept_notch_pink_sound(
 
     left_output, right_output = results
 
-    # --- Step 4: Final processing and save ---
-    print("Step 4/4: Applying volume correction and saving...")
-    
     if memory_efficient:
         rms_left = _compute_rms_memmap(left_output)
     else:
@@ -373,37 +423,327 @@ def generate_swept_notch_pink_sound(
     if rms_right > 1e-8:
         right_output *= (rms_in / rms_right)
 
-    if memory_efficient:
-        with sf.SoundFile(filename, mode='w', samplerate=sample_rate, channels=2, subtype='PCM_16') as f:
-            block = 1_000_000
-            total = len(left_output)
-            for i in range(0, total, block):
-                chunk_left = left_output[i : i + block]
-                chunk_right = right_output[i : i + block]
-                stereo_chunk = np.stack((chunk_left, chunk_right), axis=-1)
-                max_val = np.max(np.abs(stereo_chunk))
-                if max_val > 0.95:
-                    stereo_chunk = np.clip(stereo_chunk, -0.95, 0.95)
-                elif max_val > 0:
-                    stereo_chunk = stereo_chunk / max_val * 0.95
-                f.write(stereo_chunk)
-        total_time = time.time() - start_time
-        print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
+    stereo_output = np.stack((left_output, right_output), axis=-1)
+
+    max_val = np.max(np.abs(stereo_output))
+    if max_val > 0.95:
+        stereo_output = np.clip(stereo_output, -0.95, 0.95)
+    elif max_val > 0:
+        stereo_output = stereo_output / max_val * 0.95
+
+    return stereo_output, time.time() - start_time
+
+
+def _generate_swept_notch_arrays_transition(
+    duration_seconds,
+    sample_rate,
+    start_lfo_freq,
+    end_lfo_freq,
+    start_filter_sweeps,
+    end_filter_sweeps,
+    start_notch_q,
+    end_notch_q,
+    start_cascade_count,
+    end_cascade_count,
+    start_lfo_phase_offset_deg,
+    end_lfo_phase_offset_deg,
+    start_intra_phase_offset_deg,
+    end_intra_phase_offset_deg,
+    input_audio_path,
+    noise_type,
+    lfo_waveform,
+    initial_offset,
+    post_offset,
+    transition_curve,
+    memory_efficient,
+    n_jobs,
+):
+    """Internal helper generating swept notch noise with parameter transitions."""
+
+    if start_filter_sweeps is None:
+        start_filter_sweeps = [(1000, 10000)]
+    if end_filter_sweeps is None:
+        end_filter_sweeps = start_filter_sweeps
+
+    num_sweeps = len(start_filter_sweeps)
+
+    if isinstance(start_notch_q, (int, float)):
+        start_notch_q = [float(start_notch_q)] * num_sweeps
     else:
-        stereo_output = np.stack((left_output, right_output), axis=-1)
+        start_notch_q = list(start_notch_q)
+    if isinstance(end_notch_q, (int, float)):
+        end_notch_q = [float(end_notch_q)] * num_sweeps
+    else:
+        end_notch_q = list(end_notch_q)
 
-        max_val = np.max(np.abs(stereo_output))
-        if max_val > 0.95:
-            stereo_output = np.clip(stereo_output, -0.95, 0.95)
-        elif max_val > 0:
-            stereo_output = stereo_output / max_val * 0.95
+    if isinstance(start_cascade_count, int):
+        start_cascade_count = [int(start_cascade_count)] * num_sweeps
+    else:
+        start_cascade_count = list(start_cascade_count)
+    if isinstance(end_cascade_count, int):
+        end_cascade_count = [int(end_cascade_count)] * num_sweeps
+    else:
+        end_cascade_count = list(end_cascade_count)
 
-        try:
-            sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
-            total_time = time.time() - start_time
-            print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
-        except Exception as e:
-            print(f"Error saving audio file: {e}")
+    if (
+        len(start_notch_q) != num_sweeps
+        or len(end_notch_q) != num_sweeps
+        or len(start_cascade_count) != num_sweeps
+        or len(end_cascade_count) != num_sweeps
+    ):
+        raise ValueError("Length mismatch between sweep parameters")
+
+    start_time = time.time()
+    if input_audio_path is None:
+        num_samples = int(duration_seconds * sample_rate)
+        if memory_efficient:
+            tmp_input = tempfile.NamedTemporaryFile(delete=False)
+            input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode="w+", shape=num_samples)
+            if noise_type.lower() == "brown":
+                input_signal[:] = generate_brown_noise_samples(num_samples)
+            else:
+                input_signal[:] = generate_pink_noise_samples(num_samples)
+        else:
+            if noise_type.lower() == "brown":
+                input_signal = generate_brown_noise_samples(num_samples)
+            else:
+                input_signal = generate_pink_noise_samples(num_samples)
+    else:
+        data, _ = sf.read(input_audio_path)
+        input_signal = data[:, 0] if data.ndim > 1 else data
+
+    b_warmth, a_warmth = signal.butter(1, 10000, btype="low", fs=sample_rate)
+    input_signal = signal.filtfilt(b_warmth, a_warmth, input_signal)
+    b_hpf, a_hpf = signal.butter(2, 50, btype="high", fs=sample_rate)
+    input_signal = signal.filtfilt(b_hpf, a_hpf, input_signal)
+    input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
+
+    rms_in = np.sqrt(np.mean(input_signal ** 2))
+    if rms_in < 1e-8:
+        rms_in = 1e-8
+
+    num_samples = len(input_signal)
+    t = np.arange(num_samples) / sample_rate
+    alpha = calculate_transition_alpha(
+        duration_seconds, sample_rate, initial_offset, post_offset, transition_curve
+    )
+    if len(alpha) != num_samples:
+        alpha = np.interp(
+            np.linspace(0, 1, num_samples),
+            np.linspace(0, 1, len(alpha)),
+            alpha,
+        )
+
+    lfo_freq_array = start_lfo_freq + (end_lfo_freq - start_lfo_freq) * alpha
+
+    phase_base = np.cumsum(2 * np.pi * lfo_freq_array / sample_rate)
+
+    if lfo_waveform.lower() == "triangle":
+        base_wave_fn = lambda ph: signal.sawtooth(ph, width=0.5)
+    elif lfo_waveform.lower() == "sine":
+        base_wave_fn = np.cos
+    else:
+        raise ValueError(
+            f"Unsupported LFO waveform: {lfo_waveform}. Choose 'sine' or 'triangle'."
+        )
+
+    right_phase_rad = np.deg2rad(
+        start_lfo_phase_offset_deg
+        + (end_lfo_phase_offset_deg - start_lfo_phase_offset_deg) * alpha
+    )
+    intra_phase_rad = np.deg2rad(
+        start_intra_phase_offset_deg
+        + (end_intra_phase_offset_deg - start_intra_phase_offset_deg) * alpha
+    )
+
+    lfo_left = base_wave_fn(phase_base)
+    lfo_left_2 = base_wave_fn(phase_base + intra_phase_rad)
+    lfo_right = base_wave_fn(phase_base + right_phase_rad)
+    lfo_right_2 = base_wave_fn(phase_base + right_phase_rad + intra_phase_rad)
+
+    min_arrays = []
+    max_arrays = []
+    q_arrays = []
+    casc_arrays = []
+    for idx in range(num_sweeps):
+        s_min, s_max = start_filter_sweeps[idx]
+        e_min, e_max = end_filter_sweeps[idx]
+        min_arrays.append(s_min + (e_min - s_min) * alpha)
+        max_arrays.append(s_max + (e_max - s_max) * alpha)
+        q_arrays.append(start_notch_q[idx] + (end_notch_q[idx] - start_notch_q[idx]) * alpha)
+        casc_arrays.append(start_cascade_count[idx] + (end_cascade_count[idx] - start_cascade_count[idx]) * alpha)
+
+    left_output = _apply_deep_swept_notches_varying(
+        input_signal,
+        sample_rate,
+        lfo_left,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+    left_output = _apply_deep_swept_notches_varying(
+        left_output,
+        sample_rate,
+        lfo_left_2,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+
+    right_output = _apply_deep_swept_notches_varying(
+        input_signal,
+        sample_rate,
+        lfo_right,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+    right_output = _apply_deep_swept_notches_varying(
+        right_output,
+        sample_rate,
+        lfo_right_2,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+
+    if memory_efficient:
+        rms_left = _compute_rms_memmap(left_output)
+    else:
+        rms_left = np.sqrt(np.mean(left_output ** 2))
+    if rms_left > 1e-8:
+        left_output *= rms_in / rms_left
+
+    if memory_efficient:
+        rms_right = _compute_rms_memmap(right_output)
+    else:
+        rms_right = np.sqrt(np.mean(right_output ** 2))
+    if rms_right > 1e-8:
+        right_output *= rms_in / rms_right
+
+    stereo_output = np.stack((left_output, right_output), axis=-1)
+
+    max_val = np.max(np.abs(stereo_output))
+    if max_val > 0.95:
+        stereo_output = np.clip(stereo_output, -0.95, 0.95)
+    elif max_val > 0:
+        stereo_output = stereo_output / max_val * 0.95
+
+    return stereo_output, time.time() - start_time
+
+
+def generate_swept_notch_pink_sound(
+    filename="swept_notch_sound.wav",
+    duration_seconds=60,
+    sample_rate=DEFAULT_SAMPLE_RATE,
+    lfo_freq=DEFAULT_LFO_FREQ,
+    filter_sweeps=None,
+    notch_q=25,
+    cascade_count=10,
+    lfo_phase_offset_deg=90,
+    intra_phase_offset_deg=0,
+    input_audio_path=None,
+    noise_type="pink",
+    lfo_waveform="sine",
+    memory_efficient=False,
+    n_jobs=2,
+):
+    """Generate swept notch noise and save to ``filename``."""
+
+    stereo_output, total_time = _generate_swept_notch_arrays(
+        duration_seconds,
+        sample_rate,
+        lfo_freq,
+        filter_sweeps,
+        notch_q,
+        cascade_count,
+        lfo_phase_offset_deg,
+        intra_phase_offset_deg,
+        input_audio_path,
+        noise_type,
+        lfo_waveform,
+        memory_efficient,
+        n_jobs,
+    )
+
+    try:
+        sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
+        print(
+            f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds."
+        )
+    except Exception as e:
+        print(f"Error saving audio file: {e}")
+
+
+def generate_swept_notch_pink_sound_transition(
+    filename="swept_notch_sound.wav",
+    duration_seconds=60,
+    sample_rate=DEFAULT_SAMPLE_RATE,
+    start_lfo_freq=DEFAULT_LFO_FREQ,
+    end_lfo_freq=DEFAULT_LFO_FREQ,
+    start_filter_sweeps=None,
+    end_filter_sweeps=None,
+    start_notch_q=25,
+    end_notch_q=25,
+    start_cascade_count=10,
+    end_cascade_count=10,
+    start_lfo_phase_offset_deg=90,
+    end_lfo_phase_offset_deg=90,
+    start_intra_phase_offset_deg=0,
+    end_intra_phase_offset_deg=0,
+    input_audio_path=None,
+    noise_type="pink",
+    lfo_waveform="sine",
+    initial_offset=0.0,
+    post_offset=0.0,
+    transition_curve="linear",
+    memory_efficient=False,
+    n_jobs=2,
+):
+    """Generate swept notch noise with parameters transitioning from start to end.
+
+    The ``initial_offset`` and ``post_offset`` parameters specify regions at the
+    beginning and end of the file where no transition is applied, matching the
+    behaviour of other transition helpers in this package.
+    """
+
+    stereo_output, _ = _generate_swept_notch_arrays_transition(
+        duration_seconds,
+        sample_rate,
+        start_lfo_freq,
+        end_lfo_freq,
+        start_filter_sweeps,
+        end_filter_sweeps if end_filter_sweeps is not None else start_filter_sweeps,
+        start_notch_q,
+        end_notch_q,
+        start_cascade_count,
+        end_cascade_count,
+        start_lfo_phase_offset_deg,
+        end_lfo_phase_offset_deg,
+        start_intra_phase_offset_deg,
+        end_intra_phase_offset_deg,
+        input_audio_path,
+        noise_type,
+        lfo_waveform,
+        initial_offset,
+        post_offset,
+        transition_curve,
+        memory_efficient,
+        n_jobs,
+    )
+
+    try:
+        sf.write(filename, stereo_output, sample_rate, subtype="PCM_16")
+    except Exception as e:
+        print(f"Error saving audio file: {e}")
 
 
 # --- Main execution ---
