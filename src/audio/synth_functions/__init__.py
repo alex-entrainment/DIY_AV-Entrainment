@@ -17,7 +17,10 @@ from .spatial_angle_modulation import (
     spatial_angle_modulation_monaural_beat,
     spatial_angle_modulation_monaural_beat_transition
 )
-from .noise_flanger import generate_swept_notch_pink_sound
+from .noise_flanger import (
+    generate_swept_notch_pink_sound,
+    generate_swept_notch_pink_sound_transition,
+)
 
 __all__ = [
     'rhythmic_waveshaping',
@@ -41,4 +44,5 @@ __all__ = [
     'spatial_angle_modulation_monaural_beat',
     'spatial_angle_modulation_monaural_beat_transition',
     'generate_swept_notch_pink_sound',
+    'generate_swept_notch_pink_sound_transition',
 ]
