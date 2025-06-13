@@ -411,7 +411,13 @@ def generate_swept_notch_pink_sound_transition(
     memory_efficient=False,
     n_jobs=2,
 ):
-    """Generate swept notch noise with parameters transitioning from start to end."""
+    """Generate swept notch noise with parameters transitioning from start to end.
+
+    The ``initial_offset`` and ``post_offset`` parameters specify regions at the
+    beginning and end of the file where no transition is applied, matching the
+    behaviour of other transition helpers in this package.
+    """
+
 
     start_audio, _ = _generate_swept_notch_arrays(
         duration_seconds,

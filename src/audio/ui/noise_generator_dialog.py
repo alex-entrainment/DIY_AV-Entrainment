@@ -1,7 +1,20 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QLineEdit,
-    QPushButton, QFileDialog, QMessageBox, QLabel, QDoubleSpinBox,
-    QSpinBox, QComboBox, QWidget, QCheckBox
+    QDialog,
+    QVBoxLayout,
+    QFormLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
+    QLabel,
+    QDoubleSpinBox,
+    QSpinBox,
+    QComboBox,
+    QWidget,
+    QCheckBox,
+    QGridLayout,
+
 )
 from PyQt5.QtCore import Qt
 
@@ -150,6 +163,25 @@ class NoiseGeneratorDialog(QDialog):
         intra_layout.addWidget(self.intra_phase_end_spin)
         form.addRow("Intra-Phase Offset (deg):", intra_layout)
 
+        # Initial/Post transition offsets
+        offset_layout = QHBoxLayout()
+        self.initial_offset_spin = QDoubleSpinBox()
+        self.initial_offset_spin.setRange(0.0, 10000.0)
+        self.initial_offset_spin.setDecimals(3)
+        self.initial_offset_spin.setValue(0.0)
+        self.initial_offset_spin.setToolTip("Time before transition starts")
+        self.post_offset_spin = QDoubleSpinBox()
+        self.post_offset_spin.setRange(0.0, 10000.0)
+        self.post_offset_spin.setDecimals(3)
+        self.post_offset_spin.setValue(0.0)
+        self.post_offset_spin.setToolTip("Time after transition ends")
+        offset_layout.addWidget(QLabel("Init:"))
+        offset_layout.addWidget(self.initial_offset_spin)
+        offset_layout.addWidget(QLabel("Post:"))
+        offset_layout.addWidget(self.post_offset_spin)
+        form.addRow("Offsets (s):", offset_layout)
+
+
         # Optional input file
         input_layout = QHBoxLayout()
         self.input_file_edit = QLineEdit()
@@ -218,6 +250,10 @@ class NoiseGeneratorDialog(QDialog):
                     end_lfo_phase_offset_deg=int(self.lfo_phase_end_spin.value()),
                     start_intra_phase_offset_deg=int(self.intra_phase_start_spin.value()),
                     end_intra_phase_offset_deg=int(self.intra_phase_end_spin.value()),
+
+                    initial_offset=float(self.initial_offset_spin.value()),
+                    post_offset=float(self.post_offset_spin.value()),
+
                     input_audio_path=input_path,
                     noise_type=self.noise_type_combo.currentText().lower(),
                     lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
