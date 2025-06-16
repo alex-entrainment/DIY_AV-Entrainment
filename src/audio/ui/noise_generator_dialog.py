@@ -22,6 +22,13 @@ from synth_functions.noise_flanger import (
     generate_swept_notch_pink_sound_transition,
 )
 
+from ..noise_file import (
+    NoiseParams,
+    save_noise_params,
+    load_noise_params,
+    NOISE_FILE_EXTENSION,
+)
+
 
 class NoiseGeneratorDialog(QDialog):
     """Simple GUI for generating swept notch noise."""
@@ -192,9 +199,18 @@ class NoiseGeneratorDialog(QDialog):
 
         layout.addLayout(form)
 
+        button_row = QHBoxLayout()
+        self.load_btn = QPushButton("Load")
+        self.load_btn.clicked.connect(self.load_settings)
+        self.save_btn = QPushButton("Save")
+        self.save_btn.clicked.connect(self.save_settings)
         self.generate_btn = QPushButton("Generate")
         self.generate_btn.clicked.connect(self.on_generate)
-        layout.addWidget(self.generate_btn, alignment=Qt.AlignRight)
+        button_row.addWidget(self.load_btn)
+        button_row.addWidget(self.save_btn)
+        button_row.addStretch(1)
+        button_row.addWidget(self.generate_btn)
+        layout.addLayout(button_row)
 
     def update_sweep_visibility(self, count):
         for i, (row_widget, *_rest) in enumerate(self.sweep_rows):
@@ -209,6 +225,111 @@ class NoiseGeneratorDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Load Audio", "", "Audio Files (*.wav *.flac *.mp3)")
         if path:
             self.input_file_edit.setText(path)
+
+    def get_noise_params(self) -> NoiseParams:
+        """Collect the current UI values into a :class:`NoiseParams`."""
+        params = NoiseParams(
+            duration_seconds=float(self.duration_spin.value()),
+            sample_rate=int(self.sample_rate_spin.value()),
+            noise_type=self.noise_type_combo.currentText().lower(),
+            lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
+            transition=self.transition_check.isChecked(),
+            lfo_freq=float(self.lfo_start_spin.value()),
+            start_lfo_freq=float(self.lfo_start_spin.value()),
+            end_lfo_freq=float(self.lfo_end_spin.value()),
+            start_lfo_phase_offset_deg=int(self.lfo_phase_start_spin.value()),
+            end_lfo_phase_offset_deg=int(self.lfo_phase_end_spin.value()),
+            start_intra_phase_offset_deg=int(self.intra_phase_start_spin.value()),
+            end_intra_phase_offset_deg=int(self.intra_phase_end_spin.value()),
+            initial_offset=float(self.initial_offset_spin.value()),
+            post_offset=float(self.post_offset_spin.value()),
+            input_audio_path=self.input_file_edit.text(),
+        )
+        sweeps = []
+        for i in range(self.num_sweeps_spin.value()):
+            (
+                _, s_min, e_min, s_max, e_max, s_q, e_q, s_casc, e_casc
+            ) = self.sweep_rows[i]
+            sweeps.append(
+                {
+                    "start_min": int(s_min.value()),
+                    "end_min": int(e_min.value()),
+                    "start_max": int(s_max.value()),
+                    "end_max": int(e_max.value()),
+                    "start_q": int(s_q.value()),
+                    "end_q": int(e_q.value()),
+                    "start_casc": int(s_casc.value()),
+                    "end_casc": int(e_casc.value()),
+                }
+            )
+        params.sweeps = sweeps
+        return params
+
+    def set_noise_params(self, params: NoiseParams) -> None:
+        """Apply ``params`` to the UI widgets."""
+        self.duration_spin.setValue(params.duration_seconds)
+        self.sample_rate_spin.setValue(params.sample_rate)
+        idx = self.noise_type_combo.findText(params.noise_type.capitalize())
+        if idx != -1:
+            self.noise_type_combo.setCurrentIndex(idx)
+        idx = self.lfo_waveform_combo.findText(params.lfo_waveform.capitalize())
+        if idx != -1:
+            self.lfo_waveform_combo.setCurrentIndex(idx)
+        self.transition_check.setChecked(params.transition)
+        start_freq = params.start_lfo_freq if params.transition else params.lfo_freq
+        self.lfo_start_spin.setValue(start_freq)
+        self.lfo_end_spin.setValue(params.end_lfo_freq)
+        self.num_sweeps_spin.setValue(max(1, len(params.sweeps)))
+        for i, (
+            _, s_min, e_min, s_max, e_max, s_q, e_q, s_casc, e_casc
+        ) in enumerate(self.sweep_rows):
+            if i < len(params.sweeps):
+                sweep = params.sweeps[i]
+                s_min.setValue(sweep.get("start_min", s_min.value()))
+                e_min.setValue(sweep.get("end_min", e_min.value()))
+                s_max.setValue(sweep.get("start_max", s_max.value()))
+                e_max.setValue(sweep.get("end_max", e_max.value()))
+                s_q.setValue(sweep.get("start_q", s_q.value()))
+                e_q.setValue(sweep.get("end_q", e_q.value()))
+                s_casc.setValue(sweep.get("start_casc", s_casc.value()))
+                e_casc.setValue(sweep.get("end_casc", e_casc.value()))
+        self.lfo_phase_start_spin.setValue(params.start_lfo_phase_offset_deg)
+        self.lfo_phase_end_spin.setValue(params.end_lfo_phase_offset_deg)
+        self.intra_phase_start_spin.setValue(params.start_intra_phase_offset_deg)
+        self.intra_phase_end_spin.setValue(params.end_intra_phase_offset_deg)
+        self.initial_offset_spin.setValue(params.initial_offset)
+        self.post_offset_spin.setValue(params.post_offset)
+        self.input_file_edit.setText(params.input_audio_path or "")
+
+    def save_settings(self):
+        params = self.get_noise_params()
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Noise Settings",
+            "",
+            f"Noise Files (*{NOISE_FILE_EXTENSION})",
+        )
+        if not path:
+            return
+        try:
+            save_noise_params(params, path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def load_settings(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Noise Settings",
+            "",
+            f"Noise Files (*{NOISE_FILE_EXTENSION})",
+        )
+        if not path:
+            return
+        try:
+            params = load_noise_params(path)
+            self.set_noise_params(params)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
 
     def on_generate(self):
         filename = self.file_edit.text() or "swept_notch_noise.wav"

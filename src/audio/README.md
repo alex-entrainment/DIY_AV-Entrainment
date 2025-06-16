@@ -16,7 +16,7 @@ generate_audio(data, "output.wav")
 Noise generator settings can be stored separately using `.noise` files:
 
 ```
-from noise_file import NoiseParams, save_noise_params, load_noise_params
+from audio import NoiseParams, save_noise_params, load_noise_params
 
 params = NoiseParams()
 save_noise_params(params, "my_settings.noise")
