@@ -13,6 +13,16 @@ data = load_track_from_json("track.json")
 generate_audio(data, "output.wav")
 ```
 
+Noise generator settings can be stored separately using `.noise` files:
+
+```
+from noise_file import NoiseParams, save_noise_params, load_noise_params
+
+params = NoiseParams()
+save_noise_params(params, "my_settings.noise")
+loaded = load_noise_params("my_settings.noise")
+```
+
 Audio can also be generated step by step by calling any synth function directly:
 
 ```
