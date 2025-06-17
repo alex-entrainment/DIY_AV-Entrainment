@@ -58,3 +58,15 @@ Available Synth Functions:
 
 ## GUI Overview
 ![Sequence Editor GUI with Voice Editor Dialog](https://github.com/user-attachments/assets/f39bcc5c-3505-4803-b201-8d2f05d44d3c)
+
+### Step Tester Preview
+The editor includes a "Test Step Preview" panel for quickly auditioning a single
+step without generating the entire track. When a step is selected, the preview
+duration adapts to the step length:
+
+* If the step is shorter than 180&nbsp;seconds, the preview plays the entire
+  step.
+* For longer steps, a 60&nbsp;second excerpt is generated.
+
+This behaviour ensures that very long steps do not delay the preview yet short
+steps can still be heard in full.

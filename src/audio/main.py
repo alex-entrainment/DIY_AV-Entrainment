@@ -1291,8 +1291,28 @@ class TrackEditorApp(QMainWindow):
             global_settings = self.track_data["global_settings"]
             sample_rate = global_settings["sample_rate"]
             
+            # Determine preview duration based on step length
+            step_duration = 0.0
+            try:
+                step_duration = float(step_data.get("duration", 0.0))
+            except (TypeError, ValueError):
+                step_duration = 0.0
+
+            if step_duration > 0.0:
+                if step_duration < 180.0:
+                    test_duration = step_duration
+                else:
+                    test_duration = 60.0
+            else:
+                test_duration = self.test_step_duration
+
             # Generate audio (float32, stereo)
-            audio_data_np_float32 = generate_single_step_audio_segment(step_data, global_settings, self.test_step_duration, self.test_step_duration)
+            audio_data_np_float32 = generate_single_step_audio_segment(
+                step_data,
+                global_settings,
+                test_duration,
+                test_duration,
+            )
             
             if audio_data_np_float32 is None or audio_data_np_float32.size == 0:
                 QMessageBox.critical(self, "Audio Generation Error", "Failed to generate test audio data (empty).")
