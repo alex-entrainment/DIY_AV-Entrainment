@@ -21,6 +21,7 @@ from .noise_flanger import (
     generate_swept_notch_pink_sound,
     generate_swept_notch_pink_sound_transition,
 )
+from .subliminals import subliminal_encode
 
 __all__ = [
     'rhythmic_waveshaping',
@@ -45,4 +46,5 @@ __all__ = [
     'spatial_angle_modulation_monaural_beat_transition',
     'generate_swept_notch_pink_sound',
     'generate_swept_notch_pink_sound_transition',
+    'subliminal_encode',
 ]

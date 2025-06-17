@@ -48,6 +48,7 @@ from settings_file import load_settings, save_settings
 from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog
 from ui.frequency_tester_dialog import FrequencyTesterDialog
+from ui.subliminal_dialog import SubliminalDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -250,6 +251,19 @@ class TrackEditorApp(QMainWindow):
         dialog = FrequencyTesterDialog(self, self.prefs)
         dialog.exec_()
 
+    def open_subliminal_dialog(self):
+        selected_step_index = self.get_selected_step_index()
+        if selected_step_index is None or len(self.steps_tree.selectedItems()) != 1:
+            QMessageBox.warning(self, "Subliminal", "Please select exactly one step first.")
+            return
+        dialog = SubliminalDialog(self, app_ref=self, step_index=selected_step_index)
+        if dialog.exec_() == QDialog.Accepted:
+            self.refresh_steps_tree()
+            if selected_step_index < self.steps_tree.topLevelItemCount():
+                step_item = self.steps_tree.topLevelItem(selected_step_index)
+                self.steps_tree.setCurrentItem(step_item)
+                QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
+
     def apply_preferences(self):
         app = QApplication.instance()
         if self.prefs.font_family or self.prefs.font_size:
@@ -292,6 +306,9 @@ class TrackEditorApp(QMainWindow):
         self.open_freq_tester_button = QPushButton("Frequency Tester")
         self.open_freq_tester_button.clicked.connect(self.open_frequency_tester)
         file_ops_layout.addWidget(self.open_freq_tester_button)
+        self.open_subliminal_button = QPushButton("Add Subliminal Voice")
+        self.open_subliminal_button.clicked.connect(self.open_subliminal_dialog)
+        file_ops_layout.addWidget(self.open_subliminal_button)
         file_ops_layout.addStretch(1)
         control_layout.addWidget(file_ops_groupbox)
 
@@ -519,6 +536,7 @@ class TrackEditorApp(QMainWindow):
         # actual editor will be checked when the button is pressed so that the
         # user can receive an explanatory message if the dialog failed to load.
         self.add_voice_button.setEnabled(is_single_selection)
+        self.open_subliminal_button.setEnabled(is_single_selection)
 
         can_move_up = is_single_selection and current_idx is not None and current_idx > 0
         can_move_down = is_single_selection and current_idx is not None and current_idx < (num_steps - 1)
