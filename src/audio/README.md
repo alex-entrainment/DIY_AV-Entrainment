@@ -146,6 +146,16 @@ Moves a tone along a geometric path using the optional `audio_engine` module.
 ### spatial_angle_modulation_monaural_beat
 Combines the monaural beat voice with spatial angle modulation.  Parameters mirror those of `monaural_beat_stereo_amps` along with spatial movement controls (`spatialBeatFreq`, `spatialPhaseOffset`, `pathRadius`, etc.).
 
+### subliminal_encode
+Encodes audio files as ultrasonic subliminals. Multiple files may be supplied via `audio_paths` and can either be mixed together (`mode="stack"`) or played one after another (`mode="sequence"`). The chosen arrangement loops for the duration of the step.
+
+| Parameter | Default | Effect |
+|-----------|---------|-------|
+| `audio_path` / `audio_paths` | – | Path(s) to the audio file(s) to encode |
+| `mode` | `"sequence"` | Sequential or stacked playback |
+| `carrierFreq` | 17500 | Modulation frequency (15000‑20000 Hz) |
+| `amp` | 0.5 | Output level |
+
 ---
 
 ## Volume Envelopes

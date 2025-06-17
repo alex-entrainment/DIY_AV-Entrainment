@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QDoubleSpinBox,
     QMessageBox,
+    QComboBox,
 )
 from PyQt5.QtCore import Qt
 
@@ -35,7 +36,7 @@ class SubliminalDialog(QDialog):
         browse_btn.clicked.connect(self.browse_file)
         file_layout.addWidget(self.file_edit, 1)
         file_layout.addWidget(browse_btn)
-        form.addRow("Audio File:", file_layout)
+        form.addRow("Audio File(s):", file_layout)
 
         self.freq_spin = QDoubleSpinBox()
         self.freq_spin.setRange(15000.0, 20000.0)
@@ -48,6 +49,10 @@ class SubliminalDialog(QDialog):
         self.amp_spin.setSingleStep(0.05)
         self.amp_spin.setValue(0.5)
         form.addRow("Amplitude:", self.amp_spin)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["sequence", "stack"])
+        form.addRow("Mode:", self.mode_combo)
 
         layout.addLayout(form)
 
@@ -62,17 +67,18 @@ class SubliminalDialog(QDialog):
         layout.addLayout(btn_row)
 
     def browse_file(self):
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self, "Select Audio", "", "Audio Files (*.wav *.flac *.mp3)"
         )
-        if path:
-            self.file_edit.setText(path)
+        if paths:
+            self.file_edit.setText(";".join(paths))
 
     def on_accept(self):
-        path = self.file_edit.text().strip()
-        if not path:
+        raw_paths = self.file_edit.text().strip()
+        if not raw_paths:
             QMessageBox.warning(self, "Input Required", "Please select an audio file.")
             return
+        paths = [p.strip() for p in raw_paths.split(";") if p.strip()]
         try:
             step = self.app.track_data["steps"][self.step_index]
         except Exception as exc:
@@ -82,12 +88,16 @@ class SubliminalDialog(QDialog):
             "synth_function_name": "subliminal_encode",
             "is_transition": False,
             "params": {
-                "audio_path": path,
                 "carrierFreq": float(self.freq_spin.value()),
                 "amp": float(self.amp_spin.value()),
+                "mode": self.mode_combo.currentText(),
             },
             "volume_envelope": None,
             "description": "Subliminal",
         }
+        if len(paths) == 1:
+            voice_data["params"]["audio_path"] = paths[0]
+        else:
+            voice_data["params"]["audio_paths"] = paths
         step.setdefault("voices", []).append(voice_data)
         self.accept()
