@@ -59,6 +59,8 @@ Available Synth Functions:
 ## GUI Overview
 ![Sequence Editor GUI with Voice Editor Dialog](https://github.com/user-attachments/assets/f39bcc5c-3505-4803-b201-8d2f05d44d3c)
 
+The voice editor dialog includes buttons to **Load Preset** and **Save Preset** so common voice configurations can be reused across projects.
+
 ### Step Tester Preview
 The editor includes a "Test Step Preview" panel for quickly auditioning a single
 step without generating the entire track. When a step is selected, the preview

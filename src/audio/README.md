@@ -23,6 +23,16 @@ save_noise_params(params, "my_settings.noise")
 loaded = load_noise_params("my_settings.noise")
 ```
 
+Voice parameters from the GUI can likewise be stored as presets using `.voice` files:
+
+```python
+from audio import VoicePreset, save_voice_preset, load_voice_preset
+
+preset = VoicePreset()
+save_voice_preset(preset, "my_voice.voice")
+loaded_voice = load_voice_preset("my_voice.voice")
+```
+
 Audio can also be generated step by step by calling any synth function directly:
 
 ```

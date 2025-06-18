@@ -1,7 +1,24 @@
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel,
-                             QComboBox, QCheckBox, QSplitter, QGroupBox, QScrollArea,
-                             QGridLayout, QPushButton, QTextEdit, QMessageBox,
-                             QSpacerItem, QSizePolicy, QLineEdit, QInputDialog)
+from PyQt5.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QLabel,
+    QComboBox,
+    QCheckBox,
+    QSplitter,
+    QGroupBox,
+    QScrollArea,
+    QGridLayout,
+    QPushButton,
+    QTextEdit,
+    QMessageBox,
+    QSpacerItem,
+    QSizePolicy,
+    QLineEdit,
+    QInputDialog,
+    QFileDialog,
+)
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
 import copy
@@ -10,6 +27,12 @@ import math
 import inspect
 import traceback
 from synth_functions import sound_creator  # Updated import path
+from voice_file import (
+    VoicePreset,
+    load_voice_preset,
+    save_voice_preset,
+    VOICE_FILE_EXTENSION,
+)
 
 # Constants from your original dialog structure for envelopes
 ENVELOPE_TYPE_NONE = "None"
@@ -235,16 +258,22 @@ class VoiceEditorDialog(QDialog): # Standard class name
         env_layout.addStretch(1) # Push envelope params to the top
         main_layout.addWidget(self.env_groupbox)
 
-        # Dialog Buttons (Save, Cancel)
+        # Dialog Buttons (Save, Cancel, Presets)
         button_frame = QWidget()
         button_layout = QHBoxLayout(button_frame)
         button_layout.addStretch(1) # Push buttons to the right
         self.cancel_button = QPushButton("Cancel")
         self.save_button = QPushButton("Save Voice")
         self.save_button.setStyleSheet("QPushButton { background-color: #0078D7; color: white; padding: 6px; font-weight: bold; border-radius: 3px; } QPushButton:hover { background-color: #005A9E; } QPushButton:pressed { background-color: #003C6A; }")
+        self.load_preset_button = QPushButton("Load Preset")
+        self.save_preset_button = QPushButton("Save Preset")
         self.cancel_button.clicked.connect(self.reject) # QDialog's built-in reject
         self.save_button.clicked.connect(self.save_voice)
+        self.load_preset_button.clicked.connect(self.load_preset)
+        self.save_preset_button.clicked.connect(self.save_preset)
         self.save_button.setDefault(True)
+        button_layout.addWidget(self.load_preset_button)
+        button_layout.addWidget(self.save_preset_button)
         button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.save_button)
         main_layout.addWidget(button_frame)
@@ -1329,3 +1358,60 @@ class VoiceEditorDialog(QDialog): # Standard class name
         # But sticking to "original version" structure for save_voice.
         return self.current_voice_data # This reflects data at dialog open or after UI changes if not saved yet.
                                       # For the "saved" data, main.py should re-read its own track_data.
+
+    def save_preset(self):
+        """Save the current voice parameters to a preset file."""
+        preset_data = self._collect_data_from_ui()
+        preset = VoicePreset(
+            synth_function_name=preset_data.get("synth_function_name", ""),
+            is_transition=preset_data.get("is_transition", False),
+            params=preset_data.get("params", {}),
+            volume_envelope=preset_data.get("volume_envelope"),
+            description=self.current_voice_data.get("description", ""),
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Voice Preset",
+            "",
+            f"Voice Presets (*{VOICE_FILE_EXTENSION})",
+        )
+        if not path:
+            return
+        try:
+            save_voice_preset(preset, path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def load_preset(self):
+        """Load a preset from file and apply it to the editor."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Voice Preset",
+            "",
+            f"Voice Presets (*{VOICE_FILE_EXTENSION})",
+        )
+        if not path:
+            return
+        try:
+            preset = load_voice_preset(path)
+            self.apply_voice_preset(preset)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def apply_voice_preset(self, preset: VoicePreset) -> None:
+        """Update the dialog UI from ``preset``."""
+        self.current_voice_data = {
+            "synth_function_name": preset.synth_function_name,
+            "is_transition": preset.is_transition,
+            "params": preset.params,
+            "volume_envelope": preset.volume_envelope,
+            "description": preset.description,
+        }
+
+        if self.synth_func_combo.findText(preset.synth_function_name) != -1:
+            self.synth_func_combo.setCurrentText(preset.synth_function_name)
+        elif self.synth_func_combo.count() > 0:
+            self.synth_func_combo.setCurrentIndex(0)
+        self.transition_check.setChecked(preset.is_transition)
+        self.populate_parameters()
+        self._populate_envelope_controls()
