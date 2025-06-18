@@ -168,20 +168,22 @@ class TrackEditorApp(QMainWindow):
 
         self.test_step_duration = self.prefs.test_step_duration
 
+
         self._setup_ui()
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
         self._update_ui_from_global_settings()
         self.refresh_steps_tree()
         self._update_step_actions_state()
         self._update_voice_actions_state()
-        self.statusBar()
-        self._create_menu()
 
         # --- Undo/Redo History ---
         self.history = []
         self.history_index = -1
-        self._push_history_state()
 
+        self.statusBar()
+        self._create_menu()
+
+        self._push_history_state()
         # Flag to prevent handling itemChanged signals while refreshing
         self._voices_tree_updating = False
         self._steps_tree_updating = False
