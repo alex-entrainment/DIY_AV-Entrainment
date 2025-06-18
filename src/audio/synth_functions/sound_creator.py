@@ -53,11 +53,19 @@ except ImportError:
 # Crossfade and Assembly Logic
 # -----------------------------------------------------------------------------
 
-def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration):
+def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration, curve="linear"):
     """
-    Crossfades two stereo signals. Assumes signal_a fades out, signal_b fades in.
-    Operates on the initial segments of the signals up to transition_duration.
-    Returns the blended segment.
+    Crossfades two stereo signals. ``signal_a`` fades out and ``signal_b`` fades
+    in over ``transition_duration``.  The ``curve`` argument selects the fade
+    shape:
+
+    ``linear``
+        Linear ramps for both signals.
+    ``equal_power``
+        Uses a sine/cosine law to maintain approximately constant perceived
+        loudness.
+
+    Returns the blended stereo segment.
     """
     n_samples = int(transition_duration * sample_rate)
     if n_samples <= 0:
@@ -92,9 +100,13 @@ def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration):
     signal_a_seg = signal_a[:actual_crossfade_samples]
     signal_b_seg = signal_b[:actual_crossfade_samples]
 
-    # Linear crossfade ramp (can be replaced with equal power: np.sqrt(fade))
-    fade_out = np.linspace(1, 0, actual_crossfade_samples)[:, None] # Column vector for broadcasting
-    fade_in = np.linspace(0, 1, actual_crossfade_samples)[:, None]
+    if curve == "equal_power":
+        theta = np.linspace(0.0, np.pi / 2, actual_crossfade_samples)[:, None]
+        fade_out = np.cos(theta)
+        fade_in = np.sin(theta)
+    else:  # default to linear
+        fade_out = np.linspace(1, 0, actual_crossfade_samples)[:, None]
+        fade_in = np.linspace(0, 1, actual_crossfade_samples)[:, None]
 
     # Apply fades and sum
     blended_segment = signal_a_seg * fade_out + signal_b_seg * fade_in
@@ -371,10 +383,12 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     return audio.astype(np.float32) # Ensure float32 output
 
 
-def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
+def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossfade_curve="linear"):
     """
     Assembles a track from a track_data dictionary.
-    Uses crossfading between steps by overlapping their placement.
+    Uses crossfading between steps by overlapping their placement. The
+    ``crossfade_curve`` parameter controls the shape of the fade between steps
+    and is forwarded to :func:`crossfade_signals`.
     Includes per-step normalization to prevent excessive peaks before final mix.
     """
     steps_data = track_data.get("steps", [])
@@ -399,7 +413,10 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
     crossfade_samples = int(crossfade_duration * sample_rate)
     if crossfade_samples < 0: crossfade_samples = 0
 
-    print(f"Assembling track: {len(steps_data)} steps, Est. Max Duration: {estimated_total_duration:.2f}s, Crossfade: {crossfade_duration:.2f}s ({crossfade_samples} samples)")
+    print(
+        f"Assembling track: {len(steps_data)} steps, Est. Max Duration: {estimated_total_duration:.2f}s, "
+        f"Crossfade: {crossfade_duration:.2f}s ({crossfade_samples} samples), Curve: {crossfade_curve}"
+    )
 
     for i, step_data in enumerate(steps_data):
         step_duration = float(step_data.get("duration", 0))
@@ -485,7 +502,10 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
 
         elif can_crossfade:
             actual_crossfade_samples = min(overlap_samples, crossfade_samples)
-            print(f"        Crossfading Step {i+1} with previous. Overlap: {overlap_samples / sample_rate:.3f}s, Actual CF: {actual_crossfade_samples / sample_rate:.3f}s")
+            print(
+                f"        Crossfading Step {i+1} with previous. Overlap: {overlap_samples / sample_rate:.3f}s, "
+                f"Actual CF: {actual_crossfade_samples / sample_rate:.3f}s, Curve: {crossfade_curve}"
+            )
 
             if actual_crossfade_samples > 0:
                 # Get segments for crossfading
@@ -493,7 +513,10 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration):
                 new_segment = audio_to_use[:actual_crossfade_samples]
 
                 # Perform crossfade
-                blended_segment = crossfade_signals(prev_segment, new_segment, sample_rate, actual_crossfade_samples / sample_rate)
+                blended_segment = crossfade_signals(prev_segment, new_segment,
+                                                 sample_rate,
+                                                 actual_crossfade_samples / sample_rate,
+                                                 curve=crossfade_curve)
 
                 # Place blended segment (overwrite previous tail)
                 track[overlap_start_sample_in_track : overlap_start_sample_in_track + actual_crossfade_samples] = blended_segment
@@ -646,6 +669,7 @@ def generate_audio(track_data, output_filename=None, target_level=0.25):
     try:
         sample_rate = int(global_settings.get("sample_rate", 44100))
         crossfade_duration = float(global_settings.get("crossfade_duration", 1.0))
+        crossfade_curve = global_settings.get("crossfade_curve", "linear")
     except (ValueError, TypeError) as e:
          print(f"Error: Invalid global settings (sample_rate or crossfade_duration): {e}")
          return False
@@ -668,11 +692,11 @@ def generate_audio(track_data, output_filename=None, target_level=0.25):
 
     print(f"\n--- Starting WAV Generation ---")
     print(f"Sample Rate: {sample_rate} Hz")
-    print(f"Crossfade Duration: {crossfade_duration} s")
+    print(f"Crossfade Duration: {crossfade_duration} s (curve: {crossfade_curve})")
     print(f"Output File: {output_filename}")
 
     # Assemble the track (includes per-step normalization now)
-    track_audio = assemble_track_from_data(track_data, sample_rate, crossfade_duration)
+    track_audio = assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossfade_curve)
 
     if track_audio is None or track_audio.size == 0:
         print("Error: Track assembly failed or resulted in empty audio.")

@@ -186,6 +186,7 @@ class TrackEditorApp(QMainWindow):
             "global_settings": {
                 "sample_rate": self.prefs.sample_rate if hasattr(self, "prefs") else DEFAULT_SAMPLE_RATE,
                 "crossfade_duration": DEFAULT_CROSSFADE,
+                "crossfade_curve": getattr(self.prefs, "crossfade_curve", "linear"),
                 "output_filename": "my_track.flac"
             },
             "steps": []
@@ -242,6 +243,9 @@ class TrackEditorApp(QMainWindow):
             if hasattr(self, "sr_entry"):
                 self.sr_entry.setText(str(self.prefs.sample_rate))
                 self._update_global_settings_from_ui()
+            # Sync crossfade curve into current track settings
+            if "global_settings" in self.track_data:
+                self.track_data["global_settings"]["crossfade_curve"] = self.prefs.crossfade_curve
 
     def open_noise_generator(self):
         dialog = NoiseGeneratorDialog(self)
