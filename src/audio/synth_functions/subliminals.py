@@ -85,12 +85,18 @@ def subliminal_encode(duration, sample_rate=44100, **params):
         out = np.zeros(N, dtype=np.float32)
         pos = 0
         idx = 0
+        pause_samples = sample_rate  # one second pause between segments
         while pos < N:
             seg = segments[idx % len(segments)]
             seg_len = len(seg)
             copy_len = min(seg_len, N - pos)
             out[pos:pos + copy_len] = seg[:copy_len]
             pos += copy_len
+            if pos >= N:
+                break
+            # insert silence after each subliminal
+            pause_len = min(pause_samples, N - pos)
+            pos += pause_len  # zeros are already present in 'out'
             idx += 1
 
     max_val = np.max(np.abs(out))
