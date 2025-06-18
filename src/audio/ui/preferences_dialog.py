@@ -73,11 +73,17 @@ class PreferencesDialog(QDialog):
         self.target_amp_spin.setDecimals(3)
         self.target_amp_spin.setSingleStep(0.05)
         self.target_amp_spin.setValue(prefs.target_output_amplitude)
+        self.crossfade_curve_combo = QComboBox()
+        self.crossfade_curve_combo.addItems(["linear", "equal_power"])
+        idx_curve = self.crossfade_curve_combo.findText(getattr(prefs, "crossfade_curve", "linear"))
+        if idx_curve != -1:
+            self.crossfade_curve_combo.setCurrentIndex(idx_curve)
         self.track_metadata_chk = QCheckBox("Include track export metadata")
         self.track_metadata_chk.setChecked(prefs.track_metadata)
         audio_form.addRow("Sample Rate (Hz):", self.sample_rate_spin)
         audio_form.addRow("Test Step Duration (s):", self.test_duration_spin)
         audio_form.addRow("Target Output Amplitude:", self.target_amp_spin)
+        audio_form.addRow("Crossfade Curve:", self.crossfade_curve_combo)
         audio_form.addRow(self.track_metadata_chk)
         audio_group.setLayout(audio_form)
         layout.addWidget(audio_group)
@@ -103,5 +109,6 @@ class PreferencesDialog(QDialog):
             test_step_duration=self.test_duration_spin.value(),
             track_metadata=self.track_metadata_chk.isChecked(),
             target_output_amplitude=self.target_amp_spin.value(),
+            crossfade_curve=self.crossfade_curve_combo.currentText(),
         )
         return p
