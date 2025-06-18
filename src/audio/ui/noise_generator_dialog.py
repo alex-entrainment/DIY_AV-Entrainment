@@ -203,6 +203,7 @@ class NoiseGeneratorDialog(QDialog):
         self.load_btn = QPushButton("Load")
         self.load_btn.clicked.connect(self.load_settings)
         self.save_btn = QPushButton("Save")
+        self.save_btn.setDefault(True)
         self.save_btn.clicked.connect(self.save_settings)
         self.generate_btn = QPushButton("Generate")
         self.generate_btn.clicked.connect(self.on_generate)

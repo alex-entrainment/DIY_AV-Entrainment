@@ -58,6 +58,7 @@ class SubliminalDialog(QDialog):
 
         btn_row = QHBoxLayout()
         self.ok_btn = QPushButton("Add")
+        self.ok_btn.setDefault(True)    
         self.ok_btn.clicked.connect(self.on_accept)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
