@@ -27,7 +27,7 @@ import math
 import inspect
 import traceback
 from synth_functions import sound_creator  # Updated import path
-from voice_file import (
+from ..utils.voice_file import (
     VoicePreset,
     load_voice_preset,
     save_voice_preset,

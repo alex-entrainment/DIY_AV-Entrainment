@@ -44,7 +44,7 @@ from PyQt5.QtMultimedia import (
 from functools import partial
 from ui import themes
 from preferences import Preferences
-from settings_file import load_settings, save_settings
+from .utils.settings_file import load_settings, save_settings
 from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog
 from ui.frequency_tester_dialog import FrequencyTesterDialog
