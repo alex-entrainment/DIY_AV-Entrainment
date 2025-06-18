@@ -177,6 +177,11 @@ class TrackEditorApp(QMainWindow):
         self.statusBar()
         self._create_menu()
 
+        # --- Undo/Redo History ---
+        self.history = []
+        self.history_index = -1
+        self._push_history_state()
+
         # Flag to prevent handling itemChanged signals while refreshing
         self._voices_tree_updating = False
         self._steps_tree_updating = False
@@ -222,6 +227,18 @@ class TrackEditorApp(QMainWindow):
             act.triggered.connect(partial(self.set_theme, name))
             theme_menu.addAction(act)
 
+        edit_menu = menubar.addMenu("Edit")
+        self.undo_act = QAction("Undo", self)
+        self.undo_act.setShortcut("Ctrl+Z")
+        self.undo_act.triggered.connect(self.undo)
+        edit_menu.addAction(self.undo_act)
+
+        self.redo_act = QAction("Redo", self)
+        self.redo_act.setShortcut("Ctrl+Y")
+        self.redo_act.triggered.connect(self.redo)
+        edit_menu.addAction(self.redo_act)
+        self._update_undo_redo_actions_state()
+
 
     def set_theme(self, name):
         themes.apply_theme(QApplication.instance(), name)
@@ -263,6 +280,7 @@ class TrackEditorApp(QMainWindow):
                 step_item = self.steps_tree.topLevelItem(selected_step_index)
                 self.steps_tree.setCurrentItem(step_item)
                 QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
+            self._push_history_state()
 
     def apply_preferences(self):
         app = QApplication.instance()
@@ -856,6 +874,7 @@ class TrackEditorApp(QMainWindow):
             if column == 1:
                 new_desc = item.text(1).strip()
                 self.track_data["steps"][step_idx]["description"] = new_desc
+                self._push_history_state()
             else:
                 # Revert edits to non-editable columns
                 self._steps_tree_updating = True
@@ -881,6 +900,7 @@ class TrackEditorApp(QMainWindow):
             self.track_data["steps"][step_idx]["voices"][voice_idx][
                 "description"
             ] = new_desc
+            self._push_history_state()
         except Exception as e:
             print(f"Error updating voice description: {e}")
 
@@ -895,6 +915,7 @@ class TrackEditorApp(QMainWindow):
         self.refresh_steps_tree() # This calls on_step_select -> _update_step_actions_state
         self.setWindowTitle("Binaural Track Editor (PyQt5) - New File")
         QMessageBox.information(self, "New File", "New track created.")
+        self._push_history_state()
 
     @pyqtSlot()
     def load_json(self):
@@ -911,6 +932,7 @@ class TrackEditorApp(QMainWindow):
                 self._update_ui_from_global_settings()
                 self.refresh_steps_tree() # This calls on_step_select -> _update_step_actions_state
                 QMessageBox.information(self, "Load Success", f"Track loaded from\n{filepath}")
+                self._push_history_state()
             elif loaded_data is not None:
                 QMessageBox.critical(self, "Load Error", "Invalid JSON structure for track data.")
         except Exception as e:
@@ -992,6 +1014,7 @@ class TrackEditorApp(QMainWindow):
                     if new_item:
                         self.steps_tree.setCurrentItem(new_item)
                         self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+                self._push_history_state()
             else:
                 QMessageBox.information(self, "Load Info", "No valid steps found to load.")
         except json.JSONDecodeError:
@@ -1015,6 +1038,7 @@ class TrackEditorApp(QMainWindow):
             self.steps_tree.setCurrentItem(new_item)
             new_item.setSelected(True)
             self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+        self._push_history_state()
         # refresh_steps_tree calls on_step_select which calls _update_step_actions_state
 
     @pyqtSlot()
@@ -1035,6 +1059,7 @@ class TrackEditorApp(QMainWindow):
                 self.steps_tree.setCurrentItem(new_item)
                 new_item.setSelected(True)
                 self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+            self._push_history_state()
         except IndexError: QMessageBox.critical(self, "Error", "Failed to duplicate step (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to duplicate step:\n{e}"); traceback.print_exc()
         # refresh_steps_tree calls on_step_select which calls _update_step_actions_state
@@ -1054,9 +1079,12 @@ class TrackEditorApp(QMainWindow):
         if reply == QMessageBox.Yes:
             try:
                 for index in sorted(selected_indices, reverse=True):
-                    if 0 <= index < len(self.track_data["steps"]): del self.track_data["steps"][index]
+                    if 0 <= index < len(self.track_data["steps"]):
+                        del self.track_data["steps"][index]
                 self.refresh_steps_tree()
-            except Exception as e: QMessageBox.critical(self, "Error", f"Failed to remove step(s):\n{e}"); traceback.print_exc()
+                self._push_history_state()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to remove step(s):\n{e}"); traceback.print_exc()
         # refresh_steps_tree calls on_step_select which calls _update_step_actions_state
 
     @pyqtSlot()
@@ -1073,6 +1101,7 @@ class TrackEditorApp(QMainWindow):
             try:
                 self.track_data["steps"][selected_index]["duration"] = new_duration
                 self.refresh_steps_tree()
+                self._push_history_state()
             except IndexError: QMessageBox.critical(self, "Error", "Failed to set duration (index out of range after edit).")
             except Exception as e: QMessageBox.critical(self, "Error", f"Failed to set duration:\n{e}")
 
@@ -1089,6 +1118,7 @@ class TrackEditorApp(QMainWindow):
             try:
                 self.track_data["steps"][selected_index]["description"] = new_description.strip()
                 self.refresh_steps_tree() # This will update the display
+                self._push_history_state()
                 # If this was the currently loaded step in the tester, update its label
                 if self.current_test_step_index == selected_index and self.test_step_raw_audio:
                     short_desc = f"{new_description.strip()[:30]}{'...' if len(new_description.strip()) > 30 else ''}"
@@ -1131,6 +1161,7 @@ class TrackEditorApp(QMainWindow):
                     self.steps_tree.setCurrentItem(moved_item)
                     moved_item.setSelected(True)
                     self.steps_tree.scrollToItem(moved_item, QTreeWidget.PositionAtCenter)
+                self._push_history_state()
             except Exception as e: QMessageBox.critical(self, "Error", f"Failed to move step:\n{e}"); traceback.print_exc()
 
     @pyqtSlot()
@@ -1158,6 +1189,7 @@ class TrackEditorApp(QMainWindow):
                 step_item = self.steps_tree.topLevelItem(selected_step_index)
                 self.steps_tree.setCurrentItem(step_item) # Keep focus on the step
                 QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
+            self._push_history_state()
 
     def _select_last_voice_in_current_step(self): 
         voice_count = self.voices_tree.topLevelItemCount()
@@ -1196,6 +1228,7 @@ class TrackEditorApp(QMainWindow):
                     self.voices_tree.setCurrentItem(voice_item)
                     self.voices_tree.scrollToItem(voice_item, QTreeWidget.PositionAtCenter)
             self._update_voice_actions_state()
+            self._push_history_state()
 
     @pyqtSlot()
     def remove_voice(self):
@@ -1221,6 +1254,7 @@ class TrackEditorApp(QMainWindow):
                 for voice_idx in sorted(selected_voice_indices, reverse=True):
                     if 0 <= voice_idx < len(voices_list): del voices_list[voice_idx]
                 self.refresh_steps_tree() # This calls on_step_select, which will update tester label if idle
+                self._push_history_state()
         except IndexError: QMessageBox.critical(self, "Error", "Failed to remove voice(s) (step index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to remove voice(s):\n{e}"); traceback.print_exc()
 
@@ -1250,6 +1284,7 @@ class TrackEditorApp(QMainWindow):
                     self.voices_tree.setCurrentItem(moved_item)
                     moved_item.setSelected(True)
                     self.voices_tree.scrollToItem(moved_item, QTreeWidget.PositionAtCenter)
+                self._push_history_state()
         except IndexError: QMessageBox.critical(self, "Error", "Failed to move voice (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
         self._update_voice_actions_state()
@@ -1657,6 +1692,35 @@ class TrackEditorApp(QMainWindow):
                 QMessageBox.warning(self, "Audio Playback Error", f"Audio error: {self.test_audio_output.error()}")
                 self.on_reset_step_test() # Full reset on error
         self._update_step_actions_state() # Update button states on any state change
+
+    # --- History Management ---
+    def _push_history_state(self):
+        # Trim forward history if undo was used
+        if self.history_index < len(self.history) - 1:
+            self.history = self.history[: self.history_index + 1]
+        self.history.append(copy.deepcopy(self.track_data))
+        self.history_index += 1
+        self._update_undo_redo_actions_state()
+
+    def undo(self):
+        if self.history_index > 0:
+            self.history_index -= 1
+            self.track_data = copy.deepcopy(self.history[self.history_index])
+            self.refresh_steps_tree()
+            self._update_undo_redo_actions_state()
+
+    def redo(self):
+        if self.history_index < len(self.history) - 1:
+            self.history_index += 1
+            self.track_data = copy.deepcopy(self.history[self.history_index])
+            self.refresh_steps_tree()
+            self._update_undo_redo_actions_state()
+
+    def _update_undo_redo_actions_state(self):
+        if hasattr(self, 'undo_act'):
+            self.undo_act.setEnabled(self.history_index > 0)
+        if hasattr(self, 'redo_act'):
+            self.redo_act.setEnabled(self.history_index < len(self.history) - 1)
 
     # --- Utility Methods ---
     def get_selected_step_index(self):
