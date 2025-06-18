@@ -22,7 +22,7 @@ from synth_functions.noise_flanger import (
     generate_swept_notch_pink_sound_transition,
 )
 
-from noise_file import (
+from ..utils.noise_file import (
     NoiseParams,
     save_noise_params,
     load_noise_params,
