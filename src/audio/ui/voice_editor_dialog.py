@@ -867,14 +867,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
             "Stereo AM Independent Transition": "stereo_am_independent_transition",
             "Wave Shape Stereo AM": "wave_shape_stereo_am",
             "Wave Shape Stereo AM Transition": "wave_shape_stereo_am_transition",
-            "Spatial Angle Modulation (SAM Engine)": "spatial_angle_modulation_engine", # Uses Node/SAMVoice directly
-            "Spatial Angle Modulation (SAM Engine Transition)": "spatial_angle_modulation_engine_transition",
+            "Spatial Angle Modulation (SAM Engine)": "spatial_angle_modulation", # Uses Node/SAMVoice directly
+            "Spatial Angle Modulation (SAM Engine Transition)": "spatial_angle_modulation_transition",
             "Binaural Beat": "binaural_beat",
             "Binaural Beat Transition": "binaural_beat_transition",
             "Monaural Beat Stereo Amps": "monaural_beat_stereo_amps",
             "Monaural Beat Stereo Amps Transition": "monaural_beat_stereo_amps_transition",
-            "Spatial Angle Modulation (Monaural Core)": "spatial_angle_modulation_monaural", # Uses monaural_beat as core
-            "Spatial Angle Modulation (Monaural Core Transition)": "spatial_angle_modulation_monaural_transition",
+            "Spatial Angle Modulation (Monaural Core)": "spatial_angle_modulation_monaural_beat", # Uses monaural_beat as core
+            "Spatial Angle Modulation (Monaural Core Transition)": "spatial_angle_modulation_monaural_beat_transition",
             "Isochronic Tone": "isochronic_tone",
             "Isochronic Tone Transition": "isochronic_tone_transition",
             "QAM Beat": "qam_beat", # Ensure this mapping is correct for your UIAdd commentMore actions
@@ -941,7 +941,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
-            "spatial_angle_modulation_engine": { # This is an example, ensure it's correct
+            "spatial_angle_modulation": {
                 "standard": [
                     ('amp', 0.7), ('carrierFreq', 440.0), ('beatFreq', 4.0),
                     ('pathShape', 'circle'), ('pathRadius', 1.0),
@@ -1027,7 +1027,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
-            "spatial_angle_modulation_monaural": { # This is an example, ensure it's correct
+            "spatial_angle_modulation_monaural_beat": {
                 "standard": [ 
                     ('sam_ampOscDepth', 0.0), ('sam_ampOscFreq', 0.0), ('sam_ampOscPhaseOffset', 0.0),
                     ('amp_lower_L', 0.5), ('amp_upper_L', 0.5),
