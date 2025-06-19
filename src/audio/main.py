@@ -42,13 +42,14 @@ from PyQt5.QtMultimedia import (
 )
 
 from functools import partial
-from ui import themes
+from ui.themes import THEMES, apply_theme
 from preferences import Preferences
 from utils.settings_file import load_settings, save_settings
 from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog
 from ui.frequency_tester_dialog import FrequencyTesterDialog
 from ui.subliminal_dialog import SubliminalDialog
+from ui.voice_editor_dialog import VoiceEditorDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -225,7 +226,7 @@ class TrackEditorApp(QMainWindow):
 
         file_menu.addSeparator()
         theme_menu = file_menu.addMenu("Theme")
-        for name in themes.THEMES.keys():
+        for name in THEMES.keys():
             act = QAction(name, self)
             act.triggered.connect(partial(self.set_theme, name))
             theme_menu.addAction(act)
@@ -244,7 +245,7 @@ class TrackEditorApp(QMainWindow):
 
 
     def set_theme(self, name):
-        themes.apply_theme(QApplication.instance(), name)
+        apply_theme(QApplication.instance(), name)
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
         if hasattr(self, "prefs"):
             self.prefs.theme = name
@@ -293,7 +294,7 @@ class TrackEditorApp(QMainWindow):
         if self.prefs.font_family or self.prefs.font_size:
             font = QFont(self.prefs.font_family or app.font().family(), self.prefs.font_size)
             app.setFont(font)
-        themes.apply_theme(app, self.prefs.theme)
+        apply_theme(app, self.prefs.theme)
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
 
     def _setup_ui(self):
@@ -1786,7 +1787,7 @@ if __name__ == "__main__":
     if prefs.font_family or prefs.font_size:
         font = QFont(prefs.font_family or app.font().family(), prefs.font_size)
         app.setFont(font)
-    themes.apply_theme(app, prefs.theme)
+    apply_theme(app, prefs.theme)
     app.setStyle("Fusion")
     
 
