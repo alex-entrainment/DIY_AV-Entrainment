@@ -1,4 +1,12 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout, QListWidgetItem
+from PyQt5.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QListWidget,
+    QPushButton,
+    QHBoxLayout,
+    QListWidgetItem,
+    QLabel,
+)
 from PyQt5.QtCore import pyqtSignal
 
 class StepListPanel(QWidget):
@@ -37,6 +45,10 @@ class StepListPanel(QWidget):
             btn_layout.addWidget(btn)
         layout.addLayout(btn_layout)
 
+        # Label to show the total sequence duration
+        self.total_duration_label = QLabel("Total Duration: 00:00:00")
+        layout.addWidget(self.total_duration_label)
+
         # Connect UI signals to our custom signals.
         self.btn_add.clicked.connect(self.addStepClicked)
         self.btn_duplicate.clicked.connect(self.duplicateStepClicked)
@@ -69,3 +81,7 @@ class StepListPanel(QWidget):
 
     def set_current_row(self, row):
         self.step_list.setCurrentRow(row)
+
+    def set_total_duration(self, duration_str: str):
+        """Update the total duration label."""
+        self.total_duration_label.setText(f"Total Duration: {duration_str}")
