@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
     def update_sequence_duration(self):
         duration = self.step_controller.update_sequence_duration()
         self.status.showMessage(f"Sequence Duration: {duration}")
+        self.step_list_panel.set_total_duration(duration)
 
     def handle_add_step(self):
         mode = self.step_config_panel.mode_combo.currentText()
