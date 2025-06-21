@@ -31,6 +31,7 @@ from PyQt5.QtWidgets import (
     QSlider,
     QAbstractItemView,
     QAction,
+    QProgressBar,
 )
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QPalette, QColor
@@ -370,6 +371,11 @@ class TrackEditorApp(QMainWindow):
         self.generate_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.generate_button.clicked.connect(self.generate_audio_action)
         generate_layout.addWidget(self.generate_button)
+        self.generate_progress_bar = QProgressBar()
+        self.generate_progress_bar.setRange(0, 100)
+        self.generate_progress_bar.setValue(0)
+        self.generate_progress_bar.setVisible(False)
+        generate_layout.addWidget(self.generate_progress_bar)
         generate_layout.setContentsMargins(0,0,0,0)
         control_layout.addWidget(generate_frame)
 
@@ -1320,13 +1326,21 @@ class TrackEditorApp(QMainWindow):
         if reply == QMessageBox.No: return
         try:
             self.generate_button.setEnabled(False)
+            self.generate_progress_bar.setValue(0)
+            self.generate_progress_bar.setVisible(True)
             self.statusBar().showMessage("Generating audio file, please wait...")
             QApplication.processEvents()
+
+            def progress_cb(progress):
+                self.generate_progress_bar.setValue(int(progress * 100))
+                QApplication.processEvents()
+
             print(f"Initiating audio generation for: {final_output_path}")
             success = sound_creator.generate_audio(
                 current_track_data,
                 output_filename=final_output_path,
                 target_level=self.prefs.target_output_amplitude,
+                progress_callback=progress_cb,
             )
             if success:
                 abs_path = os.path.abspath(final_output_path)
@@ -1338,6 +1352,7 @@ class TrackEditorApp(QMainWindow):
             traceback.print_exc()
         finally:
             self.generate_button.setEnabled(True)
+            self.generate_progress_bar.setVisible(False)
             self.statusBar().clearMessage()
             QApplication.processEvents()
 
