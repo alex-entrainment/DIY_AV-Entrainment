@@ -383,7 +383,7 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     return audio.astype(np.float32) # Ensure float32 output
 
 
-def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossfade_curve="linear"):
+def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossfade_curve="linear", progress_callback=None):
     """
     Assembles a track from a track_data dictionary.
     Uses crossfading between steps by overlapping their placement. The
@@ -417,6 +417,13 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
         f"Assembling track: {len(steps_data)} steps, Est. Max Duration: {estimated_total_duration:.2f}s, "
         f"Crossfade: {crossfade_duration:.2f}s ({crossfade_samples} samples), Curve: {crossfade_curve}"
     )
+
+    total_steps = len(steps_data)
+    if progress_callback:
+        try:
+            progress_callback(0.0)
+        except Exception as e:
+            print(f"Progress callback error: {e}")
 
     for i, step_data in enumerate(steps_data):
         step_duration = float(step_data.get("duration", 0))
@@ -547,6 +554,12 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
         effective_advance_duration = max(0.0, step_duration - crossfade_duration) if crossfade_samples > 0 else step_duration
         current_time += effective_advance_duration
 
+        if progress_callback:
+            try:
+                progress_callback((i + 1) / total_steps)
+            except Exception as e:
+                print(f"Progress callback error: {e}")
+
 
     # --- Final Trimming ---
     final_track_samples = last_step_end_sample_in_track
@@ -560,6 +573,12 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
          print(f"Warning: Final track samples ({final_track_samples}) exceeded initial estimate ({estimated_total_samples}).")
 
     print(f"Track assembly finished. Final Duration: {track.shape[0] / sample_rate:.2f}s")
+
+    if progress_callback:
+        try:
+            progress_callback(1.0)
+        except Exception as e:
+            print(f"Progress callback error: {e}")
     return track
 
 
@@ -659,7 +678,7 @@ def _write_audio_file(audio_int16, sample_rate, filename):
         return False
 
 
-def generate_audio(track_data, output_filename=None, target_level=0.25):
+def generate_audio(track_data, output_filename=None, target_level=0.25, progress_callback=None):
     """Generate and export an audio file (WAV/FLAC/MP3) based on track_data."""
     if not track_data:
         print("Error: Cannot generate audio, track data is missing.")
@@ -696,7 +715,7 @@ def generate_audio(track_data, output_filename=None, target_level=0.25):
     print(f"Output File: {output_filename}")
 
     # Assemble the track (includes per-step normalization now)
-    track_audio = assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossfade_curve)
+    track_audio = assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossfade_curve, progress_callback)
 
     if track_audio is None or track_audio.size == 0:
         print("Error: Track assembly failed or resulted in empty audio.")
@@ -733,9 +752,9 @@ def generate_audio(track_data, output_filename=None, target_level=0.25):
     return success
 
 
-def generate_wav(track_data, output_filename=None, target_level=0.25):
+def generate_wav(track_data, output_filename=None, target_level=0.25, progress_callback=None):
     """Backward compatible wrapper for generate_audio."""
-    return generate_audio(track_data, output_filename, target_level)
+    return generate_audio(track_data, output_filename, target_level, progress_callback)
 
 def generate_single_step_audio_segment(step_data, global_settings, target_duration_seconds, duration_override=None):
     """
