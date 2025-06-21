@@ -2,7 +2,10 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from preferences import Preferences
+try:
+    from .preferences import Preferences
+except ImportError:  # Running without package context
+    from utils.preferences import Preferences
 
 # Settings file path located in the local directory
 SETTINGS_FILE = Path.home() / "settings.json"

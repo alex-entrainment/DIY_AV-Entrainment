@@ -10,9 +10,9 @@ import numpy as np
 from synth_functions.binaural_beat import binaural_beat
 
 try:
-    from ..preferences import Preferences
+    from ..utils.preferences import Preferences
 except ImportError:  # when running stand-alone
-    from preferences import Preferences
+    from utils.preferences import Preferences
 
 
 class FrequencyTesterDialog(QDialog):

@@ -43,7 +43,7 @@ from PyQt5.QtMultimedia import (
 
 from functools import partial
 from ui.themes import THEMES, apply_theme
-from preferences import Preferences
+from utils.preferences import Preferences
 from utils.settings_file import load_settings, save_settings
 from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog

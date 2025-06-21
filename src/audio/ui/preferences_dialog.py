@@ -8,9 +8,9 @@ from PyQt5.QtCore import Qt
 
 
 try:
-    from ..preferences import Preferences
+    from ..utils.preferences import Preferences
 except ImportError:  # Running as a script without packages
-    from preferences import Preferences
+    from utils.preferences import Preferences
 from . import themes  # reuse themes from audio package
 
 class PreferencesDialog(QDialog):
