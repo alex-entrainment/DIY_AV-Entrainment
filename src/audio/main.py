@@ -1,12 +1,10 @@
 import sys
-from collections import OrderedDict
 import json
 from synth_functions import sound_creator  # Updated import path
 import soundfile as sf
 import os
-import copy # For deep copying voice data
-import math # For default values like pi
-import traceback # For error reporting
+import copy  # For deep copying voice data
+import traceback  # For error reporting
 
 from PyQt5.QtWidgets import (
     QApplication,
@@ -37,16 +35,24 @@ from PyQt5.QtWidgets import (
 )
 
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QObject, pyqtProperty, pyqtSignal, QUrl, QItemSelectionModel
-from PyQt5.QtQuickWidgets import QQuickWidget
+
 from PyQt5.QtQml import QQmlApplicationEngine
 
-from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QPalette, QColor
-from PyQt5.QtMultimedia import (
-    QAudioFormat,
-    QAudioOutput,
-    QAudioDeviceInfo,
-    QAudio,
-)
+from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
+try:
+    from PyQt5.QtMultimedia import (
+        QAudioFormat,
+        QAudioOutput,
+        QAudioDeviceInfo,
+        QAudio,
+    )
+except Exception as e:  # noqa: PIE786 - generic Exception to capture missing Qt deps
+    print(
+        "ERROR: Failed to import PyQt5.QtMultimedia modules.\n"\
+        "Ensure PyQt5 with multimedia extras is installed and system libraries are available.\n"\
+        f"Original error: {e}"
+    )
+    QAudioFormat = QAudioOutput = QAudioDeviceInfo = QAudio = None
 
 from functools import partial
 from ui.themes import THEMES, apply_theme
@@ -58,7 +64,6 @@ from ui.frequency_tester_dialog import FrequencyTesterDialog
 from ui.subliminal_dialog import SubliminalDialog
 from utils.timeline_visualizer import visualize_track_timeline
 from ui.overlay_clip_dialog import OverlayClipDialog
-from ui.voice_editor_dialog import VoiceEditorDialog
 from ui.collapsible_box import CollapsibleBox
 from models import StepModel, VoiceModel
 
