@@ -6,6 +6,11 @@ import json
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
 import traceback # For detailed error printing
+from utils.noise_file import load_noise_params
+from noise_flanger import (
+    _generate_swept_notch_arrays,
+    _generate_swept_notch_arrays_transition,
+)
 
 # Import all synth functions from the synth_functions package
 from synth_functions import *
@@ -572,7 +577,112 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
     elif final_track_samples > estimated_total_samples:
          print(f"Warning: Final track samples ({final_track_samples}) exceeded initial estimate ({estimated_total_samples}).")
 
-    print(f"Track assembly finished. Final Duration: {track.shape[0] / sample_rate:.2f}s")
+    track_duration_sec = final_track_samples / sample_rate
+
+    # --- Optional Background Noise Layer ---
+    bg_cfg = track_data.get("background_noise", {})
+    bg_file = None
+    if isinstance(bg_cfg, dict):
+        bg_file = bg_cfg.get("file") or bg_cfg.get("params_path") or bg_cfg.get("noise_file")
+    if bg_file:
+        try:
+            params = load_noise_params(bg_file)
+            params.duration_seconds = track_duration_sec
+            params.sample_rate = sample_rate
+            if getattr(params, "transition", False):
+                start_sweeps = [(sw.get("start_min", 1000), sw.get("start_max", 10000)) for sw in params.sweeps]
+                end_sweeps = [(sw.get("end_min", 1000), sw.get("end_max", 10000)) for sw in params.sweeps]
+                start_q = [sw.get("start_q", 30) for sw in params.sweeps]
+                end_q = [sw.get("end_q", 30) for sw in params.sweeps]
+                start_casc = [sw.get("start_casc", 10) for sw in params.sweeps]
+                end_casc = [sw.get("end_casc", 10) for sw in params.sweeps]
+                noise_audio, _ = _generate_swept_notch_arrays_transition(
+                    track_duration_sec,
+                    sample_rate,
+                    params.start_lfo_freq,
+                    params.end_lfo_freq,
+                    start_sweeps,
+                    end_sweeps,
+                    start_q,
+                    end_q,
+                    start_casc,
+                    end_casc,
+                    params.start_lfo_phase_offset_deg,
+                    params.end_lfo_phase_offset_deg,
+                    params.start_intra_phase_offset_deg,
+                    params.end_intra_phase_offset_deg,
+                    params.input_audio_path or None,
+                    params.noise_type,
+                    params.lfo_waveform,
+                    params.initial_offset,
+                    params.post_offset,
+                    "linear",
+                    False,
+                    2,
+                )
+            else:
+                sweeps = [(sw.get("start_min", 1000), sw.get("start_max", 10000)) for sw in params.sweeps]
+                notch_q = [sw.get("start_q", 30) for sw in params.sweeps]
+                casc = [sw.get("start_casc", 10) for sw in params.sweeps]
+                noise_audio, _ = _generate_swept_notch_arrays(
+                    track_duration_sec,
+                    sample_rate,
+                    params.lfo_freq,
+                    sweeps,
+                    notch_q,
+                    casc,
+                    params.start_lfo_phase_offset_deg,
+                    params.start_intra_phase_offset_deg,
+                    params.input_audio_path or None,
+                    params.noise_type,
+                    params.lfo_waveform,
+                    False,
+                    2,
+                )
+
+            if noise_audio.shape[0] < final_track_samples:
+                noise_audio = np.pad(
+                    noise_audio,
+                    ((0, final_track_samples - noise_audio.shape[0]), (0, 0)),
+                    "constant",
+                )
+            track += noise_audio * float(bg_cfg.get("gain", 1.0))
+        except Exception as e:
+            print(f"Error generating background noise: {e}")
+
+    # --- Overlay Clips ---
+    clips = track_data.get("clips", [])
+    if isinstance(clips, list):
+        for clip in clips:
+            try:
+                path = clip.get("path")
+                if not path:
+                    continue
+                clip_audio, clip_sr = sf.read(path)
+                if clip_sr != sample_rate:
+                    from scipy.signal import resample
+
+                    n_target = int(len(clip_audio) * sample_rate / clip_sr)
+                    if clip_audio.ndim == 1:
+                        clip_audio = resample(clip_audio, n_target)
+                    else:
+                        clip_audio = np.stack(
+                            [resample(clip_audio[:, i], n_target) for i in range(clip_audio.shape[1])],
+                            axis=-1,
+                        )
+                if clip_audio.ndim == 1:
+                    clip_audio = np.column_stack((clip_audio, clip_audio))
+                start_sample = int(float(clip.get("start_time", 0)) * sample_rate)
+                end_sample = start_sample + clip_audio.shape[0]
+                if end_sample > track.shape[0]:
+                    track = np.pad(track, ((0, end_sample - track.shape[0]), (0, 0)), "constant")
+                    final_track_samples = max(final_track_samples, end_sample)
+                gain = float(clip.get("gain", 1.0))
+                track[start_sample:end_sample] += clip_audio * gain
+            except Exception as e:
+                print(f"Error overlaying clip {clip}: {e}")
+
+    print(f"Track assembly finished. Final Duration: {final_track_samples / sample_rate:.2f}s")
 
     if progress_callback:
         try:
@@ -608,6 +718,9 @@ def load_track_from_json(filepath):
            not isinstance(track_data["global_settings"], dict):
             print("Error: Invalid JSON structure. Missing 'global_settings' dict or 'steps' list.")
             return None
+        # Ensure new optional sections exist
+        track_data.setdefault("background_noise", {})
+        track_data.setdefault("clips", [])
         # Further validation could check step/voice structure if needed
         return track_data
     except FileNotFoundError:
@@ -629,6 +742,10 @@ def save_track_to_json(track_data, filepath):
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
             print(f"Created output directory: {output_dir}")
+
+        # Ensure optional sections exist before serializing
+        track_data.setdefault("background_noise", {})
+        track_data.setdefault("clips", [])
 
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(track_data, f, indent=4, cls=NumpyEncoder)
