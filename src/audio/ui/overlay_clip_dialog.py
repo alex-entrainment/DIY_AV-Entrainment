@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox, QMessageBox
 )
 from PyQt5.QtCore import Qt
+import soundfile as sf
 
 
 class OverlayClipDialog(QDialog):
@@ -17,6 +18,16 @@ class OverlayClipDialog(QDialog):
         self._setup_ui()
         if clip_data:
             self._populate_from_data(clip_data)
+
+    def _get_clip_duration(self, path: str) -> float:
+        """Return the duration of the audio clip at ``path`` in seconds."""
+        try:
+            info = sf.info(path)
+            if info.samplerate > 0:
+                return info.frames / float(info.samplerate)
+        except Exception:
+            pass
+        return 0.0
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -93,9 +104,11 @@ class OverlayClipDialog(QDialog):
         if not path:
             QMessageBox.warning(self, "Input Required", "Please select an audio file.")
             return
+        duration = self._get_clip_duration(path)
         self.clip_data = {
             "file_path": path,
             "start": float(self.start_spin.value()),
+            "duration": duration,
             "amp": float(self.amp_spin.value()),
             "pan": float(self.pan_spin.value()),
             "fade_in": float(self.fade_in_spin.value()),

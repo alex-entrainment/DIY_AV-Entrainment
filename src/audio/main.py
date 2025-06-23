@@ -2,6 +2,7 @@ import sys
 from collections import OrderedDict
 import json
 from synth_functions import sound_creator  # Updated import path
+import soundfile as sf
 import os
 import copy # For deep copying voice data
 import math # For default values like pi
@@ -274,6 +275,16 @@ class TrackEditorApp(QMainWindow):
             "clips": [],
             "steps": []
         }
+
+    def _get_clip_duration(self, path: str) -> float:
+        """Return duration of ``path`` in seconds or ``0.0`` on error."""
+        try:
+            info = sf.info(path)
+            if info.samplerate > 0:
+                return info.frames / float(info.samplerate)
+        except Exception:
+            pass
+        return 0.0
 
     def _create_menu(self):
         menubar = self.menuBar()
@@ -676,8 +687,18 @@ class TrackEditorApp(QMainWindow):
         voice_details_outer_layout.addWidget(self.clips_groupbox)
 
         self.clips_tree = QTreeWidget()
-        self.clips_tree.setColumnCount(7)
-        self.clips_tree.setHeaderLabels(["File", "Description", "Start", "Amp", "Pan", "FadeIn", "FadeOut"])
+        self.clips_tree.setColumnCount(9)
+        self.clips_tree.setHeaderLabels([
+            "File",
+            "Description",
+            "Start",
+            "Duration",
+            "Finish",
+            "Amp",
+            "Pan",
+            "FadeIn",
+            "FadeOut",
+        ])
         self.clips_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.clips_tree.itemSelectionChanged.connect(self.on_clip_select)
         self.clips_tree.itemChanged.connect(self.on_clip_item_changed)
@@ -940,11 +961,19 @@ class TrackEditorApp(QMainWindow):
             item = QTreeWidgetItem(self.clips_tree)
             item.setText(0, os.path.basename(clip.get("file_path", "")))
             item.setText(1, clip.get("description", ""))
-            item.setText(2, f"{clip.get('start', 0.0):.2f}")
-            item.setText(3, str(clip.get('amp', 1.0)))
-            item.setText(4, str(clip.get('pan', 0.0)))
-            item.setText(5, str(clip.get('fade_in', 0.0)))
-            item.setText(6, str(clip.get('fade_out', 0.0)))
+            start = float(clip.get('start', 0.0))
+            duration = float(clip.get('duration', 0.0))
+            if duration <= 0 and clip.get('file_path'):
+                duration = self._get_clip_duration(clip['file_path'])
+                clip['duration'] = duration
+            finish = start + duration
+            item.setText(2, f"{start:.2f}")
+            item.setText(3, f"{duration:.2f}")
+            item.setText(4, f"{finish:.2f}")
+            item.setText(5, str(clip.get('amp', 1.0)))
+            item.setText(6, str(clip.get('pan', 0.0)))
+            item.setText(7, str(clip.get('fade_in', 0.0)))
+            item.setText(8, str(clip.get('fade_out', 0.0)))
             item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setData(0, Qt.UserRole, i)
             if i in selected:
