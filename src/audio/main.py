@@ -18,6 +18,8 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QTreeView,
+    QTreeWidget,
+    QTreeWidgetItem,
     QTextEdit,
     QGroupBox,
     QSplitter,
