@@ -10,6 +10,14 @@ from .utils.voice_file import (
     load_voice_preset,
     VOICE_FILE_EXTENSION,
 )
+from .utils.timeline import (
+    build_timeline,
+    TimelineEntry,
+    CATEGORY_BINARUALS,
+    CATEGORY_VOCALS,
+    CATEGORY_EFFECTS,
+    CATEGORY_NOISE,
+)
 
 __all__ = [
     'NoiseParams',
@@ -20,4 +28,10 @@ __all__ = [
     'save_voice_preset',
     'load_voice_preset',
     'VOICE_FILE_EXTENSION',
+    'build_timeline',
+    'TimelineEntry',
+    'CATEGORY_BINARUALS',
+    'CATEGORY_VOCALS',
+    'CATEGORY_EFFECTS',
+    'CATEGORY_NOISE',
 ]

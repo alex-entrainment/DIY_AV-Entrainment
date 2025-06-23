@@ -572,7 +572,42 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
     elif final_track_samples > estimated_total_samples:
          print(f"Warning: Final track samples ({final_track_samples}) exceeded initial estimate ({estimated_total_samples}).")
 
-    print(f"Track assembly finished. Final Duration: {track.shape[0] / sample_rate:.2f}s")
+    # --- Background Noise Overlay ---
+    noise_cfg = track_data.get("background_noise")
+    if noise_cfg:
+        noise_start = float(noise_cfg.get("start_time", 0.0))
+        noise_dur = float(noise_cfg.get("duration", 0.0))
+        noise_amp = float(noise_cfg.get("amplitude", 0.1))
+        noise_type = noise_cfg.get("noise_type", "pink").lower()
+        fade_in = float(noise_cfg.get("fade_in", 0.0))
+        fade_out = float(noise_cfg.get("fade_out", 0.0))
+        if noise_dur > 0:
+            n_samples = int(noise_dur * sample_rate)
+            if noise_type == "brown":
+                from synth_functions.noise_flanger import generate_brown_noise_samples
+                noise = generate_brown_noise_samples(n_samples)
+            else:
+                from synth_functions.noise_flanger import generate_pink_noise_samples
+                noise = generate_pink_noise_samples(n_samples)
+            noise = np.column_stack((noise, noise)) * noise_amp
+            if fade_in > 0:
+                fi = min(int(fade_in * sample_rate), n_samples)
+                noise[:fi] *= np.linspace(0, 1, fi)[:, None]
+            if fade_out > 0:
+                fo = min(int(fade_out * sample_rate), n_samples)
+                noise[-fo:] *= np.linspace(1, 0, fo)[:, None]
+            start_idx = int(noise_start * sample_rate)
+            end_idx = start_idx + n_samples
+            if end_idx > track.shape[0]:
+                pad_len = end_idx - track.shape[0]
+                track = np.pad(track, ((0, pad_len), (0, 0)), "constant")
+            track[start_idx:end_idx] += noise
+            final_track_samples = max(final_track_samples, end_idx)
+
+    print(f"Track assembly finished. Final Duration: {final_track_samples / sample_rate:.2f}s")
+
+    if final_track_samples < track.shape[0]:
+        track = track[:final_track_samples]
 
     if progress_callback:
         try:
