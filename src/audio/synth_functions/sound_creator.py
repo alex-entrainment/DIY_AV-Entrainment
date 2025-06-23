@@ -3,6 +3,7 @@ from scipy.signal import butter, lfilter, sosfiltfilt
 from scipy.io.wavfile import write
 import soundfile as sf
 import json
+
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
 import traceback # For detailed error printing
@@ -11,6 +12,7 @@ from noise_flanger import (
     _generate_swept_notch_arrays,
     _generate_swept_notch_arrays_transition,
 )
+
 
 # Import all synth functions from the synth_functions package
 from synth_functions import *
@@ -148,6 +150,71 @@ def phase_align_signal(prev_tail, next_audio, max_search_samples=2048):
     return np.roll(next_audio, offset, axis=0)
 
 
+def load_audio_clip(file_path, sample_rate):
+    """Load an audio clip as stereo ``float32`` at ``sample_rate``.
+
+    Supports WAV/FLAC using :mod:`soundfile` and MP3 via :mod:`pydub` if
+    available.  If ``librosa`` is installed the audio is resampled using it,
+    otherwise a simple interpolation fallback is used.
+    """
+    if not os.path.isfile(file_path):
+        print(f"Error: File not found: {file_path}")
+        return np.zeros((0, 2), dtype=np.float32)
+
+    ext = os.path.splitext(file_path)[1].lower()
+
+    try:
+        if ext == ".mp3":
+            try:
+                from pydub import AudioSegment
+            except Exception:
+                print("Error: pydub not installed. Cannot load MP3 files.")
+                return np.zeros((0, 2), dtype=np.float32)
+
+            seg = AudioSegment.from_file(file_path)
+            sr = seg.frame_rate
+            samples = np.array(seg.get_array_of_samples())
+            if seg.channels > 1:
+                samples = samples.reshape((-1, seg.channels))
+            else:
+                samples = samples.reshape((-1, 1))
+            data = samples.astype(np.float32) / float(1 << (8 * seg.sample_width - 1))
+        else:
+            data, sr = sf.read(file_path, always_2d=True, dtype="float32")
+    except Exception as e:
+        print(f"Error loading audio file '{file_path}': {e}")
+        traceback.print_exc()
+        return np.zeros((0, 2), dtype=np.float32)
+
+    # Convert to stereo
+    if data.ndim == 1:
+        data = np.column_stack((data, data))
+    elif data.shape[1] == 1:
+        data = np.column_stack((data[:, 0], data[:, 0]))
+    elif data.shape[1] > 2:
+        data = data[:, :2]
+
+    # Resample if needed
+    if sr != sample_rate:
+        try:
+            if librosa is not None:
+                data = librosa.resample(data.T, orig_sr=sr, target_sr=sample_rate).T
+            else:
+                old_n = data.shape[0]
+                new_n = int(old_n * sample_rate / sr)
+                x_old = np.linspace(0, 1, old_n, endpoint=False)
+                x_new = np.linspace(0, 1, new_n, endpoint=False)
+                data = np.vstack([
+                    np.interp(x_new, x_old, data[:, ch]) for ch in range(2)
+                ]).T
+        except Exception as e:
+            print(f"Error resampling '{file_path}': {e}")
+            traceback.print_exc()
+            return np.zeros((0, 2), dtype=np.float32)
+
+    return data.astype(np.float32)
+
+
 # Dictionary mapping function names (strings) to actual functions
 # --- UPDATED SYNTH_FUNCTIONS DICTIONARY ---
 # Exclude helper/internal functions explicitly
@@ -157,6 +224,7 @@ _EXCLUDED_FUNCTION_NAMES = [
     'brown_noise', 'sine_wave', 'sine_wave_varying', 'adsr_envelope',
     'create_linear_fade_envelope', 'linen_envelope', 'pan2', 'safety_limiter',
     'crossfade_signals', 'phase_align_signal', 'steps_have_continuous_voices',
+    'load_audio_clip',
     'assemble_track_from_data', 'generate_voice_audio',
     'load_track_from_json', 'save_track_to_json', 'generate_audio', 'generate_wav', 'get_synth_params',
     'trapezoid_envelope_vectorized', '_flanger_effect_stereo_continuous',
