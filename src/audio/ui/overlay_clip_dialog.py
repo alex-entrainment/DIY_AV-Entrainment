@@ -30,6 +30,9 @@ class OverlayClipDialog(QDialog):
         file_layout.addWidget(browse_btn)
         form.addRow("Audio File:", file_layout)
 
+        self.desc_edit = QLineEdit()
+        form.addRow("Description:", self.desc_edit)
+
         self.start_spin = QDoubleSpinBox()
         self.start_spin.setRange(0.0, 99999.0)
         self.start_spin.setDecimals(3)
@@ -76,6 +79,7 @@ class OverlayClipDialog(QDialog):
         self.pan_spin.setValue(float(data.get("pan", 0.0)))
         self.fade_in_spin.setValue(float(data.get("fade_in", 0.0)))
         self.fade_out_spin.setValue(float(data.get("fade_out", 0.0)))
+        self.desc_edit.setText(data.get("description", ""))
 
     def browse_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -96,6 +100,7 @@ class OverlayClipDialog(QDialog):
             "pan": float(self.pan_spin.value()),
             "fade_in": float(self.fade_in_spin.value()),
             "fade_out": float(self.fade_out_spin.value()),
+            "description": self.desc_edit.text().strip(),
         }
         self.accept()
 

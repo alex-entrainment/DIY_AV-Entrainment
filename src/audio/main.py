@@ -192,6 +192,7 @@ class TrackEditorApp(QMainWindow):
         # Flag to prevent handling itemChanged signals while refreshing
         self._voices_tree_updating = False
         self._steps_tree_updating = False
+        self._clips_tree_updating = False
 
     def _get_default_track_data(self):
         return {
@@ -575,10 +576,14 @@ class TrackEditorApp(QMainWindow):
         voice_details_outer_layout.addWidget(self.clips_groupbox)
 
         self.clips_tree = QTreeWidget()
-        self.clips_tree.setColumnCount(6)
-        self.clips_tree.setHeaderLabels(["File", "Start", "Amp", "Pan", "FadeIn", "FadeOut"])
+        self.clips_tree.setColumnCount(7)
+        self.clips_tree.setHeaderLabels(["File", "Description", "Start", "Amp", "Pan", "FadeIn", "FadeOut"])
         self.clips_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.clips_tree.itemSelectionChanged.connect(self.on_clip_select)
+        self.clips_tree.itemChanged.connect(self.on_clip_item_changed)
+        self.clips_tree.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+        )
         clips_groupbox_layout.addWidget(self.clips_tree, 1)
 
         clips_btn_layout = QHBoxLayout()
@@ -880,6 +885,7 @@ class TrackEditorApp(QMainWindow):
         self._voices_tree_updating = False
 
     def refresh_clips_tree(self):
+        self._clips_tree_updating = True
         current_data = None
         current_item = self.clips_tree.currentItem()
         if current_item:
@@ -894,17 +900,20 @@ class TrackEditorApp(QMainWindow):
         for i, clip in enumerate(clips):
             item = QTreeWidgetItem(self.clips_tree)
             item.setText(0, os.path.basename(clip.get("file_path", "")))
-            item.setText(1, f"{clip.get('start', 0.0):.2f}")
-            item.setText(2, str(clip.get('amp', 1.0)))
-            item.setText(3, str(clip.get('pan', 0.0)))
-            item.setText(4, str(clip.get('fade_in', 0.0)))
-            item.setText(5, str(clip.get('fade_out', 0.0)))
+            item.setText(1, clip.get("description", ""))
+            item.setText(2, f"{clip.get('start', 0.0):.2f}")
+            item.setText(3, str(clip.get('amp', 1.0)))
+            item.setText(4, str(clip.get('pan', 0.0)))
+            item.setText(5, str(clip.get('fade_in', 0.0)))
+            item.setText(6, str(clip.get('fade_out', 0.0)))
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setData(0, Qt.UserRole, i)
             if i in selected:
                 item.setSelected(True)
                 if i == current_data:
                     self.clips_tree.setCurrentItem(item)
         self._update_clip_actions_state()
+        self._clips_tree_updating = False
 
     def clear_voice_details(self):
         self.voice_details_text.clear()
@@ -1028,6 +1037,20 @@ class TrackEditorApp(QMainWindow):
             self._push_history_state()
         except Exception as e:
             print(f"Error updating voice description: {e}")
+
+    @pyqtSlot(QTreeWidgetItem, int)
+    def on_clip_item_changed(self, item, column):
+        if self._clips_tree_updating or column != 1:
+            return
+        idx = item.data(0, Qt.UserRole)
+        if idx is None:
+            return
+        try:
+            new_desc = item.text(1).strip()
+            self.track_data["clips"][idx]["description"] = new_desc
+            self._push_history_state()
+        except Exception as e:
+            print(f"Error updating clip description: {e}")
 
     # --- Action Methods (File Ops, Step/Voice Ops) ---
     @pyqtSlot()
