@@ -206,8 +206,9 @@ class TrackEditorApp(QMainWindow):
                 "amp": 0.0,
                 "pan": 0.0,
             },
+            "background_noise": {},
             "clips": [],
-            "steps": [],
+            "steps": []
         }
 
     def _create_menu(self):
