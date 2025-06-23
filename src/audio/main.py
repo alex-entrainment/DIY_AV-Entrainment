@@ -17,8 +17,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QLabel,
     QLineEdit,
-    QTreeWidget,
-    QTreeWidgetItem,
+    QTreeView,
     QTextEdit,
     QGroupBox,
     QSplitter,
@@ -33,9 +32,11 @@ from PyQt5.QtWidgets import (
     QAction,
     QProgressBar,
 )
-from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QObject, pyqtProperty, pyqtSignal, QUrl
+
+from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QObject, pyqtProperty, pyqtSignal, QUrl, QItemSelectionModel
 from PyQt5.QtQuickWidgets import QQuickWidget
 from PyQt5.QtQml import QQmlApplicationEngine
+
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QPalette, QColor
 from PyQt5.QtMultimedia import (
     QAudioFormat,
@@ -56,6 +57,7 @@ from utils.timeline_visualizer import visualize_track_timeline
 from ui.overlay_clip_dialog import OverlayClipDialog
 from ui.voice_editor_dialog import VoiceEditorDialog
 from ui.collapsible_box import CollapsibleBox
+from models import StepModel, VoiceModel
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -317,15 +319,15 @@ class TrackEditorApp(QMainWindow):
 
     def open_subliminal_dialog(self):
         selected_step_index = self.get_selected_step_index()
-        if selected_step_index is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_step_index is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Subliminal", "Please select exactly one step first.")
             return
         dialog = SubliminalDialog(self, app_ref=self, step_index=selected_step_index)
         if dialog.exec_() == QDialog.Accepted:
             self.refresh_steps_tree()
-            if selected_step_index < self.steps_tree.topLevelItemCount():
-                step_item = self.steps_tree.topLevelItem(selected_step_index)
-                self.steps_tree.setCurrentItem(step_item)
+            if 0 <= selected_step_index < self.step_model.rowCount():
+                idx = self.step_model.index(selected_step_index, 0)
+                self.steps_tree.setCurrentIndex(idx)
                 QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
             self._push_history_state()
 
@@ -477,19 +479,23 @@ class TrackEditorApp(QMainWindow):
         steps_groupbox = QGroupBox("Steps")
         steps_groupbox_layout = QVBoxLayout(steps_groupbox)
         steps_outer_layout.addWidget(steps_groupbox)
-        self.steps_tree = QTreeWidget()
-        self.steps_tree.setColumnCount(3)
-        self.steps_tree.setHeaderLabels(["Duration (s)", "Description", "# Voices"])
+        self.step_model = StepModel(self.track_data.get("steps", []))
+        self.steps_tree = QTreeView()
+        self.steps_tree.setModel(self.step_model)
+        self.steps_tree.setRootIsDecorated(False)
+        self.steps_tree.setUniformRowHeights(True)
         self.steps_tree.setColumnWidth(0, 80)
         self.steps_tree.setColumnWidth(1, 150)
         self.steps_tree.setColumnWidth(2, 60)
         self.steps_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.steps_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
-        self.steps_tree.itemSelectionChanged.connect(self.on_step_select)
-        self.steps_tree.itemChanged.connect(self.on_step_item_changed)
+        self.steps_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.steps_tree.setEditTriggers(
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
         )
+        self.steps_tree.selectionModel().selectionChanged.connect(
+            lambda *_: self.on_step_select()
+        )
+        self.step_model.dataChanged.connect(lambda *_: self._push_history_state())
         steps_groupbox_layout.addWidget(self.steps_tree, 1)
 
         steps_button_layout_1 = QHBoxLayout()
@@ -571,25 +577,24 @@ class TrackEditorApp(QMainWindow):
         self.voices_groupbox = QGroupBox("Voices for Selected Step")
         voices_groupbox_layout = QVBoxLayout(self.voices_groupbox)
         voices_outer_layout.addWidget(self.voices_groupbox)
-        self.voices_tree = QTreeWidget()
-        self.voices_tree.setColumnCount(4)
-        self.voices_tree.setHeaderLabels([
-            "Synth Function",
-            "Carrier Freq",
-            "Transition?",
-            "Description",
-        ])
+        self.voice_model = VoiceModel([])
+        self.voices_tree = QTreeView()
+        self.voices_tree.setModel(self.voice_model)
+        self.voices_tree.setRootIsDecorated(False)
+        self.voices_tree.setUniformRowHeights(True)
         self.voices_tree.setColumnWidth(0, 220)
         self.voices_tree.setColumnWidth(1, 100)
         self.voices_tree.setColumnWidth(2, 80)
         self.voices_tree.setColumnWidth(3, 150)
         self.voices_tree.header().setStretchLastSection(True)
-        self.voices_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
-        self.voices_tree.itemSelectionChanged.connect(self.on_voice_select)
-        self.voices_tree.itemChanged.connect(self.on_voice_item_changed)
+        self.voices_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.voices_tree.setEditTriggers(
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
         )
+        self.voices_tree.selectionModel().selectionChanged.connect(
+            lambda *_: self.on_voice_select()
+        )
+        self.voice_model.dataChanged.connect(lambda *_: self._push_history_state())
         voices_groupbox_layout.addWidget(self.voices_tree, 1)
 
         voices_button_layout_1 = QHBoxLayout()
@@ -666,13 +671,11 @@ class TrackEditorApp(QMainWindow):
 
     # --- Button State Management ---
     def _update_step_actions_state(self):
-        selected_step_items = self.steps_tree.selectedItems()
-        num_selected = len(selected_step_items)
-        current_item = self.steps_tree.currentItem()
-        current_idx = self.get_selected_step_index() # This is the *focused* item
+        num_selected = len(self.get_selected_step_indices())
+        current_idx = self.get_selected_step_index()  # focused item
 
-        is_single_selection = (num_selected == 1) and (current_item is not None)
-        has_selection = (num_selected > 0)
+        is_single_selection = (num_selected == 1) and (current_idx is not None)
+        has_selection = num_selected > 0
         num_steps = len(self.track_data["steps"])
 
         self.add_step_button.setEnabled(True)
@@ -721,20 +724,18 @@ class TrackEditorApp(QMainWindow):
         
         # If no single step is selected, clear voice-related UI and potentially reset tester if it was idle.
         if not is_single_selection:
-                 self.voices_tree.clear()
-                 self.clear_voice_details()
-                 self.voices_groupbox.setTitle("Voices for Selected Step")
-                 # If tester was idle and selection is lost, ensure label is "No step loaded"
-                 if self.current_test_step_index == -1 and self.test_step_raw_audio is None:
-                     self.test_step_loaded_label.setText("No step loaded for preview.")
+            self.voice_model.refresh([])
+            self.clear_voice_details()
+            self.voices_groupbox.setTitle("Voices for Selected Step")
+            if self.current_test_step_index == -1 and self.test_step_raw_audio is None:
+                self.test_step_loaded_label.setText("No step loaded for preview.")
 
 
     def _update_voice_actions_state(self):
-        selected_voice_items = self.voices_tree.selectedItems()
-        num_selected_voices = len(selected_voice_items)
+        num_selected_voices = len(self.get_selected_voice_indices())
         current_voice_idx = self.get_selected_voice_index()
 
-        is_single_step_selected = len(self.steps_tree.selectedItems()) == 1 and self.get_selected_step_index() is not None
+        is_single_step_selected = len(self.get_selected_step_indices()) == 1 and self.get_selected_step_index() is not None
 
         # Always allow the button click when a single step is selected. If the
         # editor dialog failed to import, the handler will inform the user when
@@ -838,113 +839,51 @@ class TrackEditorApp(QMainWindow):
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
         self._steps_tree_updating = True
-        current_focused_item_data = None
-        current_item = self.steps_tree.currentItem()
-        if current_item:
-            current_focused_item_data = current_item.data(0, Qt.UserRole)
-        selected_items_data = set()
-        for item in self.steps_tree.selectedItems():
-            data = item.data(0, Qt.UserRole)
-            if data is not None: selected_items_data.add(data)
-        self.steps_tree.clear()
-        for i, step in enumerate(self.track_data.get("steps", [])):
-            duration = step.get("duration", 0.0)
-            description = step.get("description", "")
-            num_voices = len(step.get("voices", []))
-            item = QTreeWidgetItem(self.steps_tree)
-            item.setFlags(item.flags() | Qt.ItemIsEditable)
-            item.setText(0, f"{duration:.2f}")
-            item.setText(1, description)
-            item.setText(2, str(num_voices))
-            item.setData(0, Qt.UserRole, i)
-        new_focused_item = None
-        for i in range(self.steps_tree.topLevelItemCount()):
-            item = self.steps_tree.topLevelItem(i)
-            item_data = item.data(0, Qt.UserRole)
-            if item_data in selected_items_data:
-                item.setSelected(True)
-                if item_data == current_focused_item_data: new_focused_item = item
-        if new_focused_item:
-            self.steps_tree.setCurrentItem(new_focused_item)
-            self.steps_tree.scrollToItem(new_focused_item, QTreeWidget.PositionAtCenter)
-        elif self.steps_tree.topLevelItemCount() > 0 and selected_items_data:
-            first_selected_restored = None
-            for i in range(self.steps_tree.topLevelItemCount()):
-                item = self.steps_tree.topLevelItem(i)
-                if item.isSelected(): first_selected_restored = item; break
-            if first_selected_restored: self.steps_tree.setCurrentItem(first_selected_restored)
-        self.on_step_select() # This will also trigger _update_step_actions_state
+        current_row = self.get_selected_step_index()
+        selected_rows = self.get_selected_step_indices()
+        self.step_model.refresh(self.track_data.get("steps", []))
+        sel_model = self.steps_tree.selectionModel()
+        sel_model.clearSelection()
+        for row in selected_rows:
+            if 0 <= row < self.step_model.rowCount():
+                idx = self.step_model.index(row, 0)
+                sel_model.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        if current_row is not None and 0 <= current_row < self.step_model.rowCount():
+            idx = self.step_model.index(current_row, 0)
+            self.steps_tree.setCurrentIndex(idx)
+            self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
+        self.on_step_select()
         self._steps_tree_updating = False
 
     def refresh_voices_tree(self):
         self._voices_tree_updating = True
-        current_focused_voice_item_data = None
-        current_voice_item = self.voices_tree.currentItem()
-        if current_voice_item:
-            current_focused_voice_item_data = current_voice_item.data(0, Qt.UserRole)
-        selected_voice_items_data = set()
-        for item in self.voices_tree.selectedItems():
-            data = item.data(0, Qt.UserRole)
-            if data is not None: selected_voice_items_data.add(data)
-        self.voices_tree.clear()
+        current_row = self.get_selected_voice_index()
+        selected_rows = self.get_selected_voice_indices()
         self.clear_voice_details()
         selected_step_idx = self.get_selected_step_index()
-        if selected_step_idx is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_step_idx is None or len(self.get_selected_step_indices()) != 1:
+            self.voice_model.refresh([])
             self.voices_groupbox.setTitle("Voices for Selected Step")
             self._update_voice_actions_state()
+            self._voices_tree_updating = False
             return
         self.voices_groupbox.setTitle(f"Voices for Step {selected_step_idx + 1}")
         try:
             step_data = self.track_data["steps"][selected_step_idx]
             voices = step_data.get("voices", [])
-            for i, voice in enumerate(voices):
-                func_name = voice.get("synth_function_name", "N/A")
-                params = voice.get("params", {})
-                is_transition = voice.get("is_transition", False)
-                description = voice.get("description", "")
-                carrier_freq_str = 'N/A'
-                if 'baseFreq' in params: carrier_freq = params['baseFreq']
-                elif 'frequency' in params: carrier_freq = params['frequency']
-                elif 'carrierFreq' in params: carrier_freq = params['carrierFreq']
-                else:
-                    freq_keys = [k for k in params if ('Freq' in k or 'Frequency' in k) and not k.startswith(('start','end','target'))]
-                    if is_transition:
-                        freq_keys = [k for k in params if k.startswith('start') and ('Freq' in k or 'Frequency' in k)] or freq_keys
-                    carrier_freq = params.get(freq_keys[0]) if freq_keys else 'N/A'
-                try:
-                    if carrier_freq is not None and carrier_freq != 'N/A': carrier_freq_str = f"{float(carrier_freq):.2f}"
-                    else: carrier_freq_str = str(carrier_freq)
-                except (ValueError, TypeError): carrier_freq_str = str(carrier_freq)
-                transition_str = "Yes" if is_transition else "No"
-                item = QTreeWidgetItem(self.voices_tree)
-                item.setText(0, func_name)
-                item.setText(1, carrier_freq_str)
-                item.setText(2, transition_str)
-                item.setText(3, description)
-                item.setFlags(item.flags() | Qt.ItemIsEditable)
-                item.setData(0, Qt.UserRole, i)
-            new_focused_voice_item = None
-            for i in range(self.voices_tree.topLevelItemCount()):
-                item = self.voices_tree.topLevelItem(i)
-                item_data = item.data(0, Qt.UserRole)
-                if item_data in selected_voice_items_data:
-                    item.setSelected(True)
-                    if item_data == current_focused_voice_item_data: new_focused_voice_item = item
-            if new_focused_voice_item:
-                self.voices_tree.setCurrentItem(new_focused_voice_item)
-                self.voices_tree.scrollToItem(new_focused_voice_item, QTreeWidget.PositionAtCenter)
-            elif self.voices_tree.topLevelItemCount() > 0 and selected_voice_items_data:
-                first_selected_restored_voice = None
-                for i in range(self.voices_tree.topLevelItemCount()):
-                    item = self.voices_tree.topLevelItem(i)
-                    if item.isSelected(): first_selected_restored_voice = item; break
-                if first_selected_restored_voice: self.voices_tree.setCurrentItem(first_selected_restored_voice)
-        except IndexError:
-            print(f"Error: Selected step index {selected_step_idx} out of range for voice display.")
-            self.voices_groupbox.setTitle("Voices for Selected Step")
-        except Exception as e:
-            print(f"Error refreshing voices tree: {e}")
-            traceback.print_exc()
+        except (IndexError, KeyError):
+            voices = []
+        self.voice_model.refresh(voices)
+        sel_model = self.voices_tree.selectionModel()
+        sel_model.clearSelection()
+        for row in selected_rows:
+            if 0 <= row < self.voice_model.rowCount():
+                idx = self.voice_model.index(row, 0)
+                sel_model.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        if current_row is not None and 0 <= current_row < self.voice_model.rowCount():
+            idx = self.voice_model.index(current_row, 0)
+            self.voices_tree.setCurrentIndex(idx)
+            self.voices_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
         self.on_voice_select()
         self._voices_tree_updating = False
 
@@ -985,7 +924,8 @@ class TrackEditorApp(QMainWindow):
 
     def update_voice_details(self):
         self.clear_voice_details()
-        if len(self.steps_tree.selectedItems()) != 1 or len(self.voices_tree.selectedItems()) != 1: return
+        if len(self.get_selected_step_indices()) != 1 or len(self.get_selected_voice_indices()) != 1:
+            return
         selected_step_idx = self.get_selected_step_index()
         selected_voice_idx = self.get_selected_voice_index()
         if selected_step_idx is None or selected_voice_idx is None: return
@@ -1027,10 +967,9 @@ class TrackEditorApp(QMainWindow):
     # --- Event Handlers (Slots) ---
     @pyqtSlot()
     def on_step_select(self):
-        selected_step_items = self.steps_tree.selectedItems()
-        current_selected_idx = self.get_selected_step_index() 
+        current_selected_idx = self.get_selected_step_index()
 
-        if len(selected_step_items) == 1 and current_selected_idx is not None:
+        if len(self.get_selected_step_indices()) == 1 and current_selected_idx is not None:
             self.refresh_voices_tree() # Also calls on_voice_select -> _update_voice_actions_state
             # Update the test preview label if the tester is currently idle
             if not self.is_step_test_playing and not self.is_step_test_paused and self.test_step_raw_audio is None:
@@ -1047,7 +986,7 @@ class TrackEditorApp(QMainWindow):
                     self.test_step_loaded_label.setText("Error: Step not found.")
         else: 
             # No single step selected (0 or multiple)
-            self.voices_tree.clear()
+            self.voice_model.refresh([])
             self.clear_voice_details()
             self.voices_groupbox.setTitle("Voices for Selected Step")
             if not self.is_step_test_playing and not self.is_step_test_paused and self.test_step_raw_audio is None:
@@ -1061,46 +1000,7 @@ class TrackEditorApp(QMainWindow):
         self._update_voice_actions_state()
         self.update_voice_details()
 
-    @pyqtSlot(QTreeWidgetItem, int)
-    def on_step_item_changed(self, item, column):
-        if self._steps_tree_updating:
-            return
-        step_idx = item.data(0, Qt.UserRole)
-        if step_idx is None:
-            return
-        try:
-            if column == 1:
-                new_desc = item.text(1).strip()
-                self.track_data["steps"][step_idx]["description"] = new_desc
-                self._push_history_state()
-            else:
-                # Revert edits to non-editable columns
-                self._steps_tree_updating = True
-                step = self.track_data["steps"][step_idx]
-                if column == 0:
-                    item.setText(0, f"{step.get('duration', 0.0):.2f}")
-                elif column == 2:
-                    item.setText(2, str(len(step.get('voices', []))))
-                self._steps_tree_updating = False
-        except Exception as e:
-            print(f"Error updating step item: {e}")
 
-    @pyqtSlot(QTreeWidgetItem, int)
-    def on_voice_item_changed(self, item, column):
-        if self._voices_tree_updating or column != 3:
-            return
-        step_idx = self.get_selected_step_index()
-        voice_idx = item.data(0, Qt.UserRole)
-        if step_idx is None or voice_idx is None:
-            return
-        try:
-            new_desc = item.text(3).strip()
-            self.track_data["steps"][step_idx]["voices"][voice_idx][
-                "description"
-            ] = new_desc
-            self._push_history_state()
-        except Exception as e:
-            print(f"Error updating voice description: {e}")
 
     @pyqtSlot(QTreeWidgetItem, int)
     def on_clip_item_changed(self, item, column):
@@ -1272,19 +1172,19 @@ class TrackEditorApp(QMainWindow):
         insert_index = selected_focused_index + 1 if selected_focused_index is not None else len(self.track_data["steps"])
         self.track_data["steps"].insert(insert_index, new_step)
         self.refresh_steps_tree()
-        if 0 <= insert_index < self.steps_tree.topLevelItemCount():
-            new_item = self.steps_tree.topLevelItem(insert_index)
-            self.steps_tree.clearSelection()
-            self.steps_tree.setCurrentItem(new_item)
-            new_item.setSelected(True)
-            self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+        if 0 <= insert_index < self.step_model.rowCount():
+            idx = self.step_model.index(insert_index, 0)
+            self.steps_tree.selectionModel().clearSelection()
+            self.steps_tree.setCurrentIndex(idx)
+            self.steps_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
         self._push_history_state()
         # refresh_steps_tree calls on_step_select which calls _update_step_actions_state
 
     @pyqtSlot()
     def duplicate_step(self):
         selected_index = self.get_selected_step_index()
-        if selected_index is None or len(self.steps_tree.selectedItems()) != 1 :
+        if selected_index is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Duplicate Step", "Please select exactly one step to duplicate.")
             return
         try:
@@ -1293,12 +1193,12 @@ class TrackEditorApp(QMainWindow):
             insert_index = selected_index + 1
             self.track_data["steps"].insert(insert_index, duplicated_step_data)
             self.refresh_steps_tree()
-            if 0 <= insert_index < self.steps_tree.topLevelItemCount():
-                new_item = self.steps_tree.topLevelItem(insert_index)
-                self.steps_tree.clearSelection()
-                self.steps_tree.setCurrentItem(new_item)
-                new_item.setSelected(True)
-                self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+            if 0 <= insert_index < self.step_model.rowCount():
+                idx = self.step_model.index(insert_index, 0)
+                self.steps_tree.selectionModel().clearSelection()
+                self.steps_tree.setCurrentIndex(idx)
+                self.steps_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
             self._push_history_state()
         except IndexError: QMessageBox.critical(self, "Error", "Failed to duplicate step (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to duplicate step:\n{e}"); traceback.print_exc()
@@ -1330,7 +1230,7 @@ class TrackEditorApp(QMainWindow):
     @pyqtSlot()
     def edit_step_duration(self):
         selected_index = self.get_selected_step_index()
-        if selected_index is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_index is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Edit Duration", "Please select exactly one step to edit.")
             return
         try: current_duration = float(self.track_data["steps"][selected_index].get("duration", 0.0))
@@ -1348,7 +1248,7 @@ class TrackEditorApp(QMainWindow):
     @pyqtSlot()
     def edit_step_description(self):
         selected_index = self.get_selected_step_index()
-        if selected_index is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_index is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Edit Description", "Please select exactly one step to edit.")
             return
         try: current_description = str(self.track_data["steps"][selected_index].get("description", ""))
@@ -1378,7 +1278,7 @@ class TrackEditorApp(QMainWindow):
     @pyqtSlot(int)
     def move_step(self, direction):
         selected_index = self.get_selected_step_index()
-        if selected_index is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_index is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Move Step", "Please select exactly one step to move.")
             return
         
@@ -1395,12 +1295,12 @@ class TrackEditorApp(QMainWindow):
                 steps = self.track_data["steps"]
                 steps[selected_index], steps[new_index] = steps[new_index], steps[selected_index]
                 self.refresh_steps_tree()
-                if new_index < self.steps_tree.topLevelItemCount():
-                    moved_item = self.steps_tree.topLevelItem(new_index)
-                    self.steps_tree.clearSelection()
-                    self.steps_tree.setCurrentItem(moved_item)
-                    moved_item.setSelected(True)
-                    self.steps_tree.scrollToItem(moved_item, QTreeWidget.PositionAtCenter)
+                if 0 <= new_index < self.step_model.rowCount():
+                    idx = self.step_model.index(new_index, 0)
+                    self.steps_tree.selectionModel().clearSelection()
+                    self.steps_tree.setCurrentIndex(idx)
+                    self.steps_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                    self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
                 self._push_history_state()
             except Exception as e: QMessageBox.critical(self, "Error", f"Failed to move step:\n{e}"); traceback.print_exc()
 
@@ -1411,7 +1311,7 @@ class TrackEditorApp(QMainWindow):
         # user to click the button even when VOICE_EDITOR_DIALOG_AVAILABLE is
         # False.
         selected_step_index = self.get_selected_step_index()
-        if selected_step_index is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_step_index is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Add Voice", "Please select exactly one step first.")
             return
         try:
@@ -1425,20 +1325,20 @@ class TrackEditorApp(QMainWindow):
             self.refresh_steps_tree() # This updates step voice count and calls on_step_select
             # If the modified step was the one loaded in tester and it's now testable (or was already)
             # and tester is idle, on_step_select will update the "Ready" label.
-            if selected_step_index < self.steps_tree.topLevelItemCount():
-                step_item = self.steps_tree.topLevelItem(selected_step_index)
-                self.steps_tree.setCurrentItem(step_item) # Keep focus on the step
+            if 0 <= selected_step_index < self.step_model.rowCount():
+                idx = self.step_model.index(selected_step_index, 0)
+                self.steps_tree.setCurrentIndex(idx)
                 QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
             self._push_history_state()
 
-    def _select_last_voice_in_current_step(self): 
-        voice_count = self.voices_tree.topLevelItemCount()
+    def _select_last_voice_in_current_step(self):
+        voice_count = self.voice_model.rowCount()
         if voice_count > 0:
-            new_voice_item = self.voices_tree.topLevelItem(voice_count - 1)
-            self.voices_tree.clearSelection()
-            self.voices_tree.setCurrentItem(new_voice_item)
-            new_voice_item.setSelected(True)
-            self.voices_tree.scrollToItem(new_voice_item, QTreeWidget.PositionAtCenter)
+            idx = self.voice_model.index(voice_count - 1, 0)
+            self.voices_tree.selectionModel().clearSelection()
+            self.voices_tree.setCurrentIndex(idx)
+            self.voices_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            self.voices_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
         self._update_voice_actions_state()
 
     @pyqtSlot()
@@ -1448,7 +1348,7 @@ class TrackEditorApp(QMainWindow):
         selected_step_index = self.get_selected_step_index()
         selected_voice_index = self.get_selected_voice_index()
         if selected_step_index is None or selected_voice_index is None or \
-           len(self.steps_tree.selectedItems()) != 1 or len(self.voices_tree.selectedItems()) != 1:
+           len(self.get_selected_step_indices()) != 1 or len(self.get_selected_voice_indices()) != 1:
             QMessageBox.warning(self, "Edit Voice", "Please select exactly one step and one voice to edit.")
             return
         
@@ -1460,13 +1360,13 @@ class TrackEditorApp(QMainWindow):
         dialog = VoiceEditorDialog(parent=self, app_ref=self, step_index=selected_step_index, voice_index=selected_voice_index)
         if dialog.exec_() == QDialog.Accepted:
             self.refresh_steps_tree() # This updates step voice count and calls on_step_select
-            if selected_step_index < self.steps_tree.topLevelItemCount():
-                step_item = self.steps_tree.topLevelItem(selected_step_index)
-                self.steps_tree.setCurrentItem(step_item)
-                if selected_voice_index < self.voices_tree.topLevelItemCount():
-                    voice_item = self.voices_tree.topLevelItem(selected_voice_index)
-                    self.voices_tree.setCurrentItem(voice_item)
-                    self.voices_tree.scrollToItem(voice_item, QTreeWidget.PositionAtCenter)
+            if 0 <= selected_step_index < self.step_model.rowCount():
+                step_idx = self.step_model.index(selected_step_index, 0)
+                self.steps_tree.setCurrentIndex(step_idx)
+                if 0 <= selected_voice_index < self.voice_model.rowCount():
+                    voice_idx = self.voice_model.index(selected_voice_index, 0)
+                    self.voices_tree.setCurrentIndex(voice_idx)
+                    self.voices_tree.scrollTo(voice_idx, QAbstractItemView.PositionAtCenter)
             self._update_voice_actions_state()
             self._push_history_state()
 
@@ -1474,7 +1374,7 @@ class TrackEditorApp(QMainWindow):
     def remove_voice(self):
         selected_step_idx = self.get_selected_step_index()
         selected_voice_indices = self.get_selected_voice_indices()
-        if selected_step_idx is None or len(self.steps_tree.selectedItems()) != 1:
+        if selected_step_idx is None or len(self.get_selected_step_indices()) != 1:
             QMessageBox.warning(self, "Remove Voice(s)", "Please select exactly one step first.")
             return
         if not selected_voice_indices:
@@ -1503,7 +1403,7 @@ class TrackEditorApp(QMainWindow):
         selected_step_idx = self.get_selected_step_index()
         selected_voice_idx = self.get_selected_voice_index()
         if selected_step_idx is None or selected_voice_idx is None or \
-           len(self.steps_tree.selectedItems()) != 1 or len(self.voices_tree.selectedItems()) != 1:
+           len(self.get_selected_step_indices()) != 1 or len(self.get_selected_voice_indices()) != 1:
             QMessageBox.warning(self, "Move Voice", "Please select exactly one step and one voice to move.")
             return
         
@@ -1518,12 +1418,12 @@ class TrackEditorApp(QMainWindow):
             if 0 <= new_voice_idx < num_voices:
                 voices_list[selected_voice_idx], voices_list[new_voice_idx] = voices_list[new_voice_idx], voices_list[selected_voice_idx]
                 self.refresh_voices_tree() # Calls on_voice_select -> _update_voice_actions_state
-                if new_voice_idx < self.voices_tree.topLevelItemCount():
-                    moved_item = self.voices_tree.topLevelItem(new_voice_idx)
-                    self.voices_tree.clearSelection()
-                    self.voices_tree.setCurrentItem(moved_item)
-                    moved_item.setSelected(True)
-                    self.voices_tree.scrollToItem(moved_item, QTreeWidget.PositionAtCenter)
+                if 0 <= new_voice_idx < self.voice_model.rowCount():
+                    idx = self.voice_model.index(new_voice_idx, 0)
+                    self.voices_tree.selectionModel().clearSelection()
+                    self.voices_tree.setCurrentIndex(idx)
+                    self.voices_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                    self.voices_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
                 self._push_history_state()
         except IndexError: QMessageBox.critical(self, "Error", "Failed to move voice (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
@@ -1750,7 +1650,7 @@ class TrackEditorApp(QMainWindow):
         
         # After resetting, update label based on current tree selection
         current_selected_idx_tree = self.get_selected_step_index()
-        if current_selected_idx_tree is not None and len(self.steps_tree.selectedItems()) == 1:
+        if current_selected_idx_tree is not None and len(self.get_selected_step_indices()) == 1:
             try:
                 step_data = self.track_data["steps"][current_selected_idx_tree]
                 step_desc = step_data.get("description", "N/A")
@@ -2019,32 +1919,24 @@ class TrackEditorApp(QMainWindow):
 
     # --- Utility Methods ---
     def get_selected_step_index(self):
-        current_item = self.steps_tree.currentItem()
-        if current_item: return current_item.data(0, Qt.UserRole)
+        indexes = self.steps_tree.selectionModel().selectedRows()
+        if indexes:
+            return indexes[0].row()
         return None
 
     def get_selected_step_indices(self):
-        selected_items = self.steps_tree.selectedItems()
-        indices = []
-        if selected_items:
-            for item in selected_items:
-                data = item.data(0, Qt.UserRole)
-                if data is not None: indices.append(int(data))
-        return sorted(indices)
+        indexes = self.steps_tree.selectionModel().selectedRows()
+        return sorted({idx.row() for idx in indexes})
 
     def get_selected_voice_index(self):
-        current_item = self.voices_tree.currentItem()
-        if current_item: return current_item.data(0, Qt.UserRole)
+        indexes = self.voices_tree.selectionModel().selectedRows()
+        if indexes:
+            return indexes[0].row()
         return None
 
     def get_selected_voice_indices(self):
-        selected_items = self.voices_tree.selectedItems()
-        indices = []
-        if selected_items:
-            for item in selected_items:
-                data = item.data(0, Qt.UserRole)
-                if data is not None: indices.append(int(data))
-        return sorted(indices)
+        indexes = self.voices_tree.selectionModel().selectedRows()
+        return sorted({idx.row() for idx in indexes})
 
     def get_selected_clip_index(self):
         current_item = self.clips_tree.currentItem()
