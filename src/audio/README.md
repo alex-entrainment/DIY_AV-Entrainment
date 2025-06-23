@@ -207,5 +207,8 @@ The helper function `audio.visualize_track_timeline()` now renders a more
 audio workstation, making it easier to see how binaural voices, vocals, sound
 effects and background noise overlap. Pass the same JSON structure used for
 audio generation to this function and it will display (or save) the enhanced
-timeline chart.
+timeline chart.  Individual voices and overlay clips are color-coded within
+their categories and labeled using their descriptions (or filenames if no
+description is provided).  Step boundaries are shown as dashed lines so you can
+quickly identify when the track transitions from one step to the next.
 
