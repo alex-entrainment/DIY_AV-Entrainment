@@ -358,6 +358,10 @@ class TrackEditorApp(QMainWindow):
         self.open_timeline_button.clicked.connect(self.open_timeline_visualizer)
         tools_layout.addWidget(self.open_timeline_button)
 
+        self.load_button = QPushButton("Load JSON")
+        self.load_button.clicked.connect(self.load_json)
+        tools_layout.addWidget(self.load_button)
+
         self.save_button = QPushButton("Save JSON")
         self.save_button.clicked.connect(self.save_json)
         tools_layout.addWidget(self.save_button)
