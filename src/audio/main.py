@@ -34,9 +34,7 @@ from PyQt5.QtWidgets import (
     QProgressBar,
 )
 
-from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QObject, pyqtProperty, pyqtSignal, QUrl, QItemSelectionModel
-
-from PyQt5.QtQml import QQmlApplicationEngine
+from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QItemSelectionModel
 
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
 try:
@@ -180,28 +178,6 @@ except ImportError as e:
         f"Warning: Could not import 'generate_single_step_audio_segment' from 'synth_functions.sound_creator': {e}. "
         "Test step audio generation will be non-functional."
     )
-
-# Backend object exposing data to QML
-class TrackEditorBackend(QObject):
-    trackDataChanged = pyqtSignal()
-
-    def __init__(self, app):
-        super().__init__()
-        self._app = app
-
-    @pyqtProperty("QVariant", notify=trackDataChanged)
-    def trackData(self):
-        return self._app.track_data
-
-    @trackData.setter
-    def trackData(self, value):
-        self._app.track_data = value
-        self.trackDataChanged.emit()
-
-    @pyqtProperty("QVariant", constant=True)
-    def preferences(self):
-        return vars(self._app.prefs)
-
 
 # --- Main Application Class ---
 class TrackEditorApp(QMainWindow):
@@ -384,16 +360,8 @@ class TrackEditorApp(QMainWindow):
             self._push_history_state()
 
     def _setup_ui(self):
-        """Setup both widget and QML interfaces."""
+        """Setup the widget-based interface."""
         self._setup_widget_ui()
-        qml_file = os.path.join(os.path.dirname(__file__), "qml", "main.qml")
-        if os.path.exists(qml_file):
-            self.qml_engine = QQmlApplicationEngine()
-            self.backend = TrackEditorBackend(self)
-            self.qml_engine.rootContext().setContextProperty("backend", self.backend)
-            self.qml_engine.load(QUrl.fromLocalFile(qml_file))
-            if not self.qml_engine.rootObjects():
-                print("Failed to load QML UI")
 
     def open_timeline_visualizer(self):
         """Display the timeline visualizer for the current track data."""
