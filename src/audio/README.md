@@ -200,4 +200,11 @@ If omitted, `linear` is used.
 - Use subtle panning and moderate modulation rates.
 - Crossfade between steps to avoid abrupt changes.
 
+## Timeline Visualization
+
+The helper function `audio.visualize_track_timeline()` creates a simple
+matplotlib plot showing when binaural voices, vocals, sound effects and
+background noise overlap throughout a track. Pass the same JSON structure used
+for audio generation to this function and it will display (or save) a timeline
+chart.
 

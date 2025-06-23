@@ -205,8 +205,11 @@ class TrackEditorApp(QMainWindow):
                 "file_path": "",
                 "amp": 0.0,
                 "pan": 0.0,
+                "start_time": 0.0,
+                "fade_in": 0.0,
+                "fade_out": 0.0,
+                "amp_envelope": [],
             },
-            "background_noise": {},
             "clips": [],
             "steps": []
         }
@@ -736,7 +739,18 @@ class TrackEditorApp(QMainWindow):
                 raise ValueError("Output filename contains invalid characters.")
             self.track_data["global_settings"]["output_filename"] = outfile
 
-            self.track_data.setdefault("background_noise", {})
+            self.track_data.setdefault(
+                "background_noise",
+                {
+                    "file_path": "",
+                    "amp": 0.0,
+                    "pan": 0.0,
+                    "start_time": 0.0,
+                    "fade_in": 0.0,
+                    "fade_out": 0.0,
+                    "amp_envelope": [],
+                },
+            )
             self.track_data["background_noise"]["file_path"] = noise_file
             try:
                 noise_amp = float(noise_amp_str) if noise_amp_str else 0.0
@@ -1053,7 +1067,18 @@ class TrackEditorApp(QMainWindow):
             loaded_data = sound_creator.load_track_from_json(filepath)
             if loaded_data and isinstance(loaded_data.get("steps"), list) and isinstance(loaded_data.get("global_settings"), dict):
                 self.track_data = loaded_data
-                self.track_data.setdefault("background_noise", {"file_path": "", "amp": 0.0, "pan": 0.0})
+                self.track_data.setdefault(
+                    "background_noise",
+                    {
+                        "file_path": "",
+                        "amp": 0.0,
+                        "pan": 0.0,
+                        "start_time": 0.0,
+                        "fade_in": 0.0,
+                        "fade_out": 0.0,
+                        "amp_envelope": [],
+                    },
+                )
                 self.track_data.setdefault("clips", [])
                 self.current_json_path = filepath
                 self.setWindowTitle(f"Binaural Track Editor (PyQt5) - {os.path.basename(filepath)}")

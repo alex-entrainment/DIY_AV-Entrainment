@@ -10,6 +10,7 @@ from .utils.voice_file import (
     load_voice_preset,
     VOICE_FILE_EXTENSION,
 )
+from .utils.timeline_visualizer import visualize_track_timeline
 
 __all__ = [
     'NoiseParams',
@@ -20,4 +21,5 @@ __all__ = [
     'save_voice_preset',
     'load_voice_preset',
     'VOICE_FILE_EXTENSION',
+    'visualize_track_timeline',
 ]

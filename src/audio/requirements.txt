@@ -5,3 +5,4 @@ pyqt5==5.15.11
 scipy==1.15.2
 slab==1.8.0
 soundfile
+matplotlib
