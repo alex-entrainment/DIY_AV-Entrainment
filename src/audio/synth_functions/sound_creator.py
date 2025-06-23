@@ -714,7 +714,38 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                     ((0, final_track_samples - noise_audio.shape[0]), (0, 0)),
                     "constant",
                 )
-            track += noise_audio * float(bg_cfg.get("gain", 1.0))
+
+            gain = float(bg_cfg.get("gain", 1.0))
+            start_time = float(bg_cfg.get("start_time", 0.0))
+            fade_in = float(bg_cfg.get("fade_in", 0.0))
+            fade_out = float(bg_cfg.get("fade_out", 0.0))
+            amp_env = bg_cfg.get("amp_envelope")
+
+            start_sample = int(start_time * sample_rate)
+            if start_sample > 0:
+                noise_audio = np.pad(noise_audio, ((start_sample, 0), (0, 0)), "constant")
+                if noise_audio.shape[0] > final_track_samples:
+                    noise_audio = noise_audio[:final_track_samples]
+
+            env = np.ones(noise_audio.shape[0]) * gain
+            if fade_in > 0:
+                n = min(int(fade_in * sample_rate), env.size)
+                env[:n] *= np.linspace(0, 1, n)
+            if fade_out > 0:
+                n = min(int(fade_out * sample_rate), env.size)
+                env[-n:] *= np.linspace(1, 0, n)
+            if isinstance(amp_env, list) and amp_env:
+                times = [max(0.0, float(p[0])) for p in amp_env]
+                amps = [float(p[1]) for p in amp_env]
+                t_samples = np.array(times) * sample_rate
+                interp = np.interp(np.arange(env.size), t_samples, amps, left=amps[0], right=amps[-1])
+                env *= interp
+
+            noise_audio = noise_audio[:env.size] * env[:, None]
+            if noise_audio.shape[0] < track.shape[0]:
+                noise_audio = np.pad(noise_audio, ((0, track.shape[0] - noise_audio.shape[0]), (0, 0)), "constant")
+
+            track += noise_audio[: track.shape[0]]
         except Exception as e:
             print(f"Error generating background noise: {e}")
 

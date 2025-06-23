@@ -29,6 +29,10 @@ class NoiseParams:
     initial_offset: float = 0.0
     post_offset: float = 0.0
     input_audio_path: str = ""
+    start_time: float = 0.0
+    fade_in: float = 0.0
+    fade_out: float = 0.0
+    amp_envelope: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def save_noise_params(params: NoiseParams, filepath: str) -> None:
