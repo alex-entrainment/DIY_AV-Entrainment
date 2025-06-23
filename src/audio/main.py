@@ -198,7 +198,8 @@ class TrackEditorApp(QMainWindow):
                 "crossfade_curve": getattr(self.prefs, "crossfade_curve", "linear"),
                 "output_filename": "my_track.flac"
             },
-            "steps": []
+            "steps": [],
+            "background_noise": None
         }
 
     def _create_menu(self):

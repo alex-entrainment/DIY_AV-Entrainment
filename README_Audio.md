@@ -72,3 +72,10 @@ duration adapts to the step length:
 
 This behaviour ensures that very long steps do not delay the preview yet short
 steps can still be heard in full.
+
+### Timeline Data
+The function `build_timeline` in `audio.utils.timeline` converts a track description into a list of time ranges for binaural voices, vocals, effects and background noise. Each range also contains amplitude points that can be plotted for a visual overlay.
+
+### Background Noise
+Tracks may include an optional `background_noise` section with `start_time`, `duration`, `fade_in`, `fade_out`, `amplitude` and `noise_type` values. During generation the noise is automatically mixed with the assembled steps.
+
