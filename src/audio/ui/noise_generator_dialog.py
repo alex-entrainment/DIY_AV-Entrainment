@@ -15,11 +15,16 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QGridLayout,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QBuffer, QIODevice
+from PyQt5.QtMultimedia import QAudioOutput, QAudioFormat, QAudioDeviceInfo, QAudio
+
+import numpy as np
 
 from synth_functions.noise_flanger import (
     generate_swept_notch_pink_sound,
     generate_swept_notch_pink_sound_transition,
+    _generate_swept_notch_arrays,
+    _generate_swept_notch_arrays_transition,
 )
 
 from utils.noise_file import (
@@ -207,9 +212,14 @@ class NoiseGeneratorDialog(QDialog):
         self.save_btn.clicked.connect(self.save_settings)
         self.generate_btn = QPushButton("Generate")
         self.generate_btn.clicked.connect(self.on_generate)
+        self.test_btn = QPushButton("Test")
+        self.test_btn.clicked.connect(self.on_test)
+        self.audio_output = None
+        self.audio_buffer = None
         button_row.addWidget(self.load_btn)
         button_row.addWidget(self.save_btn)
         button_row.addStretch(1)
+        button_row.addWidget(self.test_btn)
         button_row.addWidget(self.generate_btn)
         layout.addLayout(button_row)
 
@@ -394,6 +404,97 @@ class NoiseGeneratorDialog(QDialog):
                     lfo_waveform=self.lfo_waveform_combo.currentText().lower(),
                 )
             QMessageBox.information(self, "Success", f"Generated {filename}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _generate_noise_array(self, params: NoiseParams):
+        start_sweeps = []
+        end_sweeps = []
+        start_q_vals = []
+        end_q_vals = []
+        start_casc = []
+        end_casc = []
+        for sw in params.sweeps:
+            start_sweeps.append((int(sw.get("start_min", 1000)), int(sw.get("start_max", 10000))))
+            end_sweeps.append((int(sw.get("end_min", 1000)), int(sw.get("end_max", 10000))))
+            start_q_vals.append(int(sw.get("start_q", 25)))
+            end_q_vals.append(int(sw.get("end_q", 25)))
+            start_casc.append(int(sw.get("start_casc", 10)))
+            end_casc.append(int(sw.get("end_casc", 10)))
+
+        if params.transition:
+            audio, _ = _generate_swept_notch_arrays_transition(
+                params.duration_seconds,
+                params.sample_rate,
+                params.start_lfo_freq,
+                params.end_lfo_freq,
+                start_sweeps,
+                end_sweeps,
+                start_q_vals if len(start_q_vals) > 1 else start_q_vals[0],
+                end_q_vals if len(end_q_vals) > 1 else end_q_vals[0],
+                start_casc if len(start_casc) > 1 else start_casc[0],
+                end_casc if len(end_casc) > 1 else end_casc[0],
+                params.start_lfo_phase_offset_deg,
+                params.end_lfo_phase_offset_deg,
+                params.start_intra_phase_offset_deg,
+                params.end_intra_phase_offset_deg,
+                params.input_audio_path or None,
+                params.noise_type,
+                params.lfo_waveform,
+                params.initial_offset,
+                params.post_offset,
+                "linear",
+                False,
+                2,
+            )
+        else:
+            audio, _ = _generate_swept_notch_arrays(
+                params.duration_seconds,
+                params.sample_rate,
+                params.lfo_freq,
+                start_sweeps,
+                start_q_vals if len(start_q_vals) > 1 else start_q_vals[0],
+                start_casc if len(start_casc) > 1 else start_casc[0],
+                params.start_lfo_phase_offset_deg,
+                params.start_intra_phase_offset_deg,
+                params.input_audio_path or None,
+                params.noise_type,
+                params.lfo_waveform,
+                False,
+                2,
+            )
+        return audio
+
+    def on_test(self):
+        params = self.get_noise_params()
+        params.duration_seconds = 30.0
+        try:
+            stereo = self._generate_noise_array(params)
+            audio_int16 = (np.clip(stereo, -1.0, 1.0) * 32767).astype(np.int16)
+            audio_bytes = audio_int16.tobytes()
+
+            fmt = QAudioFormat()
+            fmt.setCodec("audio/pcm")
+            fmt.setSampleRate(int(params.sample_rate))
+            fmt.setSampleSize(16)
+            fmt.setChannelCount(2)
+            fmt.setByteOrder(QAudioFormat.LittleEndian)
+            fmt.setSampleType(QAudioFormat.SignedInt)
+
+            device_info = QAudioDeviceInfo.defaultOutputDevice()
+            if not device_info.isFormatSupported(fmt):
+                QMessageBox.warning(self, "Noise Test", "Default output device does not support the required format")
+                return
+
+            if self.audio_output:
+                self.audio_output.stop()
+                self.audio_output = None
+
+            self.audio_output = QAudioOutput(fmt, self)
+            self.audio_buffer = QBuffer()
+            self.audio_buffer.setData(audio_bytes)
+            self.audio_buffer.open(QIODevice.ReadOnly)
+            self.audio_output.start(self.audio_buffer)
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
 
