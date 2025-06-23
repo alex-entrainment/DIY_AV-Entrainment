@@ -202,9 +202,10 @@ If omitted, `linear` is used.
 
 ## Timeline Visualization
 
-The helper function `audio.visualize_track_timeline()` creates a simple
-matplotlib plot showing when binaural voices, vocals, sound effects and
-background noise overlap throughout a track. Pass the same JSON structure used
-for audio generation to this function and it will display (or save) a timeline
-chart.
+The helper function `audio.visualize_track_timeline()` now renders a more
+"DAW-like" timeline view. Each track lane is drawn similar to clips in a digital
+audio workstation, making it easier to see how binaural voices, vocals, sound
+effects and background noise overlap. Pass the same JSON structure used for
+audio generation to this function and it will display (or save) the enhanced
+timeline chart.
 
