@@ -1,6 +1,6 @@
-from PyQt5.QtCore import QAbstractListModel, Qt, QModelIndex
+from PyQt5.QtCore import QAbstractTableModel, Qt, QModelIndex
 
-class StepModel(QAbstractListModel):
+class StepModel(QAbstractTableModel):
     """Model holding a list of step dictionaries."""
     headers = ["Duration (s)", "Description", "# Voices"]
 
@@ -58,7 +58,7 @@ class StepModel(QAbstractListModel):
         self.endResetModel()
 
 
-class VoiceModel(QAbstractListModel):
+class VoiceModel(QAbstractTableModel):
     """Model holding a list of voice dictionaries for a selected step."""
     headers = ["Synth Function", "Carrier Freq", "Transition?", "Description"]
 
