@@ -8,7 +8,7 @@ import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
 import traceback # For detailed error printing
 from utils.noise_file import load_noise_params
-from noise_flanger import (
+from synth_functions.noise_flanger import (
     _generate_swept_notch_arrays,
     _generate_swept_notch_arrays_transition,
 )
