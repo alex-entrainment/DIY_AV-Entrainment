@@ -50,6 +50,7 @@ from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog
 from ui.frequency_tester_dialog import FrequencyTesterDialog
 from ui.subliminal_dialog import SubliminalDialog
+from utils.timeline_visualizer import visualize_track_timeline
 from ui.overlay_clip_dialog import OverlayClipDialog
 from ui.voice_editor_dialog import VoiceEditorDialog
 
@@ -303,6 +304,13 @@ class TrackEditorApp(QMainWindow):
                 QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
             self._push_history_state()
 
+    def open_timeline_visualizer(self):
+        """Display the timeline visualizer for the current track data."""
+        try:
+            visualize_track_timeline(self.track_data)
+        except Exception as e:
+            QMessageBox.warning(self, "Timeline Error", f"Failed to display timeline: {e}")
+
     def apply_preferences(self):
         app = QApplication.instance()
         if self.prefs.font_family or self.prefs.font_size:
@@ -344,6 +352,10 @@ class TrackEditorApp(QMainWindow):
         self.open_subliminal_button = QPushButton("Add Subliminal Voice")
         self.open_subliminal_button.clicked.connect(self.open_subliminal_dialog)
         tools_layout.addWidget(self.open_subliminal_button)
+
+        self.open_timeline_button = QPushButton("View Timeline")
+        self.open_timeline_button.clicked.connect(self.open_timeline_visualizer)
+        tools_layout.addWidget(self.open_timeline_button)
 
         tools_layout.addStretch(1)
         control_layout.addWidget(tools_groupbox)
