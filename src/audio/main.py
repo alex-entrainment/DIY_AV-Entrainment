@@ -342,6 +342,14 @@ class TrackEditorApp(QMainWindow):
         self.open_subliminal_button.clicked.connect(self.open_subliminal_dialog)
         tools_layout.addWidget(self.open_subliminal_button)
 
+        self.save_button = QPushButton("Save JSON")
+        self.save_button.clicked.connect(self.save_json)
+        tools_layout.addWidget(self.save_button)
+
+        self.save_as_button = QPushButton("Save JSON As...")
+        self.save_as_button.clicked.connect(self.save_json_as)
+        tools_layout.addWidget(self.save_as_button)
+
         tools_layout.addStretch(1)
         control_layout.addWidget(tools_groupbox)
 
@@ -379,11 +387,6 @@ class TrackEditorApp(QMainWindow):
         self.noise_amp_entry.setMaximumWidth(80)
         globals_layout.addWidget(self.noise_amp_entry, 4, 1)
 
-        globals_layout.addWidget(QLabel("Noise Pan:"), 5, 0)
-        self.noise_pan_entry = QLineEdit("0.0")
-        self.noise_pan_entry.setValidator(self.double_validator)
-        self.noise_pan_entry.setMaximumWidth(80)
-        globals_layout.addWidget(self.noise_pan_entry, 5, 1)
         globals_layout.setColumnStretch(1, 1)
         control_layout.addWidget(globals_groupbox, 1)
         control_layout.addStretch(1)
@@ -721,7 +724,6 @@ class TrackEditorApp(QMainWindow):
             outfile = self.outfile_entry.text().strip()
             noise_file = self.noise_file_entry.text().strip()
             noise_amp_str = self.noise_amp_entry.text()
-            noise_pan_str = self.noise_pan_entry.text()
             if not sr_str: raise ValueError("Sample rate cannot be empty.")
             sr = int(sr_str)
             if sr <= 0: raise ValueError("Sample rate must be positive.")
@@ -742,12 +744,8 @@ class TrackEditorApp(QMainWindow):
                 noise_amp = float(noise_amp_str) if noise_amp_str else 0.0
             except ValueError:
                 raise ValueError("Invalid noise amplitude")
-            try:
-                noise_pan = float(noise_pan_str) if noise_pan_str else 0.0
-            except ValueError:
-                raise ValueError("Invalid noise pan")
             self.track_data["background_noise"]["amp"] = noise_amp
-            self.track_data["background_noise"]["pan"] = noise_pan
+            # Noise pan parameter removed from UI; value remains unchanged
         except ValueError as e:
             QMessageBox.critical(self, "Input Error", f"Invalid global settings:\n{e}")
             return False
@@ -764,7 +762,6 @@ class TrackEditorApp(QMainWindow):
         noise = self.track_data.get("background_noise", {})
         self.noise_file_entry.setText(noise.get("file_path", ""))
         self.noise_amp_entry.setText(str(noise.get("amp", 0.0)))
-        self.noise_pan_entry.setText(str(noise.get("pan", 0.0)))
 
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
