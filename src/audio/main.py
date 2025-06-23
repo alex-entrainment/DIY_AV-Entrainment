@@ -32,7 +32,11 @@ from PyQt5.QtWidgets import (
     QAction,
     QProgressBar,
 )
-from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QItemSelectionModel
+
+from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QBuffer, QIODevice, QObject, pyqtProperty, pyqtSignal, QUrl, QItemSelectionModel
+from PyQt5.QtQuickWidgets import QQuickWidget
+from PyQt5.QtQml import QQmlApplicationEngine
+
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QPalette, QColor
 from PyQt5.QtMultimedia import (
     QAudioFormat,
@@ -137,6 +141,27 @@ except ImportError as e:
         f"Warning: Could not import 'generate_single_step_audio_segment' from 'synth_functions.sound_creator': {e}. "
         "Test step audio generation will be non-functional."
     )
+
+# Backend object exposing data to QML
+class TrackEditorBackend(QObject):
+    trackDataChanged = pyqtSignal()
+
+    def __init__(self, app):
+        super().__init__()
+        self._app = app
+
+    @pyqtProperty("QVariant", notify=trackDataChanged)
+    def trackData(self):
+        return self._app.track_data
+
+    @trackData.setter
+    def trackData(self, value):
+        self._app.track_data = value
+        self.trackDataChanged.emit()
+
+    @pyqtProperty("QVariant", constant=True)
+    def preferences(self):
+        return vars(self._app.prefs)
 
 
 # --- Main Application Class ---
@@ -306,6 +331,18 @@ class TrackEditorApp(QMainWindow):
                 QTimer.singleShot(0, lambda: self._select_last_voice_in_current_step())
             self._push_history_state()
 
+    def _setup_ui(self):
+        """Setup both widget and QML interfaces."""
+        self._setup_widget_ui()
+        qml_file = os.path.join(os.path.dirname(__file__), "qml", "main.qml")
+        if os.path.exists(qml_file):
+            self.qml_engine = QQmlApplicationEngine()
+            self.backend = TrackEditorBackend(self)
+            self.qml_engine.rootContext().setContextProperty("backend", self.backend)
+            self.qml_engine.load(QUrl.fromLocalFile(qml_file))
+            if not self.qml_engine.rootObjects():
+                print("Failed to load QML UI")
+
     def open_timeline_visualizer(self):
         """Display the timeline visualizer for the current track data."""
         try:
@@ -321,7 +358,7 @@ class TrackEditorApp(QMainWindow):
         apply_theme(app, self.prefs.theme)
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
 
-    def _setup_ui(self):
+    def _setup_widget_ui(self):
         # Central Widget and Main Layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
