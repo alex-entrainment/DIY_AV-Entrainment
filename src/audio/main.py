@@ -53,6 +53,7 @@ from ui.subliminal_dialog import SubliminalDialog
 from utils.timeline_visualizer import visualize_track_timeline
 from ui.overlay_clip_dialog import OverlayClipDialog
 from ui.voice_editor_dialog import VoiceEditorDialog
+from ui.collapsible_box import CollapsibleBox
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -326,10 +327,10 @@ class TrackEditorApp(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # --- Control Frame ---
-        control_groupbox = QGroupBox("Controls")
+        # --- Control Frame (Collapsible) ---
+        control_groupbox = CollapsibleBox("Controls")
         control_layout = QHBoxLayout()
-        control_groupbox.setLayout(control_layout)
+        control_groupbox.setContentLayout(control_layout)
 
         # We'll place the controls and the rest of the UI in a vertical splitter
         # so the user can resize the top controls to occupy less space.
