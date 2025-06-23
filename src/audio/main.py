@@ -213,6 +213,13 @@ class TrackEditorApp(QMainWindow):
 
         self.test_step_duration = self.prefs.test_step_duration
 
+        # Initialize history and update flags early to avoid race conditions
+        # when UI signals fire during setup.
+        self.history = []
+        self.history_index = -1
+        self._voices_tree_updating = False
+        self._steps_tree_updating = False
+        self._clips_tree_updating = False
 
         self._setup_ui()
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
@@ -223,18 +230,10 @@ class TrackEditorApp(QMainWindow):
         self._update_voice_actions_state()
         self._update_clip_actions_state()
 
-        # --- Undo/Redo History ---
-        self.history = []
-        self.history_index = -1
-
         self.statusBar()
         self._create_menu()
 
         self._push_history_state()
-        # Flag to prevent handling itemChanged signals while refreshing
-        self._voices_tree_updating = False
-        self._steps_tree_updating = False
-        self._clips_tree_updating = False
 
     def _get_default_track_data(self):
         return {
