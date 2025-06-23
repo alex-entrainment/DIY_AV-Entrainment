@@ -16,7 +16,21 @@ from PyQt5.QtWidgets import (
     QGridLayout,
 )
 from PyQt5.QtCore import Qt, QBuffer, QIODevice
-from PyQt5.QtMultimedia import QAudioOutput, QAudioFormat, QAudioDeviceInfo, QAudio
+try:
+    from PyQt5.QtMultimedia import (
+        QAudioOutput,
+        QAudioFormat,
+        QAudioDeviceInfo,
+        QAudio,
+    )
+    QT_MULTIMEDIA_AVAILABLE = True
+except Exception as e:  # noqa: PIE786 - broad for missing backends
+    print(
+        "WARNING: PyQt5.QtMultimedia could not be imported.\n"
+        "NoiseGeneratorDialog will have audio preview disabled.\n"
+        f"Original error: {e}"
+    )
+    QT_MULTIMEDIA_AVAILABLE = False
 
 import numpy as np
 
@@ -222,6 +236,9 @@ class NoiseGeneratorDialog(QDialog):
         button_row.addWidget(self.test_btn)
         button_row.addWidget(self.generate_btn)
         layout.addLayout(button_row)
+
+        if not QT_MULTIMEDIA_AVAILABLE:
+            self.test_btn.setEnabled(False)
 
     def update_sweep_visibility(self, count):
         for i, (row_widget, *_rest) in enumerate(self.sweep_rows):
@@ -466,6 +483,14 @@ class NoiseGeneratorDialog(QDialog):
         return audio
 
     def on_test(self):
+        if not QT_MULTIMEDIA_AVAILABLE:
+            QMessageBox.critical(
+                self,
+                "PyQt5 Multimedia Missing",
+                "PyQt5.QtMultimedia is required for audio preview, but it "
+                "could not be loaded."
+            )
+            return
         params = self.get_noise_params()
         params.duration_seconds = 30.0
         try:
