@@ -193,6 +193,7 @@ class TrackEditorApp(QMainWindow):
         # Flag to prevent handling itemChanged signals while refreshing
         self._voices_tree_updating = False
         self._steps_tree_updating = False
+        self._clips_tree_updating = False
 
     def _get_default_track_data(self):
         return {
@@ -357,6 +358,15 @@ class TrackEditorApp(QMainWindow):
         self.open_timeline_button.clicked.connect(self.open_timeline_visualizer)
         tools_layout.addWidget(self.open_timeline_button)
 
+        self.save_button = QPushButton("Save JSON")
+        self.save_button.clicked.connect(self.save_json)
+        tools_layout.addWidget(self.save_button)
+
+        self.save_as_button = QPushButton("Save JSON As...")
+        self.save_as_button.clicked.connect(self.save_json_as)
+        tools_layout.addWidget(self.save_as_button)
+
+
         tools_layout.addStretch(1)
         control_layout.addWidget(tools_groupbox)
 
@@ -394,11 +404,6 @@ class TrackEditorApp(QMainWindow):
         self.noise_amp_entry.setMaximumWidth(80)
         globals_layout.addWidget(self.noise_amp_entry, 4, 1)
 
-        globals_layout.addWidget(QLabel("Noise Pan:"), 5, 0)
-        self.noise_pan_entry = QLineEdit("0.0")
-        self.noise_pan_entry.setValidator(self.double_validator)
-        self.noise_pan_entry.setMaximumWidth(80)
-        globals_layout.addWidget(self.noise_pan_entry, 5, 1)
         globals_layout.setColumnStretch(1, 1)
         control_layout.addWidget(globals_groupbox, 1)
         control_layout.addStretch(1)
@@ -590,10 +595,14 @@ class TrackEditorApp(QMainWindow):
         voice_details_outer_layout.addWidget(self.clips_groupbox)
 
         self.clips_tree = QTreeWidget()
-        self.clips_tree.setColumnCount(6)
-        self.clips_tree.setHeaderLabels(["File", "Start", "Amp", "Pan", "FadeIn", "FadeOut"])
+        self.clips_tree.setColumnCount(7)
+        self.clips_tree.setHeaderLabels(["File", "Description", "Start", "Amp", "Pan", "FadeIn", "FadeOut"])
         self.clips_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.clips_tree.itemSelectionChanged.connect(self.on_clip_select)
+        self.clips_tree.itemChanged.connect(self.on_clip_item_changed)
+        self.clips_tree.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+        )
         clips_groupbox_layout.addWidget(self.clips_tree, 1)
 
         clips_btn_layout = QHBoxLayout()
@@ -736,7 +745,6 @@ class TrackEditorApp(QMainWindow):
             outfile = self.outfile_entry.text().strip()
             noise_file = self.noise_file_entry.text().strip()
             noise_amp_str = self.noise_amp_entry.text()
-            noise_pan_str = self.noise_pan_entry.text()
             if not sr_str: raise ValueError("Sample rate cannot be empty.")
             sr = int(sr_str)
             if sr <= 0: raise ValueError("Sample rate must be positive.")
@@ -768,12 +776,8 @@ class TrackEditorApp(QMainWindow):
                 noise_amp = float(noise_amp_str) if noise_amp_str else 0.0
             except ValueError:
                 raise ValueError("Invalid noise amplitude")
-            try:
-                noise_pan = float(noise_pan_str) if noise_pan_str else 0.0
-            except ValueError:
-                raise ValueError("Invalid noise pan")
             self.track_data["background_noise"]["amp"] = noise_amp
-            self.track_data["background_noise"]["pan"] = noise_pan
+            # Noise pan parameter removed from UI; value remains unchanged
         except ValueError as e:
             QMessageBox.critical(self, "Input Error", f"Invalid global settings:\n{e}")
             return False
@@ -790,7 +794,6 @@ class TrackEditorApp(QMainWindow):
         noise = self.track_data.get("background_noise", {})
         self.noise_file_entry.setText(noise.get("file_path", ""))
         self.noise_amp_entry.setText(str(noise.get("amp", 0.0)))
-        self.noise_pan_entry.setText(str(noise.get("pan", 0.0)))
 
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
@@ -906,6 +909,7 @@ class TrackEditorApp(QMainWindow):
         self._voices_tree_updating = False
 
     def refresh_clips_tree(self):
+        self._clips_tree_updating = True
         current_data = None
         current_item = self.clips_tree.currentItem()
         if current_item:
@@ -920,17 +924,20 @@ class TrackEditorApp(QMainWindow):
         for i, clip in enumerate(clips):
             item = QTreeWidgetItem(self.clips_tree)
             item.setText(0, os.path.basename(clip.get("file_path", "")))
-            item.setText(1, f"{clip.get('start', 0.0):.2f}")
-            item.setText(2, str(clip.get('amp', 1.0)))
-            item.setText(3, str(clip.get('pan', 0.0)))
-            item.setText(4, str(clip.get('fade_in', 0.0)))
-            item.setText(5, str(clip.get('fade_out', 0.0)))
+            item.setText(1, clip.get("description", ""))
+            item.setText(2, f"{clip.get('start', 0.0):.2f}")
+            item.setText(3, str(clip.get('amp', 1.0)))
+            item.setText(4, str(clip.get('pan', 0.0)))
+            item.setText(5, str(clip.get('fade_in', 0.0)))
+            item.setText(6, str(clip.get('fade_out', 0.0)))
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setData(0, Qt.UserRole, i)
             if i in selected:
                 item.setSelected(True)
                 if i == current_data:
                     self.clips_tree.setCurrentItem(item)
         self._update_clip_actions_state()
+        self._clips_tree_updating = False
 
     def clear_voice_details(self):
         self.voice_details_text.clear()
@@ -1054,6 +1061,20 @@ class TrackEditorApp(QMainWindow):
             self._push_history_state()
         except Exception as e:
             print(f"Error updating voice description: {e}")
+
+    @pyqtSlot(QTreeWidgetItem, int)
+    def on_clip_item_changed(self, item, column):
+        if self._clips_tree_updating or column != 1:
+            return
+        idx = item.data(0, Qt.UserRole)
+        if idx is None:
+            return
+        try:
+            new_desc = item.text(1).strip()
+            self.track_data["clips"][idx]["description"] = new_desc
+            self._push_history_state()
+        except Exception as e:
+            print(f"Error updating clip description: {e}")
 
     # --- Action Methods (File Ops, Step/Voice Ops) ---
     @pyqtSlot()
