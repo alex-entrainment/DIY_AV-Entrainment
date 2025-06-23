@@ -120,6 +120,37 @@ QLineEdit, QComboBox, QSlider {
 }
 """
 
+# Material global style with subtle shadows and rounded cards
+GLOBAL_STYLE_SHEET_MATERIAL = """
+QWidget {
+    font-size: 10pt;
+}
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 14px;
+    padding: 0 4px;
+}
+QPushButton {
+    padding: 6px 16px;
+    border-radius: 4px;
+}
+QLineEdit, QComboBox, QSlider {
+    background-color: #ffffff;
+    border: 1px solid #bdbdbd;
+    color: #212121;
+    border-radius: 4px;
+    padding: 2px 4px;
+}
+"""
+
 # --- Constants ---
 DEFAULT_SAMPLE_RATE = 44100
 DEFAULT_CROSSFADE = 1.0 # Ensure float for consistency
@@ -268,7 +299,7 @@ class TrackEditorApp(QMainWindow):
 
         file_menu.addSeparator()
         theme_menu = file_menu.addMenu("Theme")
-        for name in THEMES.keys():
+        for name in sorted(THEMES.keys()):
             act = QAction(name, self)
             act.triggered.connect(partial(self.set_theme, name))
             theme_menu.addAction(act)
@@ -288,7 +319,10 @@ class TrackEditorApp(QMainWindow):
 
     def set_theme(self, name):
         apply_theme(QApplication.instance(), name)
-        self.setStyleSheet(GLOBAL_STYLE_SHEET)
+        if name == "Material":
+            self.setStyleSheet(GLOBAL_STYLE_SHEET_MATERIAL)
+        else:
+            self.setStyleSheet(GLOBAL_STYLE_SHEET)
         if hasattr(self, "prefs"):
             self.prefs.theme = name
             save_settings(self.prefs)

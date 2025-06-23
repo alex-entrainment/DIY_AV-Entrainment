@@ -111,6 +111,47 @@ QLineEdit, QComboBox, QSlider {
 }
 """
 
+# Material theme with teal and orange accents
+GLOBAL_STYLE_SHEET_MATERIAL = """
+QTreeWidget {
+    color: #212121;
+}
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 14px;
+    padding: 0 4px 0 4px;
+}
+QPushButton {
+    background-color: #009688;
+    border: none;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 4px;
+}
+QPushButton:hover {
+    background-color: #26a69a;
+}
+QPushButton:pressed {
+    background-color: #00796b;
+}
+QLineEdit, QComboBox, QSlider {
+    background-color: #ffffff;
+    border: 1px solid #bdbdbd;
+    color: #212121;
+    border-radius: 4px;
+}
+"""
+
 def green_palette() -> QPalette:
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(0x0a, 0x0a, 0x0a))
@@ -142,10 +183,28 @@ def light_blue_palette() -> QPalette:
     palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
     return palette
 
+def material_palette() -> QPalette:
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(250, 250, 250))
+    palette.setColor(QPalette.WindowText, QColor(33, 33, 33))
+    palette.setColor(QPalette.Base, QColor(255, 255, 255))
+    palette.setColor(QPalette.AlternateBase, QColor(245, 245, 245))
+    palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 220))
+    palette.setColor(QPalette.ToolTipText, QColor(33, 33, 33))
+    palette.setColor(QPalette.Text, QColor(33, 33, 33))
+    palette.setColor(QPalette.Button, QColor(238, 238, 238))
+    palette.setColor(QPalette.ButtonText, QColor(33, 33, 33))
+    palette.setColor(QPalette.BrightText, QColor(255, 0, 0))
+    palette.setColor(QPalette.Link, QColor(0, 150, 136))
+    palette.setColor(QPalette.Highlight, QColor(255, 87, 34))
+    palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    return palette
+
 THEMES = {
     "Dark": Theme(dark_palette, GLOBAL_STYLE_SHEET_DARK),
     "Green": Theme(green_palette, GLOBAL_STYLE_SHEET_GREEN),
     "light-blue": Theme(light_blue_palette, GLOBAL_STYLE_SHEET_LIGHT_BLUE),
+    "Material": Theme(material_palette, GLOBAL_STYLE_SHEET_MATERIAL),
 }
 
 def apply_theme(app: QApplication, name: str):
