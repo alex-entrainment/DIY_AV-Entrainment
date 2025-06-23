@@ -318,35 +318,32 @@ class TrackEditorApp(QMainWindow):
         control_groupbox = QGroupBox("Controls")
         control_layout = QHBoxLayout()
         control_groupbox.setLayout(control_layout)
-        main_layout.addWidget(control_groupbox)
 
-        # File Operations
-        file_ops_groupbox = QGroupBox("File")
-        file_ops_layout = QVBoxLayout()
-        file_ops_groupbox.setLayout(file_ops_layout)
-        self.new_file_button = QPushButton("New File")
-        self.new_file_button.clicked.connect(self.new_file)
-        file_ops_layout.addWidget(self.new_file_button)
-        self.load_button = QPushButton("Load JSON")
-        self.save_button = QPushButton("Save JSON")
-        self.save_as_button = QPushButton("Save JSON As...")
-        self.load_button.clicked.connect(self.load_json)
-        self.save_button.clicked.connect(self.save_json)
-        self.save_as_button.clicked.connect(self.save_json_as)
-        file_ops_layout.addWidget(self.load_button)
-        file_ops_layout.addWidget(self.save_button)
-        file_ops_layout.addWidget(self.save_as_button)
+        # We'll place the controls and the rest of the UI in a vertical splitter
+        # so the user can resize the top controls to occupy less space.
+        vertical_splitter = QSplitter(Qt.Vertical)
+        vertical_splitter.addWidget(control_groupbox)
+        main_layout.addWidget(vertical_splitter, 1)
+
+        # Tool Buttons (Noise Generator, Frequency Tester, Subliminal Voice)
+        tools_groupbox = QGroupBox("Tools")
+        tools_layout = QVBoxLayout()
+        tools_groupbox.setLayout(tools_layout)
+
         self.open_noise_button = QPushButton("Open Noise Generator")
         self.open_noise_button.clicked.connect(self.open_noise_generator)
-        file_ops_layout.addWidget(self.open_noise_button)
+        tools_layout.addWidget(self.open_noise_button)
+
         self.open_freq_tester_button = QPushButton("Frequency Tester")
         self.open_freq_tester_button.clicked.connect(self.open_frequency_tester)
-        file_ops_layout.addWidget(self.open_freq_tester_button)
+        tools_layout.addWidget(self.open_freq_tester_button)
+
         self.open_subliminal_button = QPushButton("Add Subliminal Voice")
         self.open_subliminal_button.clicked.connect(self.open_subliminal_dialog)
-        file_ops_layout.addWidget(self.open_subliminal_button)
-        file_ops_layout.addStretch(1)
-        control_layout.addWidget(file_ops_groupbox)
+        tools_layout.addWidget(self.open_subliminal_button)
+
+        tools_layout.addStretch(1)
+        control_layout.addWidget(tools_groupbox)
 
         # Global Settings
         globals_groupbox = QGroupBox("Global Settings")
@@ -410,7 +407,7 @@ class TrackEditorApp(QMainWindow):
 
         # --- Main Paned Window (Splitter) ---
         main_splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(main_splitter, 1)
+        vertical_splitter.addWidget(main_splitter)
 
         # --- Steps Frame Widgets ---
         steps_outer_widget = QWidget()
@@ -599,6 +596,9 @@ class TrackEditorApp(QMainWindow):
 
         main_splitter.setSizes([400, 700])
         right_splitter.setSizes([500, 200])
+        # Give the control section a relatively small initial height so that the
+        # main editor gets more space by default. Users can resize it as needed.
+        vertical_splitter.setSizes([control_groupbox.sizeHint().height(), 1])
 
     # --- Button State Management ---
     def _update_step_actions_state(self):
