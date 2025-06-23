@@ -2024,23 +2024,6 @@ class TrackEditorApp(QMainWindow):
 
 # --- Run the Application ---
 if __name__ == "__main__":
-    if not hasattr(sound_creator, 'SYNTH_FUNCTIONS'): 
-        # temp_app_for_error_msg = QApplication.instance() 
-        # if not temp_app_for_error_msg:
-        #     temp_app_for_error_msg = QApplication(sys.argv)
-        # mbox = QMessageBox()
-        # mbox.setIcon(QMessageBox.Critical)
-        # mbox.setText(
-        #     "Critical Error: Sound creator module is missing vital components (SYNTH_FUNCTIONS).\n"
-        #     "The application cannot start.\nPlease check the 'synth_functions/sound_creator.py' file."
-        # )
-        # mbox.setWindowTitle("Application Startup Error")
-        # mbox.setStandardButtons(QMessageBox.Ok)
-        # mbox.exec_()
-        print(
-            "Critical Error: sound_creator.SYNTH_FUNCTIONS not found. Ensure synth_functions/sound_creator.py is correct and accessible."
-        )
-        sys.exit(1)
 
     app = QApplication(sys.argv)
     prefs = load_settings()
@@ -2049,7 +2032,6 @@ if __name__ == "__main__":
         app.setFont(font)
     apply_theme(app, prefs.theme)
     app.setStyle("Fusion")
-    
 
     window = TrackEditorApp(prefs)
     window.show()
