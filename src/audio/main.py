@@ -198,6 +198,8 @@ class TrackEditorApp(QMainWindow):
                 "crossfade_curve": getattr(self.prefs, "crossfade_curve", "linear"),
                 "output_filename": "my_track.flac"
             },
+            "background_noise": {},
+            "clips": [],
             "steps": []
         }
 
