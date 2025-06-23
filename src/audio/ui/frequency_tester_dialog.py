@@ -1,9 +1,31 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QWidget,
-    QLabel, QCheckBox, QDoubleSpinBox, QPushButton, QMessageBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFormLayout,
+    QWidget,
+    QLabel,
+    QCheckBox,
+    QDoubleSpinBox,
+    QPushButton,
+    QMessageBox,
 )
 from PyQt5.QtCore import Qt, QBuffer, QIODevice
-from PyQt5.QtMultimedia import QAudioOutput, QAudioFormat, QAudioDeviceInfo, QAudio
+try:
+    from PyQt5.QtMultimedia import (
+        QAudioOutput,
+        QAudioFormat,
+        QAudioDeviceInfo,
+        QAudio,
+    )
+    QT_MULTIMEDIA_AVAILABLE = True
+except Exception as e:  # noqa: PIE786 - broad for missing backends
+    print(
+        "WARNING: PyQt5.QtMultimedia could not be imported.\n"
+        "FrequencyTesterDialog will be disabled.\n"
+        f"Original error: {e}"
+    )
+    QT_MULTIMEDIA_AVAILABLE = False
 
 import numpy as np
 
@@ -82,6 +104,10 @@ class FrequencyTesterDialog(QDialog):
         btn_row.addWidget(self.stop_btn)
         layout.addLayout(btn_row)
 
+        if not QT_MULTIMEDIA_AVAILABLE:
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+
     def generate_audio(self):
         sample_rate = int(self.prefs.sample_rate) if hasattr(self.prefs, "sample_rate") else 44100
         duration = self.SEGMENT_DURATION_S
@@ -111,6 +137,14 @@ class FrequencyTesterDialog(QDialog):
         return audio_int16.tobytes(), sample_rate
 
     def on_start(self):
+        if not QT_MULTIMEDIA_AVAILABLE:
+            QMessageBox.critical(
+                self,
+                "PyQt5 Multimedia Missing",
+                "PyQt5.QtMultimedia is required for audio playback, but it "
+                "could not be loaded."
+            )
+            return
         data, sr = self.generate_audio()
         if data is None:
             QMessageBox.warning(self, "Frequency Tester", "No voices enabled")
@@ -142,13 +176,15 @@ class FrequencyTesterDialog(QDialog):
         self.stop_btn.setEnabled(True)
 
     def _handle_state_change(self, state):
+        if not QT_MULTIMEDIA_AVAILABLE:
+            return
         if state == QAudio.IdleState and self.audio_output and self.audio_buffer:
             # Loop playback
             self.audio_buffer.seek(0)
             self.audio_output.start(self.audio_buffer)
 
     def on_stop(self):
-        if self.audio_output:
+        if QT_MULTIMEDIA_AVAILABLE and self.audio_output:
             self.audio_output.stop()
             self.audio_output = None
         if self.audio_buffer:
