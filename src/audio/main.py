@@ -50,6 +50,7 @@ from ui.preferences_dialog import PreferencesDialog
 from ui.noise_generator_dialog import NoiseGeneratorDialog
 from ui.frequency_tester_dialog import FrequencyTesterDialog
 from ui.subliminal_dialog import SubliminalDialog
+from ui.overlay_clip_dialog import OverlayClipDialog
 from ui.voice_editor_dialog import VoiceEditorDialog
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
@@ -175,8 +176,10 @@ class TrackEditorApp(QMainWindow):
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
         self._update_ui_from_global_settings()
         self.refresh_steps_tree()
+        self.refresh_clips_tree()
         self._update_step_actions_state()
         self._update_voice_actions_state()
+        self._update_clip_actions_state()
 
         # --- Undo/Redo History ---
         self.history = []
@@ -196,9 +199,15 @@ class TrackEditorApp(QMainWindow):
                 "sample_rate": self.prefs.sample_rate if hasattr(self, "prefs") else DEFAULT_SAMPLE_RATE,
                 "crossfade_duration": DEFAULT_CROSSFADE,
                 "crossfade_curve": getattr(self.prefs, "crossfade_curve", "linear"),
-                "output_filename": "my_track.flac"
+                "output_filename": "my_track.flac",
             },
-            "steps": []
+            "background_noise": {
+                "file_path": "",
+                "amp": 0.0,
+                "pan": 0.0,
+            },
+            "clips": [],
+            "steps": [],
         }
 
     def _create_menu(self):
@@ -358,6 +367,25 @@ class TrackEditorApp(QMainWindow):
         self.browse_outfile_button = QPushButton("Browse...")
         self.browse_outfile_button.clicked.connect(self.browse_outfile)
         globals_layout.addWidget(self.browse_outfile_button, 2, 2)
+
+        globals_layout.addWidget(QLabel("Noise Preset:"), 3, 0)
+        self.noise_file_entry = QLineEdit()
+        globals_layout.addWidget(self.noise_file_entry, 3, 1)
+        self.browse_noise_button = QPushButton("Browse...")
+        self.browse_noise_button.clicked.connect(self.browse_noise_file)
+        globals_layout.addWidget(self.browse_noise_button, 3, 2)
+
+        globals_layout.addWidget(QLabel("Noise Amp:"), 4, 0)
+        self.noise_amp_entry = QLineEdit("0.0")
+        self.noise_amp_entry.setValidator(self.double_validator)
+        self.noise_amp_entry.setMaximumWidth(80)
+        globals_layout.addWidget(self.noise_amp_entry, 4, 1)
+
+        globals_layout.addWidget(QLabel("Noise Pan:"), 5, 0)
+        self.noise_pan_entry = QLineEdit("0.0")
+        self.noise_pan_entry.setValidator(self.double_validator)
+        self.noise_pan_entry.setMaximumWidth(80)
+        globals_layout.addWidget(self.noise_pan_entry, 5, 1)
         globals_layout.setColumnStretch(1, 1)
         control_layout.addWidget(globals_groupbox, 1)
         control_layout.addStretch(1)
@@ -543,6 +571,31 @@ class TrackEditorApp(QMainWindow):
         self.voice_details_text.setLineWrapMode(QTextEdit.WidgetWidth)
         voice_details_groupbox_layout.addWidget(self.voice_details_text)
 
+        # --- Overlay Clips Widgets ---
+        self.clips_groupbox = QGroupBox("Overlay Clips")
+        clips_groupbox_layout = QVBoxLayout(self.clips_groupbox)
+        voice_details_outer_layout.addWidget(self.clips_groupbox)
+
+        self.clips_tree = QTreeWidget()
+        self.clips_tree.setColumnCount(6)
+        self.clips_tree.setHeaderLabels(["File", "Start", "Amp", "Pan", "FadeIn", "FadeOut"])
+        self.clips_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
+        self.clips_tree.itemSelectionChanged.connect(self.on_clip_select)
+        clips_groupbox_layout.addWidget(self.clips_tree, 1)
+
+        clips_btn_layout = QHBoxLayout()
+        self.add_clip_button = QPushButton("Add Clip")
+        self.edit_clip_button = QPushButton("Edit Clip")
+        self.remove_clip_button = QPushButton("Remove Clip(s)")
+        self.add_clip_button.clicked.connect(self.add_clip)
+        self.edit_clip_button.clicked.connect(self.edit_clip)
+        self.remove_clip_button.clicked.connect(self.remove_clip)
+        clips_btn_layout.addWidget(self.add_clip_button)
+        clips_btn_layout.addWidget(self.edit_clip_button)
+        clips_btn_layout.addWidget(self.remove_clip_button)
+        clips_btn_layout.addStretch(1)
+        clips_groupbox_layout.addLayout(clips_btn_layout)
+
         main_splitter.setSizes([400, 700])
         right_splitter.setSizes([500, 200])
 
@@ -648,12 +701,26 @@ class TrackEditorApp(QMainWindow):
         self.move_voice_up_button.setEnabled(can_move_voice_up)
         self.move_voice_down_button.setEnabled(can_move_voice_down)
 
+    def _update_clip_actions_state(self):
+        selected_items = self.clips_tree.selectedItems()
+        has_selection = len(selected_items) > 0
+        is_single = len(selected_items) == 1
+        self.edit_clip_button.setEnabled(is_single)
+        self.remove_clip_button.setEnabled(has_selection)
+
+    @pyqtSlot()
+    def on_clip_select(self):
+        self._update_clip_actions_state()
+
     # --- Internal Data Handling ---
     def _update_global_settings_from_ui(self):
         try:
             sr_str = self.sr_entry.text()
             cf_str = self.cf_entry.text()
             outfile = self.outfile_entry.text().strip()
+            noise_file = self.noise_file_entry.text().strip()
+            noise_amp_str = self.noise_amp_entry.text()
+            noise_pan_str = self.noise_pan_entry.text()
             if not sr_str: raise ValueError("Sample rate cannot be empty.")
             sr = int(sr_str)
             if sr <= 0: raise ValueError("Sample rate must be positive.")
@@ -667,6 +734,19 @@ class TrackEditorApp(QMainWindow):
             if any(c in outfile for c in '<>:"/\\|?*'):
                 raise ValueError("Output filename contains invalid characters.")
             self.track_data["global_settings"]["output_filename"] = outfile
+
+            self.track_data.setdefault("background_noise", {})
+            self.track_data["background_noise"]["file_path"] = noise_file
+            try:
+                noise_amp = float(noise_amp_str) if noise_amp_str else 0.0
+            except ValueError:
+                raise ValueError("Invalid noise amplitude")
+            try:
+                noise_pan = float(noise_pan_str) if noise_pan_str else 0.0
+            except ValueError:
+                raise ValueError("Invalid noise pan")
+            self.track_data["background_noise"]["amp"] = noise_amp
+            self.track_data["background_noise"]["pan"] = noise_pan
         except ValueError as e:
             QMessageBox.critical(self, "Input Error", f"Invalid global settings:\n{e}")
             return False
@@ -680,6 +760,10 @@ class TrackEditorApp(QMainWindow):
         self.sr_entry.setText(str(settings.get("sample_rate", DEFAULT_SAMPLE_RATE)))
         self.cf_entry.setText(str(settings.get("crossfade_duration", DEFAULT_CROSSFADE)))
         self.outfile_entry.setText(settings.get("output_filename", "my_track.wav"))
+        noise = self.track_data.get("background_noise", {})
+        self.noise_file_entry.setText(noise.get("file_path", ""))
+        self.noise_amp_entry.setText(str(noise.get("amp", 0.0)))
+        self.noise_pan_entry.setText(str(noise.get("pan", 0.0)))
 
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
@@ -793,6 +877,33 @@ class TrackEditorApp(QMainWindow):
             traceback.print_exc()
         self.on_voice_select()
         self._voices_tree_updating = False
+
+    def refresh_clips_tree(self):
+        current_data = None
+        current_item = self.clips_tree.currentItem()
+        if current_item:
+            current_data = current_item.data(0, Qt.UserRole)
+        selected = set()
+        for item in self.clips_tree.selectedItems():
+            data = item.data(0, Qt.UserRole)
+            if data is not None:
+                selected.add(data)
+        self.clips_tree.clear()
+        clips = self.track_data.get("clips", [])
+        for i, clip in enumerate(clips):
+            item = QTreeWidgetItem(self.clips_tree)
+            item.setText(0, os.path.basename(clip.get("file_path", "")))
+            item.setText(1, f"{clip.get('start', 0.0):.2f}")
+            item.setText(2, str(clip.get('amp', 1.0)))
+            item.setText(3, str(clip.get('pan', 0.0)))
+            item.setText(4, str(clip.get('fade_in', 0.0)))
+            item.setText(5, str(clip.get('fade_out', 0.0)))
+            item.setData(0, Qt.UserRole, i)
+            if i in selected:
+                item.setSelected(True)
+                if i == current_data:
+                    self.clips_tree.setCurrentItem(item)
+        self._update_clip_actions_state()
 
     def clear_voice_details(self):
         self.voice_details_text.clear()
@@ -925,6 +1036,7 @@ class TrackEditorApp(QMainWindow):
         self.track_data = self._get_default_track_data()
         self.current_json_path = None
         self._update_ui_from_global_settings()
+        self.refresh_clips_tree()
         self.refresh_steps_tree() # This calls on_step_select -> _update_step_actions_state
         self.setWindowTitle("Binaural Track Editor (PyQt5) - New File")
         QMessageBox.information(self, "New File", "New track created.")
@@ -940,10 +1052,13 @@ class TrackEditorApp(QMainWindow):
             loaded_data = sound_creator.load_track_from_json(filepath)
             if loaded_data and isinstance(loaded_data.get("steps"), list) and isinstance(loaded_data.get("global_settings"), dict):
                 self.track_data = loaded_data
+                self.track_data.setdefault("background_noise", {"file_path": "", "amp": 0.0, "pan": 0.0})
+                self.track_data.setdefault("clips", [])
                 self.current_json_path = filepath
                 self.setWindowTitle(f"Binaural Track Editor (PyQt5) - {os.path.basename(filepath)}")
                 self._update_ui_from_global_settings()
                 self.refresh_steps_tree() # This calls on_step_select -> _update_step_actions_state
+                self.refresh_clips_tree()
                 QMessageBox.information(self, "Load Success", f"Track loaded from\n{filepath}")
                 self._push_history_state()
             elif loaded_data is not None:
@@ -996,6 +1111,19 @@ class TrackEditorApp(QMainWindow):
         filepath, _ = QFileDialog.getSaveFileName(self, "Select Output WAV File", suggested_path, "WAV files (*.wav);;All files (*.*)")
         if filepath:
             self.outfile_entry.setText(filepath)
+            self._update_global_settings_from_ui()
+
+    @pyqtSlot()
+    def browse_noise_file(self):
+        initial_dir = os.path.dirname(self.current_json_path) if self.current_json_path else "."
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Noise Preset",
+            initial_dir,
+            f"Noise Files (*{'.noise'});;All files (*.*)"
+        )
+        if path:
+            self.noise_file_entry.setText(path)
             self._update_global_settings_from_ui()
 
     @pyqtSlot()
@@ -1301,6 +1429,52 @@ class TrackEditorApp(QMainWindow):
         except IndexError: QMessageBox.critical(self, "Error", "Failed to move voice (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
         self._update_voice_actions_state()
+
+    @pyqtSlot()
+    def add_clip(self):
+        dialog = OverlayClipDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            clip = dialog.get_clip_data()
+            self.track_data.setdefault("clips", []).append(clip)
+            self.refresh_clips_tree()
+            self._push_history_state()
+
+    @pyqtSlot()
+    def edit_clip(self):
+        idx = self.get_selected_clip_index()
+        if idx is None or len(self.clips_tree.selectedItems()) != 1:
+            QMessageBox.warning(self, "Edit Clip", "Please select one clip to edit.")
+            return
+        try:
+            clip_data = self.track_data.get("clips", [])[idx]
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Invalid clip: {exc}")
+            return
+        dialog = OverlayClipDialog(self, clip_data)
+        if dialog.exec_() == QDialog.Accepted:
+            self.track_data["clips"][idx] = dialog.get_clip_data()
+            self.refresh_clips_tree()
+            self._push_history_state()
+
+    @pyqtSlot()
+    def remove_clip(self):
+        indices = self.get_selected_clip_indices()
+        if not indices:
+            QMessageBox.warning(self, "Remove Clip", "Please select clip(s) to remove.")
+            return
+        reply = QMessageBox.question(
+            self,
+            "Confirm Remove",
+            f"Remove {len(indices)} selected clip(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            for i in sorted(indices, reverse=True):
+                if 0 <= i < len(self.track_data.get("clips", [])):
+                    del self.track_data["clips"][i]
+            self.refresh_clips_tree()
+            self._push_history_state()
 
     # --- generate_audio_action ---
     @pyqtSlot()
@@ -1771,6 +1945,21 @@ class TrackEditorApp(QMainWindow):
             for item in selected_items:
                 data = item.data(0, Qt.UserRole)
                 if data is not None: indices.append(int(data))
+        return sorted(indices)
+
+    def get_selected_clip_index(self):
+        current_item = self.clips_tree.currentItem()
+        if current_item:
+            return current_item.data(0, Qt.UserRole)
+        return None
+
+    def get_selected_clip_indices(self):
+        selected_items = self.clips_tree.selectedItems()
+        indices = []
+        for item in selected_items:
+            data = item.data(0, Qt.UserRole)
+            if data is not None:
+                indices.append(int(data))
         return sorted(indices)
 
     def closeEvent(self, event):
