@@ -424,7 +424,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     swap_btn.clicked.connect(lambda _, ln=left_name, rn=right_name: self._swap_lr([ln, rn]))
                     row_layout.addWidget(swap_btn, 0, 5)
 
-                    row_layout.addWidget(QLabel(hint_text), 0, 6, Qt.AlignLeft)
+                    # The opposite parameter is rendered on its own line below,
+                    # so no additional field is needed next to the swap button.
 
                     self.param_widgets[left_name] = {'widget': left_entry, 'type': param_storage_type}
                     self.param_widgets[right_name] = {'widget': right_entry, 'type': param_storage_type}
