@@ -293,7 +293,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
     def populate_parameters(self):
         self._clear_layout(self.params_scroll_layout)
-        self.param_widgets = {} 
+        self.param_widgets = {}
         
         func_name = self.synth_func_combo.currentText()
         is_transition = self.transition_check.isChecked()
@@ -311,6 +311,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
         processed_end_params = set()
         transition_pairs = {}
+        processed_names = set()
 
         if is_transition:
             for name in default_params_ordered.keys():
@@ -326,7 +327,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         pass
 
         for name in default_params_ordered.keys():
-            if name in processed_end_params:
+            if name in processed_names or name in processed_end_params:
                 is_part_of_pair = False
                 for base, pair_names in transition_pairs.items():
                     if pair_names['end'] == name:
@@ -343,6 +344,83 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 if any(s in nlow for s in ["amp", "gain", "level"]):
                     from ..utils.amp_utils import amplitude_to_db
                     display_current = amplitude_to_db(float(current_value))
+
+            prefix, base_after = self._split_name_prefix(name)
+            lr_info = self._parse_lr_suffix(base_after)
+            if lr_info:
+                base_lr, left_suffix, right_suffix = lr_info
+                left_name = prefix + base_lr + left_suffix
+                right_name = prefix + base_lr + right_suffix
+                if left_name in default_params_ordered and right_name in default_params_ordered and left_name not in processed_names and right_name not in processed_names:
+                    left_def = default_params_ordered[left_name]
+                    right_def = default_params_ordered[right_name]
+                    left_cur = params_to_display.get(left_name, left_def)
+                    right_cur = params_to_display.get(right_name, right_def)
+                    disp_left = left_cur
+                    disp_right = right_cur
+                    if isinstance(left_cur, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+                        nlow = left_name.lower()
+                        if any(s in nlow for s in ["amp", "gain", "level"]):
+                            from ..utils.amp_utils import amplitude_to_db
+                            disp_left = amplitude_to_db(float(left_cur))
+                    if isinstance(right_cur, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+                        nlow = right_name.lower()
+                        if any(s in nlow for s in ["amp", "gain", "level"]):
+                            from ..utils.amp_utils import amplitude_to_db
+                            disp_right = amplitude_to_db(float(right_cur))
+
+                    frame = QWidget()
+                    row_layout = QGridLayout(frame)
+                    row_layout.setContentsMargins(2,2,2,2)
+
+                    param_type_hint = 'any'
+                    if isinstance(left_def, bool):
+                        param_type_hint = 'bool'
+                    elif isinstance(left_def, int):
+                        param_type_hint = 'int'
+                    elif isinstance(left_def, float):
+                        param_type_hint = 'float'
+                    elif isinstance(left_def, str):
+                        param_type_hint = 'str'
+
+                    param_storage_type = param_type_hint if param_type_hint in ['int','float','bool','str'] else 'str'
+                    range_hint = self._get_param_range_hint(base_lr)
+                    hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
+
+                    row_layout.addWidget(QLabel(f"{prefix + base_lr if prefix else base_lr}:"), 0, 0, Qt.AlignLeft)
+                    row_layout.addWidget(QLabel("L:"), 0, 1, Qt.AlignRight)
+                    left_entry = QLineEdit(str(disp_left) if disp_left is not None else "")
+                    if param_type_hint == 'int':
+                        left_entry.setValidator(QIntValidator(-999999, 999999, self))
+                    elif param_type_hint == 'float':
+                        val = QDoubleValidator(-999999.0, 999999.0, 6, self)
+                        val.setNotation(QDoubleValidator.StandardNotation)
+                        left_entry.setValidator(val)
+                    row_layout.addWidget(left_entry, 0, 2)
+
+                    row_layout.addWidget(QLabel("R:"), 0, 3, Qt.AlignRight)
+                    right_entry = QLineEdit(str(disp_right) if disp_right is not None else "")
+                    if param_type_hint == 'int':
+                        right_entry.setValidator(QIntValidator(-999999, 999999, self))
+                    elif param_type_hint == 'float':
+                        val = QDoubleValidator(-999999.0, 999999.0, 6, self)
+                        val.setNotation(QDoubleValidator.StandardNotation)
+                        right_entry.setValidator(val)
+                    row_layout.addWidget(right_entry, 0, 4)
+
+                    swap_btn = QPushButton("Swap R/L")
+                    swap_btn.clicked.connect(lambda _, ln=left_name, rn=right_name: self._swap_lr([ln, rn]))
+                    row_layout.addWidget(swap_btn, 0, 5)
+
+                    row_layout.addWidget(QLabel(hint_text), 0, 6, Qt.AlignLeft)
+
+                    self.param_widgets[left_name] = {'widget': left_entry, 'type': param_storage_type}
+                    self.param_widgets[right_name] = {'widget': right_entry, 'type': param_storage_type}
+
+                    self.params_scroll_layout.addWidget(frame)
+                    processed_names.add(left_name)
+                    processed_names.add(right_name)
+                    continue
             base_name_for_pair = None
             is_pair_start = False
             if is_transition and name.startswith('start'):
@@ -412,10 +490,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 end_entry.setMinimumWidth(70); end_entry.setMaximumWidth(100)
                 row_layout.addWidget(end_entry, 0, 4)
                 self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
-                
+
                 row_layout.addWidget(QLabel(hint_text), 0, 5, Qt.AlignLeft)
                 row_layout.setColumnStretch(0,1); row_layout.setColumnStretch(2,1)
                 row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
+                processed_names.add(start_name)
+                processed_names.add(end_name)
             else: # Single parameter
                 widget = None
                 row_layout.addWidget(QLabel(f"{name}:"), 0, 0, Qt.AlignLeft)
@@ -466,7 +546,9 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     row_layout.addWidget(hint_text_label, 0, 2, Qt.AlignLeft)
                     row_layout.setColumnStretch(2,1)
 
-                if widget is not None: self.param_widgets[name] = {'widget': widget, 'type': param_storage_type}
+                if widget is not None:
+                    self.param_widgets[name] = {'widget': widget, 'type': param_storage_type}
+                    processed_names.add(name)
             
             self.params_scroll_layout.addWidget(frame)
         self.params_scroll_layout.addStretch(1)
@@ -767,6 +849,32 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 combo_box.setCurrentText(custom_text)
             else:
                 combo_box.setCurrentIndex(0)
+
+    def _split_name_prefix(self, name: str):
+        for p in ('start_', 'start', 'end_', 'end'):
+            if name.startswith(p):
+                return p, name[len(p):]
+        return '', name
+
+    def _parse_lr_suffix(self, base: str):
+        patterns = [('_L', '_R'), ('_R', '_L'), ('L', 'R'), ('R', 'L')]
+        for ls, rs in patterns:
+            if base.endswith(ls):
+                return base[:-len(ls)], ls, rs
+        return None
+
+    def _swap_lr(self, names):
+        for i in range(0, len(names), 2):
+            n1, n2 = names[i], names[i+1]
+            if n1 in self.param_widgets and n2 in self.param_widgets:
+                w1 = self.param_widgets[n1]['widget']
+                w2 = self.param_widgets[n2]['widget']
+                if isinstance(w1, QLineEdit) and isinstance(w2, QLineEdit):
+                    tmp = w1.text(); w1.setText(w2.text()); w2.setText(tmp)
+                elif isinstance(w1, QComboBox) and isinstance(w2, QComboBox):
+                    tmp = w1.currentText(); w1.setCurrentText(w2.currentText()); w2.setCurrentText(tmp)
+                elif isinstance(w1, QCheckBox) and isinstance(w2, QCheckBox):
+                    tmp = w1.isChecked(); w1.setChecked(w2.isChecked()); w2.setChecked(tmp)
 
 
     # --- Helper methods for collecting UI data ---
