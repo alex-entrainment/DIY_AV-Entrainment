@@ -213,6 +213,11 @@ class TrackEditorApp(QMainWindow):
 
         self.test_step_duration = self.prefs.test_step_duration
 
+        # Overlay clip preview attributes
+        self.clip_audio_output = None
+        self.clip_audio_buffer = None
+        self.is_clip_playing = False
+
         # Initialize history and update flags early to avoid race conditions
         # when UI signals fire during setup.
         self.history = []
@@ -687,9 +692,12 @@ class TrackEditorApp(QMainWindow):
         self.add_clip_button.clicked.connect(self.add_clip)
         self.edit_clip_button.clicked.connect(self.edit_clip)
         self.remove_clip_button.clicked.connect(self.remove_clip)
+        self.play_clip_button = QPushButton("Start Clip")
+        self.play_clip_button.clicked.connect(self.on_start_stop_clip)
         clips_btn_layout.addWidget(self.add_clip_button)
         clips_btn_layout.addWidget(self.edit_clip_button)
         clips_btn_layout.addWidget(self.remove_clip_button)
+        clips_btn_layout.addWidget(self.play_clip_button)
         clips_btn_layout.addStretch(1)
         clips_groupbox_layout.addLayout(clips_btn_layout)
 
@@ -803,6 +811,7 @@ class TrackEditorApp(QMainWindow):
         is_single = len(selected_items) == 1
         self.edit_clip_button.setEnabled(is_single)
         self.remove_clip_button.setEnabled(has_selection)
+        self.play_clip_button.setEnabled(is_single or self.is_clip_playing)
 
     @pyqtSlot()
     def on_clip_select(self):
@@ -1059,6 +1068,8 @@ class TrackEditorApp(QMainWindow):
     def new_file(self):
         if self.is_step_test_playing or self.is_step_test_paused or self.test_step_raw_audio:
             self.on_reset_step_test() # Reset tester before loading new file content
+        if self.is_clip_playing:
+            self._stop_clip_playback()
         self.track_data = self._get_default_track_data()
         self.current_json_path = None
         self._update_ui_from_global_settings()
@@ -1072,6 +1083,8 @@ class TrackEditorApp(QMainWindow):
     def load_json(self):
         if self.is_step_test_playing or self.is_step_test_paused or self.test_step_raw_audio:
             self.on_reset_step_test() # Reset tester before loading new file content
+        if self.is_clip_playing:
+            self._stop_clip_playback()
         filepath, _ = QFileDialog.getOpenFileName(self, "Load Track JSON", "", "JSON files (*.json);;All files (*.*)")
         if not filepath: return
         try:
@@ -1512,6 +1525,77 @@ class TrackEditorApp(QMainWindow):
                     del self.track_data["clips"][i]
             self.refresh_clips_tree()
             self._push_history_state()
+
+    @pyqtSlot()
+    def on_start_stop_clip(self):
+        if self.is_clip_playing:
+            self._stop_clip_playback()
+        else:
+            self._start_clip_playback()
+
+    def _start_clip_playback(self):
+        idx = self.get_selected_clip_index()
+        if idx is None or len(self.clips_tree.selectedItems()) != 1:
+            QMessageBox.warning(self, "Play Clip", "Please select one clip to play.")
+            return
+        try:
+            clip_data = self.track_data.get("clips", [])[idx]
+            path = clip_data.get("file_path")
+            if not path or not os.path.isfile(path):
+                QMessageBox.warning(self, "Play Clip", "Clip file not found.")
+                return
+            data, sr = sf.read(path, always_2d=True)
+            if data.shape[1] == 1:
+                data = np.repeat(data, 2, axis=1)
+            data = np.clip(data, -1.0, 1.0)
+            audio_int16 = (data * 32767).astype(np.int16)
+            audio_bytes = audio_int16.tobytes()
+
+            fmt = QAudioFormat()
+            fmt.setCodec("audio/pcm")
+            fmt.setSampleRate(int(sr))
+            fmt.setSampleSize(16)
+            fmt.setChannelCount(2)
+            fmt.setByteOrder(QAudioFormat.LittleEndian)
+            fmt.setSampleType(QAudioFormat.SignedInt)
+            device_info = QAudioDeviceInfo.defaultOutputDevice()
+            if not device_info.isFormatSupported(fmt):
+                QMessageBox.warning(self, "Play Clip", "Output device does not support the required format.")
+                return
+
+            if self.clip_audio_output:
+                self.clip_audio_output.stop()
+                self.clip_audio_output = None
+
+            self.clip_audio_output = QAudioOutput(fmt, self)
+            self.clip_audio_output.stateChanged.connect(self._handle_clip_audio_state_change)
+
+            self.clip_audio_buffer = QBuffer()
+            self.clip_audio_buffer.setData(audio_bytes)
+            self.clip_audio_buffer.open(QIODevice.ReadOnly)
+
+            self.clip_audio_output.start(self.clip_audio_buffer)
+            self.is_clip_playing = True
+            self.play_clip_button.setText("Stop Clip")
+            self._update_clip_actions_state()
+        except Exception as e:
+            QMessageBox.critical(self, "Play Clip", f"Failed to play clip:\n{e}")
+            self._stop_clip_playback()
+
+    def _stop_clip_playback(self):
+        if self.clip_audio_output:
+            self.clip_audio_output.stop()
+            self.clip_audio_output = None
+        if self.clip_audio_buffer:
+            self.clip_audio_buffer.close()
+            self.clip_audio_buffer = None
+        self.is_clip_playing = False
+        self.play_clip_button.setText("Start Clip")
+        self._update_clip_actions_state()
+
+    def _handle_clip_audio_state_change(self, state):
+        if state in (QAudio.IdleState, QAudio.StoppedState):
+            self._stop_clip_playback()
 
     # --- generate_audio_action ---
     @pyqtSlot()
@@ -1992,7 +2076,10 @@ class TrackEditorApp(QMainWindow):
         return sorted(indices)
 
     def closeEvent(self, event):
-        if self.test_audio_output: self.test_audio_output.stop()
+        if self.test_audio_output:
+            self.test_audio_output.stop()
+        if self.is_clip_playing:
+            self._stop_clip_playback()
         super().closeEvent(event)
 
 # --- Run the Application ---
