@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import QDialog, QGroupBox
 
-from voice_editor_dialog import VoiceEditorDialog
+from ui.voice_editor_dialog import VoiceEditorDialog
 from utils.preferences import Preferences
 
 
