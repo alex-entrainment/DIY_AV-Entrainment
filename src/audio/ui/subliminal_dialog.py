@@ -45,9 +45,17 @@ class SubliminalDialog(QDialog):
         form.addRow("Carrier Freq (Hz):", self.freq_spin)
 
         self.amp_spin = QDoubleSpinBox()
-        self.amp_spin.setRange(0.0, 1.0)
-        self.amp_spin.setSingleStep(0.05)
-        self.amp_spin.setValue(0.5)
+        if getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+            from ..utils.amp_utils import amplitude_to_db, MIN_DB
+            self.amp_spin.setRange(MIN_DB, 0.0)
+            self.amp_spin.setDecimals(1)
+            self.amp_spin.setSingleStep(1.0)
+            self.amp_spin.setSuffix(" dB")
+            self.amp_spin.setValue(amplitude_to_db(0.5))
+        else:
+            self.amp_spin.setRange(0.0, 1.0)
+            self.amp_spin.setSingleStep(0.05)
+            self.amp_spin.setValue(0.5)
         form.addRow("Amplitude:", self.amp_spin)
 
         self.mode_combo = QComboBox()
@@ -85,12 +93,16 @@ class SubliminalDialog(QDialog):
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Invalid step: {exc}")
             return
+        amp_val = float(self.amp_spin.value())
+        if getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+            from ..utils.amp_utils import db_to_amplitude
+            amp_val = db_to_amplitude(amp_val)
         voice_data = {
             "synth_function_name": "subliminal_encode",
             "is_transition": False,
             "params": {
                 "carrierFreq": float(self.freq_spin.value()),
-                "amp": float(self.amp_spin.value()),
+                "amp": amp_val,
                 "mode": self.mode_combo.currentText(),
             },
             "volume_envelope": None,

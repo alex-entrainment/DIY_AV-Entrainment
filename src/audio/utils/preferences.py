@@ -14,6 +14,7 @@ class Preferences:
     # Peak amplitude for the final exported audio (0-1.0)
     target_output_amplitude: float = 0.25
     crossfade_curve: str = "linear"
+    amplitude_display_mode: str = "absolute"  # or "dB"
 
 PREF_FILE = Path.home() / ".entrainment_prefs.json"
 

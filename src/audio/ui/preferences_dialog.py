@@ -69,10 +69,18 @@ class PreferencesDialog(QDialog):
         self.test_duration_spin.setDecimals(1)
         self.test_duration_spin.setValue(prefs.test_step_duration)
         self.target_amp_spin = QDoubleSpinBox()
-        self.target_amp_spin.setRange(0.0, 1.0)
-        self.target_amp_spin.setDecimals(3)
-        self.target_amp_spin.setSingleStep(0.05)
-        self.target_amp_spin.setValue(prefs.target_output_amplitude)
+        if getattr(prefs, "amplitude_display_mode", "absolute") == "dB":
+            from ..utils.amp_utils import amplitude_to_db, MIN_DB
+            self.target_amp_spin.setRange(MIN_DB, 0.0)
+            self.target_amp_spin.setDecimals(1)
+            self.target_amp_spin.setSingleStep(1.0)
+            self.target_amp_spin.setSuffix(" dB")
+            self.target_amp_spin.setValue(amplitude_to_db(prefs.target_output_amplitude))
+        else:
+            self.target_amp_spin.setRange(0.0, 1.0)
+            self.target_amp_spin.setDecimals(3)
+            self.target_amp_spin.setSingleStep(0.05)
+            self.target_amp_spin.setValue(prefs.target_output_amplitude)
         self.crossfade_curve_combo = QComboBox()
         self.crossfade_curve_combo.addItems(["linear", "equal_power"])
         idx_curve = self.crossfade_curve_combo.findText(getattr(prefs, "crossfade_curve", "linear"))
@@ -80,9 +88,15 @@ class PreferencesDialog(QDialog):
             self.crossfade_curve_combo.setCurrentIndex(idx_curve)
         self.track_metadata_chk = QCheckBox("Include track export metadata")
         self.track_metadata_chk.setChecked(prefs.track_metadata)
+        self.amp_mode_combo = QComboBox()
+        self.amp_mode_combo.addItems(["absolute", "dB"])
+        idx_mode = self.amp_mode_combo.findText(getattr(prefs, "amplitude_display_mode", "absolute"))
+        if idx_mode != -1:
+            self.amp_mode_combo.setCurrentIndex(idx_mode)
         audio_form.addRow("Sample Rate (Hz):", self.sample_rate_spin)
         audio_form.addRow("Test Step Duration (s):", self.test_duration_spin)
         audio_form.addRow("Target Output Amplitude:", self.target_amp_spin)
+        audio_form.addRow("Amplitude Display:", self.amp_mode_combo)
         audio_form.addRow("Crossfade Curve:", self.crossfade_curve_combo)
         audio_form.addRow(self.track_metadata_chk)
         audio_group.setLayout(audio_form)
@@ -105,6 +119,11 @@ class PreferencesDialog(QDialog):
             self.export_edit.setText(directory)
 
     def get_preferences(self) -> Preferences:
+        from ..utils.amp_utils import db_to_amplitude
+        amp_mode = self.amp_mode_combo.currentText()
+        amp_value = self.target_amp_spin.value()
+        if amp_mode == "dB":
+            amp_value = db_to_amplitude(amp_value)
         p = Preferences(
             font_family=self.font_combo.currentFont().family(),
             font_size=self.font_size_spin.value(),
@@ -113,7 +132,8 @@ class PreferencesDialog(QDialog):
             sample_rate=self.sample_rate_spin.value(),
             test_step_duration=self.test_duration_spin.value(),
             track_metadata=self.track_metadata_chk.isChecked(),
-            target_output_amplitude=self.target_amp_spin.value(),
+            target_output_amplitude=amp_value,
             crossfade_curve=self.crossfade_curve_combo.currentText(),
+            amplitude_display_mode=amp_mode,
         )
         return p

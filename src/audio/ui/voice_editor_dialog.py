@@ -337,6 +337,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
             default_value = default_params_ordered[name]
             current_value = params_to_display.get(name, default_value)
+            display_current = current_value
+            if isinstance(current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+                nlow = name.lower()
+                if any(s in nlow for s in ["amp", "gain", "level"]):
+                    from ..utils.amp_utils import amplitude_to_db
+                    display_current = amplitude_to_db(float(current_value))
             base_name_for_pair = None
             is_pair_start = False
             if is_transition and name.startswith('start'):
@@ -370,6 +376,13 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 end_name = transition_pairs[base_name_for_pair]['end']
                 end_default_value = default_params_ordered.get(end_name, default_value)
                 end_current_value = params_to_display.get(end_name, end_default_value)
+                display_start = display_current
+                display_end = end_current_value
+                if isinstance(end_current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+                    nlow = end_name.lower()
+                    if any(s in nlow for s in ["amp", "gain", "level"]):
+                        from ..utils.amp_utils import amplitude_to_db
+                        display_end = amplitude_to_db(float(end_current_value))
 
                 current_validator = None # Create a new validator instance for each pair or reuse type
                 if param_type_hint == 'int':
@@ -385,14 +398,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
                 row_layout.addWidget(QLabel(f"{base_name_for_pair}:"), 0, 0, Qt.AlignLeft)
                 row_layout.addWidget(QLabel("Start:"), 0, 1, Qt.AlignRight)
-                start_entry = QLineEdit(str(current_value) if current_value is not None else "")
+                start_entry = QLineEdit(str(display_start) if display_start is not None else "")
                 if current_validator: start_entry.setValidator(current_validator) # Assign directly
                 start_entry.setMinimumWidth(70); start_entry.setMaximumWidth(100)
                 row_layout.addWidget(start_entry, 0, 2)
                 self.param_widgets[start_name] = {'widget': start_entry, 'type': param_storage_type}
                 
                 row_layout.addWidget(QLabel("End:"), 0, 3, Qt.AlignRight)
-                end_entry = QLineEdit(str(end_current_value) if end_current_value is not None else "")
+                end_entry = QLineEdit(str(display_end) if display_end is not None else "")
                 if current_validator: end_entry.setValidator(current_validator) # Assign directly (can reuse if settings are same, or make another new one)
                 # If you need truly independent validators for start/end (e.g. different ranges), create another new one here.
                 # For simplicity, if they share the same type/range, reusing is fine.
@@ -432,8 +445,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val_to_set = str(current_value) if current_value in sound_creator.VALID_SAM_PATHS else sound_creator.VALID_SAM_PATHS[0]
                     widget.setCurrentText(val_to_set)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
-                else: 
-                    widget = QLineEdit(str(current_value) if current_value is not None else "")
+                else:
+                    widget = QLineEdit(str(display_current) if display_current is not None else "")
                     entry_width = 150
                     current_validator_instance = None # Create a new validator for this specific widget
                     if param_type_hint == 'int':
@@ -498,8 +511,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
             for label_text, param_name, default_val, validator_type, val_type in params_def:
                 label = QLabel(label_text)
                 entry = QLineEdit()
-                entry.setValidator(copy.deepcopy(validator_type)) # Use a copy of the validator
-                entry.setText(str(current_env_params.get(param_name, default_val)))
+                entry.setValidator(copy.deepcopy(validator_type))
+                val = current_env_params.get(param_name, default_val)
+                if isinstance(val, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB" and "amp" in param_name:
+                    from ..utils.amp_utils import amplitude_to_db
+                    val = amplitude_to_db(float(val))
+                entry.setText(str(val))
                 
                 self.env_params_layout.addWidget(label, row, 0)
                 self.env_params_layout.addWidget(entry, row, 1)
@@ -791,6 +808,11 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     value = None
             
             if value is not None:
+                if param_type == 'float' and getattr(self.app, 'prefs', None) and getattr(self.app.prefs, 'amplitude_display_mode', 'absolute') == 'dB':
+                    nlow = name.lower()
+                    if any(s in nlow for s in ['amp', 'gain', 'level']):
+                        from ..utils.amp_utils import db_to_amplitude
+                        value = db_to_amplitude(float(value))
                 synth_params[name] = value
         
         # Collect envelope data
@@ -804,8 +826,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     value_str = widget.text().strip()
                     if value_str:
                         try:
-                            if param_type == 'float': 
-                                env_params[name] = float(value_str.replace(',', '.'))
+                            if param_type == 'float':
+                                val = float(value_str.replace(',', '.'))
+                                if getattr(self.app, 'prefs', None) and getattr(self.app.prefs, 'amplitude_display_mode', 'absolute') == 'dB':
+                                    nlow = name.lower()
+                                    if any(s in nlow for s in ['amp', 'gain', 'level']):
+                                        from ..utils.amp_utils import db_to_amplitude
+                                        val = db_to_amplitude(val)
+                                env_params[name] = val
                             elif param_type == 'int': 
                                 env_params[name] = int(value_str)
                             else: 
