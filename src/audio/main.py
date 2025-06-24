@@ -295,6 +295,10 @@ class TrackEditorApp(QMainWindow):
         pref_act.triggered.connect(self.open_preferences)
         file_menu.addAction(pref_act)
 
+        defaults_act = QAction("Configure Defaults", self)
+        defaults_act.triggered.connect(self.open_default_voice_config)
+        file_menu.addAction(defaults_act)
+
         file_menu.addSeparator()
         theme_menu = file_menu.addMenu("Theme")
         for name in sorted(THEMES.keys()):
@@ -340,6 +344,13 @@ class TrackEditorApp(QMainWindow):
             # Sync crossfade curve into current track settings
             if "global_settings" in self.track_data:
                 self.track_data["global_settings"]["crossfade_curve"] = self.prefs.crossfade_curve
+
+    def open_default_voice_config(self):
+        from ui.default_voice_dialog import DefaultVoiceDialog
+        dialog = DefaultVoiceDialog(self.prefs, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.prefs.default_voice = dialog.get_default_voice()
+            save_settings(self.prefs)
 
     def open_noise_generator(self):
         dialog = NoiseGeneratorDialog(self)
