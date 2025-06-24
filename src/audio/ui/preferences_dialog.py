@@ -69,7 +69,8 @@ class PreferencesDialog(QDialog):
         self.test_duration_spin.setDecimals(1)
         self.test_duration_spin.setValue(prefs.test_step_duration)
         self.target_amp_spin = QDoubleSpinBox()
-        if getattr(prefs, "amplitude_display_mode", "absolute") == "dB":
+        self._amp_mode = getattr(prefs, "amplitude_display_mode", "absolute")
+        if self._amp_mode == "dB":
             from ..utils.amp_utils import amplitude_to_db, MIN_DB
             self.target_amp_spin.setRange(MIN_DB, 0.0)
             self.target_amp_spin.setDecimals(1)
@@ -80,6 +81,7 @@ class PreferencesDialog(QDialog):
             self.target_amp_spin.setRange(0.0, 1.0)
             self.target_amp_spin.setDecimals(3)
             self.target_amp_spin.setSingleStep(0.05)
+            self.target_amp_spin.setSuffix("")
             self.target_amp_spin.setValue(prefs.target_output_amplitude)
         self.crossfade_curve_combo = QComboBox()
         self.crossfade_curve_combo.addItems(["linear", "equal_power"])
@@ -90,9 +92,10 @@ class PreferencesDialog(QDialog):
         self.track_metadata_chk.setChecked(prefs.track_metadata)
         self.amp_mode_combo = QComboBox()
         self.amp_mode_combo.addItems(["absolute", "dB"])
-        idx_mode = self.amp_mode_combo.findText(getattr(prefs, "amplitude_display_mode", "absolute"))
+        idx_mode = self.amp_mode_combo.findText(self._amp_mode)
         if idx_mode != -1:
             self.amp_mode_combo.setCurrentIndex(idx_mode)
+        self.amp_mode_combo.currentTextChanged.connect(self._on_amp_mode_change)
         audio_form.addRow("Sample Rate (Hz):", self.sample_rate_spin)
         audio_form.addRow("Test Step Duration (s):", self.test_duration_spin)
         audio_form.addRow("Target Output Amplitude:", self.target_amp_spin)
@@ -117,6 +120,27 @@ class PreferencesDialog(QDialog):
         directory = QFileDialog.getExistingDirectory(self, "Select Export Directory", self.export_edit.text())
         if directory:
             self.export_edit.setText(directory)
+
+    def _on_amp_mode_change(self, mode: str):
+        """Handle switching between absolute and dB amplitude display."""
+        from ..utils.amp_utils import db_to_amplitude, amplitude_to_db, MIN_DB
+        value = self.target_amp_spin.value()
+        if self._amp_mode == "dB" and mode == "absolute":
+            value = db_to_amplitude(value)
+        elif self._amp_mode == "absolute" and mode == "dB":
+            value = amplitude_to_db(value)
+        self._amp_mode = mode
+        if mode == "dB":
+            self.target_amp_spin.setRange(MIN_DB, 0.0)
+            self.target_amp_spin.setDecimals(1)
+            self.target_amp_spin.setSingleStep(1.0)
+            self.target_amp_spin.setSuffix(" dB")
+        else:
+            self.target_amp_spin.setRange(0.0, 1.0)
+            self.target_amp_spin.setDecimals(3)
+            self.target_amp_spin.setSingleStep(0.05)
+            self.target_amp_spin.setSuffix("")
+        self.target_amp_spin.setValue(value)
 
     def get_preferences(self) -> Preferences:
         from ..utils.amp_utils import db_to_amplitude
