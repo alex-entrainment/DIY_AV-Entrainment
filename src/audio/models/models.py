@@ -51,6 +51,48 @@ class StepModel(QAbstractTableModel):
                 return self.headers[section]
         return super().headerData(section, orientation, role)
 
+    def _format_number(self, value):
+        try:
+            return f"{float(value):.2f}"
+        except (ValueError, TypeError):
+            return str(value)
+
+    def _get_beat_frequency(self, params, is_transition):
+        """Return formatted beat frequency for display."""
+        beat_keys = [k for k in params if "beat" in k.lower() and "freq" in k.lower()]
+
+        start_keys = [k for k in beat_keys if k.lower().startswith("start")]
+        end_keys = [k for k in beat_keys if k.lower().startswith("end")]
+        normal_keys = [
+            k
+            for k in beat_keys
+            if not k.lower().startswith(("start", "end", "target"))
+        ]
+
+        if is_transition:
+            if start_keys and end_keys:
+                s_val = params.get(start_keys[0])
+                e_val = params.get(end_keys[0])
+                try:
+                    s_f = float(s_val)
+                    e_f = float(e_val)
+                    if abs(s_f - e_f) < 1e-6:
+                        return f"{s_f:.2f}"
+                    return f"{s_f:.2f}->{e_f:.2f}"
+                except (ValueError, TypeError):
+                    if s_val == e_val:
+                        return str(s_val)
+                    return f"{s_val}->{e_val}"
+            if start_keys:
+                return self._format_number(params.get(start_keys[0]))
+            if end_keys:
+                return self._format_number(params.get(end_keys[0]))
+
+        if normal_keys:
+            return self._format_number(params.get(normal_keys[0]))
+
+        return "N/A"
+
     def refresh(self, steps=None):
         if steps is not None:
             self.steps = steps
@@ -60,7 +102,7 @@ class StepModel(QAbstractTableModel):
 
 class VoiceModel(QAbstractTableModel):
     """Model holding a list of voice dictionaries for a selected step."""
-    headers = ["Synth Function", "Carrier Freq", "Transition?", "Description"]
+    headers = ["Synth Function", "Carrier Freq", "Beat Freq", "Transition?", "Description"]
 
     def __init__(self, voices=None, parent=None):
         super().__init__(parent)
@@ -70,7 +112,7 @@ class VoiceModel(QAbstractTableModel):
         return len(self.voices)
 
     def columnCount(self, parent=QModelIndex()):
-        return 4
+        return 5
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -103,8 +145,11 @@ class VoiceModel(QAbstractTableModel):
                 except (ValueError, TypeError):
                     return str(carrier)
             if index.column() == 2:
-                return "Yes" if is_transition else "No"
+                beat_val = self._get_beat_frequency(params, is_transition)
+                return beat_val
             if index.column() == 3:
+                return "Yes" if is_transition else "No"
+            if index.column() == 4:
                 return description
         return None
 
@@ -112,7 +157,7 @@ class VoiceModel(QAbstractTableModel):
         if not index.isValid() or role != Qt.EditRole:
             return False
         voice = self.voices[index.row()]
-        if index.column() == 3:
+        if index.column() == 4:
             voice['description'] = str(value).strip()
             self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
             return True
@@ -122,7 +167,7 @@ class VoiceModel(QAbstractTableModel):
         if not index.isValid():
             return Qt.ItemIsEnabled
         flags = Qt.ItemIsSelectable | Qt.ItemIsEnabled
-        if index.column() == 3:
+        if index.column() == 4:
             flags |= Qt.ItemIsEditable
         return flags
 
