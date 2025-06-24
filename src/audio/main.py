@@ -401,39 +401,46 @@ class TrackEditorApp(QMainWindow):
 
         # Tool Buttons (Noise Generator, Frequency Tester, Subliminal Voice)
         tools_groupbox = QGroupBox("Tools")
-        tools_layout = QVBoxLayout()
+        tools_layout = QHBoxLayout()
         tools_groupbox.setLayout(tools_layout)
+        tools_left_layout = QVBoxLayout()
+        tools_right_layout = QVBoxLayout()
+        tools_layout.addLayout(tools_left_layout)
+        tools_layout.addLayout(tools_right_layout)
 
         self.open_noise_button = QPushButton("Open Noise Generator")
         self.open_noise_button.clicked.connect(self.open_noise_generator)
-        tools_layout.addWidget(self.open_noise_button)
+        tools_left_layout.addWidget(self.open_noise_button)
 
         self.open_freq_tester_button = QPushButton("Frequency Tester")
         self.open_freq_tester_button.clicked.connect(self.open_frequency_tester)
-        tools_layout.addWidget(self.open_freq_tester_button)
+        tools_left_layout.addWidget(self.open_freq_tester_button)
 
         self.open_subliminal_button = QPushButton("Add Subliminal Voice")
         self.open_subliminal_button.clicked.connect(self.open_subliminal_dialog)
-        tools_layout.addWidget(self.open_subliminal_button)
+        tools_left_layout.addWidget(self.open_subliminal_button)
 
         self.open_timeline_button = QPushButton("View Timeline")
         self.open_timeline_button.clicked.connect(self.open_timeline_visualizer)
-        tools_layout.addWidget(self.open_timeline_button)
+        tools_left_layout.addWidget(self.open_timeline_button)
+        tools_left_layout.addStretch(1)
 
-        self.load_button = QPushButton("Load JSON")
-        self.load_button.clicked.connect(self.load_json)
-        tools_layout.addWidget(self.load_button)
+        self.new_file_button = QPushButton("New File")
+        self.new_file_button.clicked.connect(self.new_file)
+        tools_right_layout.addWidget(self.new_file_button)
 
-        self.save_button = QPushButton("Save JSON")
+        self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self.save_json)
-        tools_layout.addWidget(self.save_button)
+        tools_right_layout.addWidget(self.save_button)
 
-        self.save_as_button = QPushButton("Save JSON As...")
+        self.save_as_button = QPushButton("Save As")
         self.save_as_button.clicked.connect(self.save_json_as)
-        tools_layout.addWidget(self.save_as_button)
+        tools_right_layout.addWidget(self.save_as_button)
 
-
-        tools_layout.addStretch(1)
+        self.load_button = QPushButton("Load File")
+        self.load_button.clicked.connect(self.load_json)
+        tools_right_layout.addWidget(self.load_button)
+        tools_right_layout.addStretch(1)
         control_layout.addWidget(tools_groupbox)
 
         # Global Settings
