@@ -11,7 +11,20 @@ class DefaultVoiceDialog(VoiceEditorDialog):
 
     def __init__(self, prefs: Preferences, parent=None):
         # Create a minimal dummy app with prefs and empty track data
-        dummy_app = type("DummyApp", (), {"track_data": {"steps": []}, "prefs": prefs})
+        # The VoiceEditorDialog expects the application reference to expose
+        # ``get_selected_step_index`` and ``get_selected_voice_index``. When
+        # configuring default voice settings there is no real project loaded,
+        # so both of these should safely return ``None``.
+        dummy_app = type(
+            "DummyApp",
+            (),
+            {
+                "track_data": {"steps": []},
+                "prefs": prefs,
+                "get_selected_step_index": lambda self=None: None,
+                "get_selected_voice_index": lambda self=None: None,
+            },
+        )
         super().__init__(parent=parent, app_ref=dummy_app, step_index=0, voice_index=None)
         self._prefs = prefs
         self.setWindowTitle("Configure Default Voice")
