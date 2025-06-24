@@ -90,6 +90,8 @@ class PreferencesDialog(QDialog):
             self.crossfade_curve_combo.setCurrentIndex(idx_curve)
         self.track_metadata_chk = QCheckBox("Include track export metadata")
         self.track_metadata_chk.setChecked(prefs.track_metadata)
+        self.apply_target_amp_chk = QCheckBox("Apply Target Amplitude")
+        self.apply_target_amp_chk.setChecked(getattr(prefs, "apply_target_amplitude", True))
         self.amp_mode_combo = QComboBox()
         self.amp_mode_combo.addItems(["absolute", "dB"])
         idx_mode = self.amp_mode_combo.findText(self._amp_mode)
@@ -102,6 +104,7 @@ class PreferencesDialog(QDialog):
         audio_form.addRow("Amplitude Display:", self.amp_mode_combo)
         audio_form.addRow("Crossfade Curve:", self.crossfade_curve_combo)
         audio_form.addRow(self.track_metadata_chk)
+        audio_form.addRow(self.apply_target_amp_chk)
         audio_group.setLayout(audio_form)
         layout.addWidget(audio_group)
 
@@ -159,5 +162,6 @@ class PreferencesDialog(QDialog):
             target_output_amplitude=amp_value,
             crossfade_curve=self.crossfade_curve_combo.currentText(),
             amplitude_display_mode=amp_mode,
+            apply_target_amplitude=self.apply_target_amp_chk.isChecked(),
         )
         return p

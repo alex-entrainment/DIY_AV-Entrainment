@@ -15,6 +15,7 @@ class Preferences:
     target_output_amplitude: float = 0.25
     crossfade_curve: str = "linear"
     amplitude_display_mode: str = "absolute"  # or "dB"
+    apply_target_amplitude: bool = True
 
 PREF_FILE = Path.home() / ".entrainment_prefs.json"
 

@@ -1638,10 +1638,11 @@ class TrackEditorApp(QMainWindow):
                 QApplication.processEvents()
 
             print(f"Initiating audio generation for: {final_output_path}")
+            target_level = self.prefs.target_output_amplitude if getattr(self.prefs, "apply_target_amplitude", True) else 1.0
             success = sound_creator.generate_audio(
                 current_track_data,
                 output_filename=final_output_path,
-                target_level=self.prefs.target_output_amplitude,
+                target_level=target_level,
                 progress_callback=progress_cb,
             )
             if success:
@@ -1708,8 +1709,9 @@ class TrackEditorApp(QMainWindow):
                 QMessageBox.critical(self, "Audio Format Error", f"Generated audio is not stereo (shape: {audio_data_np_float32.shape}).")
                 self.test_step_raw_audio = None; return False
             
-            # Convert to int16 bytes, applying target output amplitude
-            scaled = audio_data_np_float32 * self.prefs.target_output_amplitude
+            # Convert to int16 bytes, applying target output amplitude if enabled
+            amp_factor = self.prefs.target_output_amplitude if getattr(self.prefs, "apply_target_amplitude", True) else 1.0
+            scaled = audio_data_np_float32 * amp_factor
             audio_data_scaled_int16 = (
                 np.clip(scaled, -1.0, 1.0) * 32767
             ).astype(np.int16)
