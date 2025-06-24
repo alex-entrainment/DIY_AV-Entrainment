@@ -60,7 +60,8 @@ except ImportError:
 # Crossfade and Assembly Logic
 # -----------------------------------------------------------------------------
 
-def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration, curve="linear"):
+def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration,
+                      curve="linear", *, phase_align=False):
     """
     Crossfades two stereo signals. ``signal_a`` fades out and ``signal_b`` fades
     in over ``transition_duration``.  The ``curve`` argument selects the fade
@@ -71,6 +72,10 @@ def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration, curv
     ``equal_power``
         Uses a sine/cosine law to maintain approximately constant perceived
         loudness.
+
+    If ``phase_align`` is True, ``signal_b`` is first aligned to the phase of
+    ``signal_a`` using :func:`phase_align_signal` before the crossfade is
+    applied.
 
     Returns the blended stereo segment.
     """
@@ -106,6 +111,10 @@ def crossfade_signals(signal_a, signal_b, sample_rate, transition_duration, curv
     # Take only the required number of samples for crossfade
     signal_a_seg = signal_a[:actual_crossfade_samples]
     signal_b_seg = signal_b[:actual_crossfade_samples]
+
+    if phase_align:
+        signal_b_seg = phase_align_signal(signal_a_seg, signal_b_seg,
+                                          actual_crossfade_samples)
 
     if curve == "equal_power":
         theta = np.linspace(0.0, np.pi / 2, actual_crossfade_samples)[:, None]
@@ -593,10 +602,14 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                 new_segment = audio_to_use[:actual_crossfade_samples]
 
                 # Perform crossfade
-                blended_segment = crossfade_signals(prev_segment, new_segment,
-                                                 sample_rate,
-                                                 actual_crossfade_samples / sample_rate,
-                                                 curve=crossfade_curve)
+                blended_segment = crossfade_signals(
+                    prev_segment,
+                    new_segment,
+                    sample_rate,
+                    actual_crossfade_samples / sample_rate,
+                    curve=crossfade_curve,
+                    phase_align=True,
+                )
 
                 # Place blended segment (overwrite previous tail)
                 track[overlap_start_sample_in_track : overlap_start_sample_in_track + actual_crossfade_samples] = blended_segment

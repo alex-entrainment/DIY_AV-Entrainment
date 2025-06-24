@@ -43,6 +43,7 @@ The system is intended for DIY research and experimentation and is **not** a med
 * **Integrated Audio Generation:** The GUI can leverage `sound_creator.py` to generate complex audio tracks (`.wav`, `.flac`, `.mp3`) based on parameters defined within each sequence step (see [Audio Generation Details](#audio)).
 * **Random Frequency Modulation (RFM):** Configurable in the GUI for slight variations in visual or audio frequencies. (Note: Visual RFM logic needs ESP32 implementation if desired).
 * **Linear Ramps:** Frequencies, duty cycles, and brightness/intensity can transition linearly over the duration of each step. Audio parameters can also ramp using dedicated `_transition` synth functions.
+* **Phase-Aligned Crossfades:** Adjacent audio steps are automatically phase aligned during crossfades to ensure seamless transitions without artifacts.
 * **JSON File Storage:** Save/load complete sequences (visual + audio parameters) using the GUI editor.
 * **Automated C++ Generation & Upload:** A Python script (`json_to_cpp_converter.py`) automatically:
   * Converts `.json` sequence files into C++ functions.
