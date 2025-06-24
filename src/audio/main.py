@@ -604,7 +604,8 @@ class TrackEditorApp(QMainWindow):
         self.voices_tree.setColumnWidth(0, 220)
         self.voices_tree.setColumnWidth(1, 100)
         self.voices_tree.setColumnWidth(2, 80)
-        self.voices_tree.setColumnWidth(3, 150)
+        self.voices_tree.setColumnWidth(3, 80)
+        self.voices_tree.setColumnWidth(4, 150)
         self.voices_tree.header().setStretchLastSection(True)
         self.voices_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.voices_tree.setEditTriggers(
