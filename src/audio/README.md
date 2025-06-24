@@ -156,6 +156,9 @@ Moves a tone along a geometric path using the optional `audio_engine` module.
 ### spatial_angle_modulation_monaural_beat
 Combines the monaural beat voice with spatial angle modulation.  Parameters mirror those of `monaural_beat_stereo_amps` along with spatial movement controls (`spatialBeatFreq`, `spatialPhaseOffset`, `pathRadius`, etc.).
 
+### generate_swept_notch_pink_sound
+Creates a flanged noise texture by sweeping deep notch filters through pink noise. Parameters include the duration, LFO rate, notch filter ranges, Q factor, and cascade count. A `_transition` variant allows these settings to move from starting values to ending values over the step.
+
 ### subliminal_encode
 Encodes audio files as ultrasonic subliminals. Multiple files may be supplied via `audio_paths` and can either be mixed together (`mode="stack"`) or played one after another (`mode="sequence"`). When sequencing, a one second silence is inserted between each subliminal. The chosen arrangement loops for the duration of the step.
 
@@ -199,6 +202,16 @@ If omitted, `linear` is used.
 - Start simple and audition short sections first.
 - Use subtle panning and moderate modulation rates.
 - Crossfade between steps to avoid abrupt changes.
+
+## Overlay Clips
+
+Additional audio material can be layered on top of the generated voices using
+the **Overlay Clips** panel in the editor.  Each clip entry stores the file
+path, a start time, amplitude, pan position and optional fade times.  The
+duration and finish time columns are populated automatically after a file is
+selected.  You can audition a single clip without exporting the entire track by
+highlighting it and pressing **Start Clip**; the button changes to **Stop Clip**
+while the preview is playing.
 
 ## Timeline Visualization
 
