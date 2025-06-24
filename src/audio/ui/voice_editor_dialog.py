@@ -114,6 +114,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
     def _load_initial_data(self):
         if self.is_new_voice:
+            prefs_voice = getattr(getattr(self.app, "prefs", None), "default_voice", None)
+            if isinstance(prefs_voice, dict) and prefs_voice.get("synth_function_name"):
+                try:
+                    self.current_voice_data = copy.deepcopy(prefs_voice)
+                    self.current_voice_data.setdefault("params", {})
+                    self.current_voice_data.setdefault("volume_envelope", None)
+                    self.current_voice_data.setdefault("description", "")
+                    self.current_voice_data.setdefault("is_transition", False)
+                    return
+                except Exception as e:
+                    print(f"Warning: failed to apply default voice from prefs: {e}")
+
             available_funcs = sorted(
                 name for name in sound_creator.SYNTH_FUNCTIONS.keys()
                 if name not in UI_EXCLUDED_FUNCTION_NAMES
@@ -121,15 +133,15 @@ class VoiceEditorDialog(QDialog): # Standard class name
             if not available_funcs:
                 available_funcs = sorted(sound_creator.SYNTH_FUNCTIONS.keys())
             first_func_name = available_funcs[0] if available_funcs else "default_sine"
-            
+
             is_trans = first_func_name.endswith("_transition")
             default_params = self._get_default_params(first_func_name, is_trans)
-            
+
             self.current_voice_data = {
                 "synth_function_name": first_func_name,
                 "is_transition": is_trans,
                 "params": default_params,
-                "volume_envelope": None,  # Or {"type": ENVELOPE_TYPE_NONE, "params": {}}
+                "volume_envelope": None,
                 "description": "",
             }
         else:
