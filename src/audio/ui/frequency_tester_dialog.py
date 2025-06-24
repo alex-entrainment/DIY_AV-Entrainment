@@ -70,9 +70,17 @@ class FrequencyTesterDialog(QDialog):
             beat_spin.setValue(4.0)
             beat_spin.setDecimals(2)
             amp_spin = QDoubleSpinBox()
-            amp_spin.setRange(0.0, 1.0)
-            amp_spin.setSingleStep(0.05)
-            amp_spin.setValue(0.5)
+            if getattr(self.prefs, "amplitude_display_mode", "absolute") == "dB":
+                from ..utils.amp_utils import amplitude_to_db, MIN_DB
+                amp_spin.setRange(MIN_DB, 0.0)
+                amp_spin.setDecimals(1)
+                amp_spin.setSingleStep(1.0)
+                amp_spin.setSuffix(" dB")
+                amp_spin.setValue(amplitude_to_db(0.5))
+            else:
+                amp_spin.setRange(0.0, 1.0)
+                amp_spin.setSingleStep(0.05)
+                amp_spin.setValue(0.5)
             row = QWidget()
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
@@ -121,6 +129,9 @@ class FrequencyTesterDialog(QDialog):
                 base = vc["base"].value()
                 beat = vc["beat"].value()
                 amp = vc["amp"].value()
+                if getattr(self.prefs, "amplitude_display_mode", "absolute") == "dB":
+                    from ..utils.amp_utils import db_to_amplitude
+                    amp = db_to_amplitude(amp)
                 voice = binaural_beat(duration, sample_rate=sample_rate,
                                        ampL=amp, ampR=amp,
                                        baseFreq=base, beatFreq=beat)

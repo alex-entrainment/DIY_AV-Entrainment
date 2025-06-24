@@ -50,9 +50,17 @@ class OverlayClipDialog(QDialog):
         form.addRow("Start Time (s):", self.start_spin)
 
         self.amp_spin = QDoubleSpinBox()
-        self.amp_spin.setRange(0.0, 10.0)
-        self.amp_spin.setSingleStep(0.1)
-        self.amp_spin.setValue(1.0)
+        if getattr(self.parent(), "prefs", None) and getattr(self.parent().prefs, "amplitude_display_mode", "absolute") == "dB":
+            from ..utils.amp_utils import amplitude_to_db, MIN_DB
+            self.amp_spin.setRange(MIN_DB, 20.0)
+            self.amp_spin.setDecimals(1)
+            self.amp_spin.setSingleStep(1.0)
+            self.amp_spin.setSuffix(" dB")
+            self.amp_spin.setValue(amplitude_to_db(1.0))
+        else:
+            self.amp_spin.setRange(0.0, 10.0)
+            self.amp_spin.setSingleStep(0.1)
+            self.amp_spin.setValue(1.0)
         form.addRow("Amplitude:", self.amp_spin)
 
         self.pan_spin = QDoubleSpinBox()
@@ -86,7 +94,11 @@ class OverlayClipDialog(QDialog):
     def _populate_from_data(self, data):
         self.file_edit.setText(data.get("file_path", ""))
         self.start_spin.setValue(float(data.get("start", 0.0)))
-        self.amp_spin.setValue(float(data.get("amp", 1.0)))
+        amp_val = float(data.get("amp", 1.0))
+        if getattr(self.parent(), "prefs", None) and getattr(self.parent().prefs, "amplitude_display_mode", "absolute") == "dB":
+            from ..utils.amp_utils import amplitude_to_db
+            amp_val = amplitude_to_db(amp_val)
+        self.amp_spin.setValue(amp_val)
         self.pan_spin.setValue(float(data.get("pan", 0.0)))
         self.fade_in_spin.setValue(float(data.get("fade_in", 0.0)))
         self.fade_out_spin.setValue(float(data.get("fade_out", 0.0)))
@@ -105,11 +117,15 @@ class OverlayClipDialog(QDialog):
             QMessageBox.warning(self, "Input Required", "Please select an audio file.")
             return
         duration = self._get_clip_duration(path)
+        amp_val = float(self.amp_spin.value())
+        if getattr(self.parent(), "prefs", None) and getattr(self.parent().prefs, "amplitude_display_mode", "absolute") == "dB":
+            from ..utils.amp_utils import db_to_amplitude
+            amp_val = db_to_amplitude(amp_val)
         self.clip_data = {
             "file_path": path,
             "start": float(self.start_spin.value()),
             "duration": duration,
-            "amp": float(self.amp_spin.value()),
+            "amp": amp_val,
             "pan": float(self.pan_spin.value()),
             "fade_in": float(self.fade_in_spin.value()),
             "fade_out": float(self.fade_out_spin.value()),
