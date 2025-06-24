@@ -8,3 +8,5 @@ numpy==2.2.5
 pyqt5==5.15.11
 scipy==1.15.2
 slab==1.8.0
+plotly>=5.20
+pandas

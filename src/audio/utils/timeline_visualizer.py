@@ -1,7 +1,9 @@
 import os
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 from typing import Dict, List, Any, Optional
+
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 
 def _estimate_track_duration(track_data: Dict[str, Any]) -> float:
@@ -37,12 +39,12 @@ def visualize_track_timeline(
         "noise": 3,
     }
 
-    # Base colormaps for per-category shades
+    # Base color scales for per-category shades
     colormaps = {
-        "binaurals": plt.cm.Blues,
-        "vocals": plt.cm.Oranges,
-        "effects": plt.cm.Greens,
-        "noise": plt.cm.Greys,
+        "binaurals": px.colors.sequential.Blues,
+        "vocals": px.colors.sequential.Oranges,
+        "effects": px.colors.sequential.Greens,
+        "noise": px.colors.sequential.Greys,
     }
 
     events: List[Dict[str, Any]] = []
@@ -113,51 +115,67 @@ def visualize_track_timeline(
         events_by_cat.setdefault(ev["category"], []).append(ev)
 
     for cat, evs in events_by_cat.items():
-        cmap = colormaps.get(cat, plt.cm.Blues)
+        cmap = colormaps.get(cat, px.colors.sequential.Blues)
         n = len(evs)
         for i, ev in enumerate(evs):
             frac = i / max(n - 1, 1)
-            ev["color"] = cmap(0.3 + 0.7 * frac)
+            ev["color"] = px.colors.sample_colorscale(cmap, 0.3 + 0.7 * frac)[0]
 
-    fig, ax = plt.subplots(figsize=(12, 4))
+    # Build interactive timeline using Plotly
+    fig = go.Figure()
     for boundary in step_boundaries:
-        ax.axvline(boundary, color="k", linestyle="--", linewidth=0.5, alpha=0.3)
+        fig.add_vline(
+            x=boundary,
+            line_color="gray",
+            line_dash="dash",
+            opacity=0.5,
+            line_width=1,
+        )
 
     for ev in events:
         y = categories.get(ev["category"], 0)
         width = ev["end"] - ev["start"]
-        rect = Rectangle(
-            (ev["start"], y - 0.4),
-            width,
-            0.8,
-            facecolor=ev.get("color", "tab:blue"),
-            alpha=min(0.8, 0.4 + ev["amp"] * 0.6),
-        )
-        ax.add_patch(rect)
-        ax.text(
-            ev["start"] + 0.05,
-            y,
-            ev.get("label", ev["category"]),
-            va="center",
-            ha="left",
-            fontsize=8,
-            color="white",
+        fig.add_trace(
+            go.Bar(
+                x=[width],
+                y=[y],
+                base=[ev["start"]],
+                orientation="h",
+                marker=dict(
+                    color=ev.get("color", "blue"),
+                    opacity=min(0.8, 0.4 + ev["amp"] * 0.6),
+                ),
+                hovertemplate=
+                f"{ev.get('label', ev['category'])}<br>Start: {ev['start']} s" +
+                f"<br>End: {ev['end']} s<extra></extra>",
+                text=[ev.get("label", ev["category"])],
+                textposition="inside",
+                showlegend=False,
+            )
         )
 
     duration = max(ev["end"] for ev in events)
-    ax.set_yticks(list(categories.values()))
-    ax.set_yticklabels(list(categories.keys()))
-    ax.set_xlabel("Time (s)")
-    ax.set_xlim(0, duration)
-    ax.set_ylim(-1, len(categories))
-    ax.set_xticks([t for t in range(int(duration) + 1)])
-    ax.grid(True, axis="x", linestyle=":", alpha=0.5)
-    plt.tight_layout()
+    fig.update_yaxes(
+        tickvals=list(categories.values()),
+        ticktext=list(categories.keys()),
+        range=[len(categories) - 0.5, -1],
+    )
+    fig.update_xaxes(title="Time (s)", range=[0, duration], dtick=1)
+    fig.update_layout(
+        bargap=0.1,
+        barmode="stack",
+        template="plotly_white",
+        height=300,
+        margin=dict(l=40, r=40, t=20, b=40),
+    )
 
     if save_path:
-        plt.savefig(save_path)
+        if save_path.lower().endswith(".html"):
+            fig.write_html(save_path)
+        else:
+            fig.write_image(save_path)
     else:
-        plt.show()
+        fig.show()
 
 
 __all__ = ["visualize_track_timeline"]
