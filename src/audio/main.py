@@ -599,7 +599,8 @@ class TrackEditorApp(QMainWindow):
         voices_outer_layout.setContentsMargins(0,0,0,0)
         right_splitter.addWidget(voices_outer_widget)
         self.voices_groupbox = QGroupBox("Voices for Selected Step")
-        voices_groupbox_layout = QVBoxLayout(self.voices_groupbox)
+        # Use an HBox layout so buttons can be stacked on the left side
+        voices_groupbox_layout = QHBoxLayout(self.voices_groupbox)
         voices_outer_layout.addWidget(self.voices_groupbox)
         self.voice_model = VoiceModel([])
         self.voices_tree = QTreeView()
@@ -620,39 +621,38 @@ class TrackEditorApp(QMainWindow):
             lambda *_: self.on_voice_select()
         )
         self.voice_model.dataChanged.connect(lambda *_: self._push_history_state())
-        voices_groupbox_layout.addWidget(self.voices_tree, 1)
-
-        voices_button_layout_1 = QHBoxLayout()
+        # Buttons stacked vertically on the left
+        voices_buttons_layout = QVBoxLayout()
         self.add_voice_button = QPushButton("Add Voice")
         self.edit_voice_button = QPushButton("Edit Voice")
         self.remove_voice_button = QPushButton("Remove Voice(s)")
         self.add_voice_button.clicked.connect(self.add_voice)
         self.edit_voice_button.clicked.connect(self.edit_voice)
         self.remove_voice_button.clicked.connect(self.remove_voice)
-        voices_button_layout_1.addWidget(self.add_voice_button)
-        voices_button_layout_1.addWidget(self.edit_voice_button)
-        voices_button_layout_1.addWidget(self.remove_voice_button)
-        voices_button_layout_1.addStretch(1)
-        voices_groupbox_layout.addLayout(voices_button_layout_1)
-
-        voices_button_layout_2 = QHBoxLayout()
+        voices_buttons_layout.addWidget(self.add_voice_button)
+        voices_buttons_layout.addWidget(self.edit_voice_button)
+        voices_buttons_layout.addWidget(self.remove_voice_button)
         self.move_voice_up_button = QPushButton("Move Up")
         self.move_voice_down_button = QPushButton("Move Down")
         self.move_voice_up_button.clicked.connect(lambda: self.move_voice(-1))
         self.move_voice_down_button.clicked.connect(lambda: self.move_voice(1))
-        voices_button_layout_2.addWidget(self.move_voice_up_button)
-        voices_button_layout_2.addWidget(self.move_voice_down_button)
-        voices_button_layout_2.addStretch(1)
-        voices_groupbox_layout.addLayout(voices_button_layout_2)
+        voices_buttons_layout.addWidget(self.move_voice_up_button)
+        voices_buttons_layout.addWidget(self.move_voice_down_button)
+        voices_buttons_layout.addStretch(1)
+        voices_groupbox_layout.addLayout(voices_buttons_layout)
+        voices_groupbox_layout.addWidget(self.voices_tree, 1)
 
         # --- Voice Details Frame Widgets ---
         voice_details_outer_widget = QWidget()
         voice_details_outer_layout = QVBoxLayout(voice_details_outer_widget)
         voice_details_outer_layout.setContentsMargins(0,0,0,0)
         right_splitter.addWidget(voice_details_outer_widget)
+        # Splitter to allow resizing between voice details and overlay clips
+        details_splitter = QSplitter(Qt.Vertical)
+        voice_details_outer_layout.addWidget(details_splitter)
         self.voice_details_groupbox = QGroupBox("Selected Voice Details")
         voice_details_groupbox_layout = QVBoxLayout(self.voice_details_groupbox)
-        voice_details_outer_layout.addWidget(self.voice_details_groupbox)
+        details_splitter.addWidget(self.voice_details_groupbox)
         self.voice_details_text = QTextEdit()
         self.voice_details_text.setReadOnly(True)
         self.voice_details_text.setFont(QFont("Consolas", 9))
@@ -661,8 +661,9 @@ class TrackEditorApp(QMainWindow):
 
         # --- Overlay Clips Widgets ---
         self.clips_groupbox = QGroupBox("Overlay Clips")
-        clips_groupbox_layout = QVBoxLayout(self.clips_groupbox)
-        voice_details_outer_layout.addWidget(self.clips_groupbox)
+        # Layout with buttons stacked vertically on the left
+        clips_groupbox_layout = QHBoxLayout(self.clips_groupbox)
+        details_splitter.addWidget(self.clips_groupbox)
 
         self.clips_tree = QTreeWidget()
         self.clips_tree.setColumnCount(9)
@@ -683,9 +684,7 @@ class TrackEditorApp(QMainWindow):
         self.clips_tree.setEditTriggers(
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
         )
-        clips_groupbox_layout.addWidget(self.clips_tree, 1)
-
-        clips_btn_layout = QHBoxLayout()
+        clips_btn_layout = QVBoxLayout()
         self.add_clip_button = QPushButton("Add Clip")
         self.edit_clip_button = QPushButton("Edit Clip")
         self.remove_clip_button = QPushButton("Remove Clip(s)")
@@ -700,6 +699,7 @@ class TrackEditorApp(QMainWindow):
         clips_btn_layout.addWidget(self.play_clip_button)
         clips_btn_layout.addStretch(1)
         clips_groupbox_layout.addLayout(clips_btn_layout)
+        clips_groupbox_layout.addWidget(self.clips_tree, 1)
 
         main_splitter.setSizes([400, 700])
         right_splitter.setSizes([500, 200])
