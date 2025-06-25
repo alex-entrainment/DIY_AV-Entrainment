@@ -60,6 +60,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
     DEFAULT_WIDTH = 900
     DEFAULT_HEIGHT = 700
+    ENTRY_WIDTH = 120
 
     def __init__(self, parent, app_ref, step_index, voice_index=None):
         super().__init__(parent)
@@ -404,6 +405,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         val = QDoubleValidator(-999999.0, 999999.0, 6, self)
                         val.setNotation(QDoubleValidator.StandardNotation)
                         left_entry.setValidator(val)
+                    left_entry.setFixedWidth(self.ENTRY_WIDTH)
                     row_layout.addWidget(left_entry, 0, 2)
 
 
@@ -477,7 +479,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 row_layout.addWidget(QLabel("Start:"), 0, 1, Qt.AlignRight)
                 start_entry = QLineEdit(str(display_start) if display_start is not None else "")
                 if current_validator: start_entry.setValidator(current_validator) # Assign directly
-                start_entry.setMinimumWidth(70); start_entry.setMaximumWidth(100)
+                start_entry.setFixedWidth(self.ENTRY_WIDTH)
                 row_layout.addWidget(start_entry, 0, 2)
                 self.param_widgets[start_name] = {'widget': start_entry, 'type': param_storage_type}
                 
@@ -486,7 +488,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 if current_validator: end_entry.setValidator(current_validator) # Assign directly (can reuse if settings are same, or make another new one)
                 # If you need truly independent validators for start/end (e.g. different ranges), create another new one here.
                 # For simplicity, if they share the same type/range, reusing is fine.
-                end_entry.setMinimumWidth(70); end_entry.setMaximumWidth(100)
+                end_entry.setFixedWidth(self.ENTRY_WIDTH)
                 row_layout.addWidget(end_entry, 0, 4)
                 self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
 
@@ -526,19 +528,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
                 else:
                     widget = QLineEdit(str(display_current) if display_current is not None else "")
-                    entry_width = 150
                     current_validator_instance = None # Create a new validator for this specific widget
                     if param_type_hint == 'int':
                         current_validator_instance = QIntValidator(-999999, 999999, self) # New instance
-                        param_storage_type = 'int'; entry_width = 80
+                        param_storage_type = 'int'
                     elif param_type_hint == 'float':
                         current_validator_instance = QDoubleValidator(-999999.0, 999999.0, 6, self) # New instance
                         current_validator_instance.setNotation(QDoubleValidator.StandardNotation)
-                        param_storage_type = 'float'; entry_width = 80
-                    else: param_storage_type = 'str'; entry_width = 200
+                        param_storage_type = 'float'
+                    else: param_storage_type = 'str'
                     
                     if current_validator_instance: widget.setValidator(current_validator_instance) # Assign new instance directly
-                    widget.setMinimumWidth(entry_width); widget.setMaximumWidth(entry_width + 50)
+                    widget.setFixedWidth(self.ENTRY_WIDTH)
                     row_layout.addWidget(widget, 0, 1, 1, 1)
                     
                     hint_text_label = QLabel(f"({param_storage_type}{', ' + range_hint if range_hint else ''})")
@@ -599,6 +600,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val = amplitude_to_db(float(val))
                 entry.setText(str(val))
                 
+                entry.setFixedWidth(self.ENTRY_WIDTH)
                 self.env_params_layout.addWidget(label, row, 0)
                 self.env_params_layout.addWidget(entry, row, 1)
                 self.envelope_param_widgets[param_name] = {'widget': entry, 'type': val_type}
