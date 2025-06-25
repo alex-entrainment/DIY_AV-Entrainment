@@ -340,13 +340,9 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
         for name in default_params_ordered.keys():
             if name in processed_names or name in processed_end_params:
-                is_part_of_pair = False
-                for base, pair_names in transition_pairs.items():
-                    if pair_names['end'] == name:
-                        is_part_of_pair = True
-                        break
-                if is_part_of_pair:
-                    continue
+                # Skip parameters that have already been handled as part of a
+                # left/right or start/end pair.
+                continue
 
             default_value = default_params_ordered[name]
             current_value = params_to_display.get(name, default_value)
@@ -410,29 +406,19 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         left_entry.setValidator(val)
                     row_layout.addWidget(left_entry, 0, 2)
 
-                    row_layout.addWidget(QLabel("R:"), 0, 3, Qt.AlignRight)
-                    right_entry = QLineEdit(str(disp_right) if disp_right is not None else "")
-                    if param_type_hint == 'int':
-                        right_entry.setValidator(QIntValidator(-999999, 999999, self))
-                    elif param_type_hint == 'float':
-                        val = QDoubleValidator(-999999.0, 999999.0, 6, self)
-                        val.setNotation(QDoubleValidator.StandardNotation)
-                        right_entry.setValidator(val)
-                    row_layout.addWidget(right_entry, 0, 4)
 
                     swap_btn = QPushButton("Swap R/L")
                     swap_btn.clicked.connect(lambda _, ln=left_name, rn=right_name: self._swap_lr([ln, rn]))
-                    row_layout.addWidget(swap_btn, 0, 5)
+                    row_layout.addWidget(swap_btn, 0, 3)
 
                     # The opposite parameter is rendered on its own line below,
                     # so no additional field is needed next to the swap button.
 
                     self.param_widgets[left_name] = {'widget': left_entry, 'type': param_storage_type}
-                    self.param_widgets[right_name] = {'widget': right_entry, 'type': param_storage_type}
 
                     self.params_scroll_layout.addWidget(frame)
                     processed_names.add(left_name)
-                    processed_names.add(right_name)
+                    # right_name will be handled separately on its own row
                     continue
             base_name_for_pair = None
             is_pair_start = False
