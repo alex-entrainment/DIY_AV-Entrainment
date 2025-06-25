@@ -62,6 +62,10 @@ class VoiceEditorDialog(QDialog): # Standard class name
     DEFAULT_HEIGHT = 700
     ENTRY_WIDTH = 120
 
+    MAIN_LABEL_WIDTH = 150
+    SUB_LABEL_WIDTH = 40
+    
+
     def __init__(self, parent, app_ref, step_index, voice_index=None):
         super().__init__(parent)
         self.app = app_ref # Main application reference
@@ -396,8 +400,13 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     range_hint = self._get_param_range_hint(base_lr)
                     hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
 
-                    row_layout.addWidget(QLabel(f"{prefix + base_lr if prefix else base_lr}:"), 0, 0, Qt.AlignLeft)
-                    row_layout.addWidget(QLabel("L:"), 0, 1, Qt.AlignRight)
+                    base_label = QLabel(f"{prefix + base_lr if prefix else base_lr}:")
+                    base_label.setFixedWidth(self.MAIN_LABEL_WIDTH)
+                    row_layout.addWidget(base_label, 0, 0, Qt.AlignLeft)
+
+                    l_label = QLabel("L:")
+                    l_label.setFixedWidth(self.SUB_LABEL_WIDTH)
+                    row_layout.addWidget(l_label, 0, 1, Qt.AlignRight)
                     left_entry = QLineEdit(str(disp_left) if disp_left is not None else "")
                     if param_type_hint == 'int':
                         left_entry.setValidator(QIntValidator(-999999, 999999, self))
@@ -475,15 +484,22 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 
                 hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
 
-                row_layout.addWidget(QLabel(f"{base_name_for_pair}:"), 0, 0, Qt.AlignLeft)
-                row_layout.addWidget(QLabel("Start:"), 0, 1, Qt.AlignRight)
+                base_label = QLabel(f"{base_name_for_pair}:")
+                base_label.setFixedWidth(self.MAIN_LABEL_WIDTH)
+                row_layout.addWidget(base_label, 0, 0, Qt.AlignLeft)
+
+                start_label = QLabel("Start:")
+                start_label.setFixedWidth(self.SUB_LABEL_WIDTH)
+                row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
                 start_entry = QLineEdit(str(display_start) if display_start is not None else "")
                 if current_validator: start_entry.setValidator(current_validator) # Assign directly
                 start_entry.setFixedWidth(self.ENTRY_WIDTH)
                 row_layout.addWidget(start_entry, 0, 2)
                 self.param_widgets[start_name] = {'widget': start_entry, 'type': param_storage_type}
-                
-                row_layout.addWidget(QLabel("End:"), 0, 3, Qt.AlignRight)
+
+                end_label = QLabel("End:")
+                end_label.setFixedWidth(self.SUB_LABEL_WIDTH)
+                row_layout.addWidget(end_label, 0, 3, Qt.AlignRight)
                 end_entry = QLineEdit(str(display_end) if display_end is not None else "")
                 if current_validator: end_entry.setValidator(current_validator) # Assign directly (can reuse if settings are same, or make another new one)
                 # If you need truly independent validators for start/end (e.g. different ranges), create another new one here.
@@ -497,18 +513,30 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
                 processed_names.add(start_name)
                 processed_names.add(end_name)
-            else: # Single parameter
+            else: # Single parameter or right side of L/R pair
                 widget = None
-                row_layout.addWidget(QLabel(f"{name}:"), 0, 0, Qt.AlignLeft)
+                sub_label_txt = ""
+                param_label_txt = f"{name}:"
+                if lr_info and name.endswith(lr_info[2]):
+                    param_label_txt = ""
+                    sub_label_txt = "R:"
+
+                param_label = QLabel(param_label_txt)
+                param_label.setFixedWidth(self.MAIN_LABEL_WIDTH)
+                row_layout.addWidget(param_label, 0, 0, Qt.AlignLeft)
+
+                sub_label = QLabel(sub_label_txt)
+                sub_label.setFixedWidth(self.SUB_LABEL_WIDTH)
+                row_layout.addWidget(sub_label, 0, 1, Qt.AlignRight)
 
                 if param_type_hint == 'bool':
                     widget = QCheckBox(); widget.setChecked(bool(current_value) if current_value is not None else False)
-                    row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft); param_storage_type = 'bool'
+                    row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'bool'
                 elif name == 'noiseType' and param_type_hint == 'int':
                     widget = QComboBox(); widget.addItems(['1', '2', '3'])
                     val_to_set = str(int(current_value)) if isinstance(current_value, (int, float)) and int(current_value) in [1,2,3] else '1'
                     widget.setCurrentText(val_to_set)
-                    widget.setMaximumWidth(100); row_layout.addWidget(widget, 0, 1, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                    widget.setMaximumWidth(100); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
                 elif name == 'transition_curve' and param_type_hint == 'str':
                     widget = QComboBox();
                     widget.addItems(['linear', 'logarithmic', 'exponential', 'Custom...'])
@@ -520,12 +548,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     widget.currentIndexChanged.connect(lambda idx, w=widget: self._handle_custom_curve(w))
                     widget.setEditable(False)
                     widget.setMinimumWidth(120)
-                    row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                    row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
                 elif name == 'pathShape' and param_type_hint == 'str' and hasattr(sound_creator, 'VALID_SAM_PATHS'):
                     widget = QComboBox(); widget.addItems(sound_creator.VALID_SAM_PATHS)
                     val_to_set = str(current_value) if current_value in sound_creator.VALID_SAM_PATHS else sound_creator.VALID_SAM_PATHS[0]
                     widget.setCurrentText(val_to_set)
-                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 1, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
                 else:
                     widget = QLineEdit(str(display_current) if display_current is not None else "")
                     current_validator_instance = None # Create a new validator for this specific widget
@@ -540,11 +568,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     
                     if current_validator_instance: widget.setValidator(current_validator_instance) # Assign new instance directly
                     widget.setFixedWidth(self.ENTRY_WIDTH)
-                    row_layout.addWidget(widget, 0, 1, 1, 1)
-                    
+                    row_layout.addWidget(widget, 0, 2, 1, 1)
+
+
                     hint_text_label = QLabel(f"({param_storage_type}{', ' + range_hint if range_hint else ''})")
-                    row_layout.addWidget(hint_text_label, 0, 2, Qt.AlignLeft)
-                    row_layout.setColumnStretch(2,1)
+                    row_layout.addWidget(hint_text_label, 0, 3, Qt.AlignLeft)
+                    row_layout.setColumnStretch(3,1)
 
                 if widget is not None:
                     self.param_widgets[name] = {'widget': widget, 'type': param_storage_type}
@@ -592,6 +621,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
             
             for label_text, param_name, default_val, validator_type, val_type in params_def:
                 label = QLabel(label_text)
+                label.setFixedWidth(self.MAIN_LABEL_WIDTH)
                 entry = QLineEdit()
                 entry.setValidator(copy.deepcopy(validator_type))
                 val = current_env_params.get(param_name, default_val)
