@@ -400,11 +400,11 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     range_hint = self._get_param_range_hint(base_lr)
                     hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
 
-                    base_label = QLabel(f"{prefix + base_lr if prefix else base_lr}:")
+                    base_label = QLabel(f"{left_name}:")
                     base_label.setFixedWidth(self.MAIN_LABEL_WIDTH)
                     row_layout.addWidget(base_label, 0, 0, Qt.AlignLeft)
 
-                    l_label = QLabel("L:")
+                    l_label = QLabel("")
                     l_label.setFixedWidth(self.SUB_LABEL_WIDTH)
                     row_layout.addWidget(l_label, 0, 1, Qt.AlignRight)
                     left_entry = QLineEdit(str(disp_left) if disp_left is not None else "")
