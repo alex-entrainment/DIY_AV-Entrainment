@@ -61,8 +61,10 @@ class VoiceEditorDialog(QDialog): # Standard class name
     DEFAULT_WIDTH = 900
     DEFAULT_HEIGHT = 700
     ENTRY_WIDTH = 120
+
     MAIN_LABEL_WIDTH = 150
     SUB_LABEL_WIDTH = 40
+    
 
     def __init__(self, parent, app_ref, step_index, voice_index=None):
         super().__init__(parent)
@@ -567,6 +569,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     if current_validator_instance: widget.setValidator(current_validator_instance) # Assign new instance directly
                     widget.setFixedWidth(self.ENTRY_WIDTH)
                     row_layout.addWidget(widget, 0, 2, 1, 1)
+
 
                     hint_text_label = QLabel(f"({param_storage_type}{', ' + range_hint if range_hint else ''})")
                     row_layout.addWidget(hint_text_label, 0, 3, Qt.AlignLeft)
