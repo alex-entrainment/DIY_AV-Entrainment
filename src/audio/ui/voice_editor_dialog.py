@@ -229,9 +229,13 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.params_scroll_layout.setAlignment(Qt.AlignTop) # Important for parameter rows
         self.params_scroll_area.setWidget(self.params_scroll_content)
         params_groupbox_layout.addWidget(self.params_scroll_area)
+
         self.swap_params_button = QPushButton("Swap Transition Parameters")
         self.swap_params_button.clicked.connect(self.swap_transition_parameters)
-        params_groupbox_layout.addWidget(self.swap_params_button)
+        swap_btn_layout = QHBoxLayout()
+        swap_btn_layout.addStretch(1)
+        swap_btn_layout.addWidget(self.swap_params_button)
+        params_groupbox_layout.addLayout(swap_btn_layout)
         h_splitter.addWidget(self.params_groupbox)
 
         # Right side: Reference Voice Viewer
@@ -414,13 +418,16 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         val = QDoubleValidator(-999999.0, 999999.0, 6, self)
                         val.setNotation(QDoubleValidator.StandardNotation)
                         left_entry.setValidator(val)
-                    left_entry.setFixedWidth(self.ENTRY_WIDTH)
+                    left_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                    left_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                     row_layout.addWidget(left_entry, 0, 2)
 
-
+                    spacer = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+                    row_layout.addItem(spacer, 0, 3)
                     swap_btn = QPushButton("Swap R/L")
                     swap_btn.clicked.connect(lambda _, ln=left_name, rn=right_name: self._swap_lr([ln, rn]))
-                    row_layout.addWidget(swap_btn, 0, 3)
+                    row_layout.addWidget(swap_btn, 0, 4, Qt.AlignRight)
+                    row_layout.setColumnStretch(3, 1)
 
                     # The opposite parameter is rendered on its own line below,
                     # so no additional field is needed next to the swap button.
@@ -493,7 +500,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
                 start_entry = QLineEdit(str(display_start) if display_start is not None else "")
                 if current_validator: start_entry.setValidator(current_validator) # Assign directly
-                start_entry.setFixedWidth(self.ENTRY_WIDTH)
+                start_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                start_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 row_layout.addWidget(start_entry, 0, 2)
                 self.param_widgets[start_name] = {'widget': start_entry, 'type': param_storage_type}
 
@@ -504,7 +512,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 if current_validator: end_entry.setValidator(current_validator) # Assign directly (can reuse if settings are same, or make another new one)
                 # If you need truly independent validators for start/end (e.g. different ranges), create another new one here.
                 # For simplicity, if they share the same type/range, reusing is fine.
-                end_entry.setFixedWidth(self.ENTRY_WIDTH)
+                end_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                end_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 row_layout.addWidget(end_entry, 0, 4)
                 self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
 
@@ -566,8 +575,10 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         param_storage_type = 'float'
                     else: param_storage_type = 'str'
                     
-                    if current_validator_instance: widget.setValidator(current_validator_instance) # Assign new instance directly
-                    widget.setFixedWidth(self.ENTRY_WIDTH)
+                    if current_validator_instance:
+                        widget.setValidator(current_validator_instance)  # Assign new instance directly
+                    widget.setMinimumWidth(self.ENTRY_WIDTH)
+                    widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                     row_layout.addWidget(widget, 0, 2, 1, 1)
 
 
@@ -629,8 +640,9 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     from ..utils.amp_utils import amplitude_to_db
                     val = amplitude_to_db(float(val))
                 entry.setText(str(val))
-                
-                entry.setFixedWidth(self.ENTRY_WIDTH)
+
+                entry.setMinimumWidth(self.ENTRY_WIDTH)
+                entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 self.env_params_layout.addWidget(label, row, 0)
                 self.env_params_layout.addWidget(entry, row, 1)
                 self.envelope_param_widgets[param_name] = {'widget': entry, 'type': val_type}
