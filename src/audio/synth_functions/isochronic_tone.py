@@ -69,14 +69,19 @@ def isochronic_tone(duration, sample_rate=44100, **params):
 
 
 def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
-    amp = float(params.get('amp', 0.5)) # Constant amplitude for the voice
-    startBaseFreq = float(params.get('startBaseFreq', 200.0))
-    endBaseFreq = float(params.get('endBaseFreq', startBaseFreq)) # Default end to start
-    startBeatFreq = float(params.get('startBeatFreq', 4.0)) # Start pulse rate
-    endBeatFreq = float(params.get('endBeatFreq', startBeatFreq)) # End pulse rate
-    rampPercent = float(params.get('rampPercent', 0.2)) # Constant ramp %
-    gapPercent = float(params.get('gapPercent', 0.15)) # Constant gap %
-    pan = float(params.get('pan', 0.0)) # Constant panning
+    """Isochronic tone where every parameter can transition over time."""
+    startAmp = float(params.get('startAmp', params.get('amp', 0.5)))
+    endAmp = float(params.get('endAmp', startAmp))
+    startBaseFreq = float(params.get('startBaseFreq', params.get('baseFreq', 200.0)))
+    endBaseFreq = float(params.get('endBaseFreq', startBaseFreq))
+    startBeatFreq = float(params.get('startBeatFreq', params.get('beatFreq', 4.0)))
+    endBeatFreq = float(params.get('endBeatFreq', startBeatFreq))
+    startRampPercent = float(params.get('startRampPercent', params.get('rampPercent', 0.2)))
+    endRampPercent = float(params.get('endRampPercent', startRampPercent))
+    startGapPercent = float(params.get('startGapPercent', params.get('gapPercent', 0.15)))
+    endGapPercent = float(params.get('endGapPercent', startGapPercent))
+    startPan = float(params.get('startPan', params.get('pan', 0.0)))
+    endPan = float(params.get('endPan', startPan))
 
     N = int(sample_rate * duration)
     if N <= 0:
@@ -87,13 +92,20 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     curve = params.get('transition_curve', 'linear')
     alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
-    # --- Interpolate Frequencies ---
+    # --- Interpolate Parameters ---
     base_freq_array = startBaseFreq + (endBaseFreq - startBaseFreq) * alpha
-    beat_freq_array = startBeatFreq + (endBeatFreq - startBeatFreq) * alpha  # Pulse rate array
+    beat_freq_array = startBeatFreq + (endBeatFreq - startBeatFreq) * alpha  # Pulse rate
+    amp_array = startAmp + (endAmp - startAmp) * alpha
+    ramp_percent_array = startRampPercent + (endRampPercent - startRampPercent) * alpha
+    gap_percent_array = startGapPercent + (endGapPercent - startGapPercent) * alpha
+    pan_array = startPan + (endPan - startPan) * alpha
 
     # Ensure frequencies are non-negative
     instantaneous_carrier_freq_array = np.maximum(0.0, base_freq_array)
     instantaneous_beat_freq_array = np.maximum(0.0, beat_freq_array)
+    ramp_percent_array = np.clip(ramp_percent_array, 0.0, 1.0)
+    gap_percent_array = np.clip(gap_percent_array, 0.0, 1.0)
+    pan_array = np.clip(pan_array, -1.0, 1.0)
 
     # --- Carrier Wave (Time-Varying Frequency) ---
     if N > 1: dt = np.diff(t_abs, prepend=t_abs[0])
@@ -118,17 +130,20 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     t_in_cycle = np.mod(beat_phase_cycles, 1.0) * cycle_len_array
     t_in_cycle[~valid_beat_mask] = 0.0
 
-    # Generate the trapezoid envelope (using constant ramp/gap percentages but time-varying cycle length)
-    iso_env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
+    # Generate the trapezoid envelope using time-varying ramp/gap settings
+    iso_env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, ramp_percent_array, gap_percent_array)
 
     # Apply envelope to carrier
     mono_signal = carrier * iso_env
 
     # Apply overall amplitude
-    output_mono = mono_signal * amp
+    output_mono = mono_signal * amp_array
 
-    # Pan the result
-    audio = pan2(output_mono, pan=pan)
+    # Variable panning
+    angle = (pan_array + 1.0) * np.pi / 4.0
+    left_gain = np.cos(angle)
+    right_gain = np.sin(angle)
+    audio = np.column_stack((output_mono * left_gain, output_mono * right_gain))
 
     # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
 

@@ -113,6 +113,10 @@ A tone that pulses on and off at a fixed rate using a trapezoid envelope.
 | `gapPercent` | 0.15 | Fraction of the cycle that is silent |
 | `pan` | 0 | Stereo pan location |
 
+The `_transition` variant accepts `start` and `end` forms of each parameter
+(`startAmp`/`endAmp`, `startBaseFreq`/`endBaseFreq`, etc.) to smoothly move
+between settings over the step.
+
 ### monaural_beat_stereo_amps
 Produces a monaural beat while allowing different amplitudes for the lower and upper components in each ear.
 
