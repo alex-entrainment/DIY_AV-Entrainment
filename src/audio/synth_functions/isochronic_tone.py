@@ -117,6 +117,7 @@ def isochronic_tone(duration, sample_rate=44100, **params):
 
 
 def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+
     """Transitioning version of :func:`isochronic_tone`."""
 
     base_amp = float(params.get('amp', 0.5))
@@ -168,6 +169,7 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     gapPercent = float(params.get('gapPercent', 0.15))
     pan = float(params.get('pan', 0.0))
 
+
     N = int(sample_rate * duration)
     if N <= 0:
         return np.zeros((0, 2))
@@ -177,13 +179,22 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     curve = params.get('transition_curve', 'linear')
     alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
-    # --- Interpolate Frequencies ---
+    # --- Interpolate Parameters ---
     base_freq_array = startBaseFreq + (endBaseFreq - startBaseFreq) * alpha
-    beat_freq_array = startBeatFreq + (endBeatFreq - startBeatFreq) * alpha
+
+    beat_freq_array = startBeatFreq + (endBeatFreq - startBeatFreq) * alpha  # Pulse rate
+    amp_array = startAmp + (endAmp - startAmp) * alpha
+    ramp_percent_array = startRampPercent + (endRampPercent - startRampPercent) * alpha
+    gap_percent_array = startGapPercent + (endGapPercent - startGapPercent) * alpha
+    pan_array = startPan + (endPan - startPan) * alpha
+
 
     # Ensure frequencies are non-negative
     instantaneous_carrier_freq_array = np.maximum(0.0, base_freq_array)
     instantaneous_beat_freq_array = np.maximum(0.0, beat_freq_array)
+    ramp_percent_array = np.clip(ramp_percent_array, 0.0, 1.0)
+    gap_percent_array = np.clip(gap_percent_array, 0.0, 1.0)
+    pan_array = np.clip(pan_array, -1.0, 1.0)
 
     # --- Carrier Wave (Time-Varying Frequency with vibrato) ---
     dt = 1.0 / sample_rate if N > 1 else duration
@@ -238,6 +249,7 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
 
     # Generate the trapezoid envelope
     iso_env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
+
 
     env_amp_L = 1.0 - (startAODL + (endAODL - startAODL) * alpha) * (
         0.5 * (1.0 + np.sin(2 * np.pi * (startAOFL + (endAOFL - startAOFL) * alpha) * t +

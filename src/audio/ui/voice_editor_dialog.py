@@ -1246,9 +1246,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0)
                 ],
                 "transition": [
-                    ('amp', 0.5), ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
+                    ('startAmp', 0.5), ('endAmp', 0.5),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
                     ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
-                    ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0),
+                    ('startRampPercent', 0.2), ('endRampPercent', 0.2),
+                    ('startGapPercent', 0.15), ('endGapPercent', 0.15),
+                    ('startPan', 0.0), ('endPan', 0.0),
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
