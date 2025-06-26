@@ -102,16 +102,17 @@ Creates the classic binaural beat illusion by playing two close frequencies.
 | `phaseOscRange` | 0 | Amount of phase modulation |
 
 ### isochronic_tone
-A tone that pulses on and off at a fixed rate using a trapezoid envelope.
+A pulsing tone using a trapezoid envelope.  This voice now accepts the same
+set of modulation parameters as **`binaural_beat`** (excluding the glitch
+options) while retaining the isochronic-specific envelope controls.
+
+Additional parameters:
 
 | Parameter | Default | Effect |
 |-----------|---------|-------|
-| `amp` | 0.5 | Output level |
-| `baseFreq` | 200 | Frequency of the tone |
-| `beatFreq` | 4 | Pulse repetition rate |
 | `rampPercent` | 0.2 | Portion of each pulse used for fade in/out |
 | `gapPercent` | 0.15 | Fraction of the cycle that is silent |
-| `pan` | 0 | Stereo pan location |
+| `pan` | 0 | Extra stereo pan applied after modulation |
 
 ### monaural_beat_stereo_amps
 Produces a monaural beat while allowing different amplitudes for the lower and upper components in each ear.

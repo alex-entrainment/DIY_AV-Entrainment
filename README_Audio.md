@@ -34,7 +34,9 @@ The `generate_audio` function orchestrates the process:
 Available Synth Functions:
 
 * `binaural_beat`: Generates classic binaural beats by presenting slightly different frequencies to the left and right channels (`baseFreq`, `beatFreq`). Pan is ignored.
-* `isochronic_tone`: Creates a pulsing tone (carrier at `baseFreq`) that turns on and off at the `beatFreq`, using a configurable trapezoidal envelope (`rampPercent`, `gapPercent`). Can be panned (`pan`).
+* `isochronic_tone`: Pulsing tone with a trapezoidal envelope. Supports the same
+  modulation parameters as `binaural_beat` (minus the glitch options) in
+  addition to `rampPercent`, `gapPercent`, and optional `pan`.
 * `basic_am`: Simple Amplitude Modulation where a carrier sine wave (`carrierFreq`) is modulated by an LFO (`modFreq`, `modDepth`).
 * `fsam_filter_bank`: Frequency-Selective Amplitude Modulation. Filters a noise source (white, pink, or brown) into a specific band (`filterCenterFreq`, `filterRQ`) and modulates only that band with an LFO (`modFreq`, `modDepth`), mixing it back with the rest of the noise.
 * `rhythmic_waveshaping`: Modulates the amplitude of a carrier (`carrierFreq`) with an LFO (`modFreq`, `modDepth`) before applying tanh waveshaping (`shapeAmount`).
