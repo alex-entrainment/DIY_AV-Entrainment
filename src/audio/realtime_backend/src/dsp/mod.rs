@@ -1,5 +1,8 @@
 use rand::Rng;
 
+pub mod noise_flanger;
+pub use noise_flanger::*;
+
 pub fn generate_pink_noise_samples(n_samples: usize) -> Vec<f32> {
     // Simple approximation of pink noise using Voss-McCartney algorithm
     let mut rng = rand::thread_rng();
