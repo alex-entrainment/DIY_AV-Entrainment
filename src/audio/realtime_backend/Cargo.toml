@@ -1,3 +1,4 @@
+
 [package]
 name = "realtime_backend"
 version = "0.1.0"
@@ -7,17 +8,25 @@ edition = "2021"
 name = "realtime_backend"
 crate-type = ["cdylib"]
 
+[features]
+default = ["python"]
+python = ["pyo3", "crossbeam"]
+web = ["wasm-bindgen", "js-sys"]
+
 [dependencies]
-pyo3 = { version = "0.21.0", features = ["extension-module"] }
-cpal = "0.15.3"
+pyo3 = { version = "0.21.0", optional = true, features = ["extension-module"] }
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rustfft = "6.1"
 biquad = "0.4"
 rand = "0.8"
-crossbeam = "0.8"
+crossbeam = { version = "0.8", optional = true }
 parking_lot = "0.12"
 once_cell = "1.19"
 symphonia = { version = "0.5.4", features = ["default", "mp3"] }
-
 getrandom = { version = "0.2", features = ["js"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cpal = "0.15.3"
