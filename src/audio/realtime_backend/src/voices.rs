@@ -11,9 +11,9 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 
-use crate::dsp::{pan2, trapezoid_envelope};
+use crate::dsp::{pan2, trapezoid_envelope, build_volume_envelope};
 use crate::scheduler::Voice;
-use crate::models::{StepData, VoiceData};
+use crate::models::{StepData, VoiceData, VolumeEnvelope};
 
 fn get_f32(params: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
     params
@@ -49,6 +49,43 @@ impl TransitionCurve {
             TransitionCurve::Logarithmic => 1.0 - (1.0 - alpha).powi(2),
             TransitionCurve::Exponential => alpha.powi(2),
         }
+    }
+}
+
+/// Wrapper voice that applies a precomputed volume envelope to another voice.
+pub struct VolumeEnvelopeVoice {
+    inner: Box<dyn Voice>,
+    envelope: Vec<f32>,
+    idx: usize,
+}
+
+impl VolumeEnvelopeVoice {
+    pub fn new(inner: Box<dyn Voice>, envelope: Vec<f32>) -> Self {
+        Self { inner, envelope, idx: 0 }
+    }
+}
+
+impl Voice for VolumeEnvelopeVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let mut temp = vec![0.0f32; output.len()];
+        self.inner.process(&mut temp);
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            let env = if self.idx < self.envelope.len() {
+                self.envelope[self.idx]
+            } else {
+                *self.envelope.last().unwrap_or(&1.0)
+            };
+            output[i * 2] += temp[i * 2] * env;
+            output[i * 2 + 1] += temp[i * 2 + 1] * env;
+            if self.idx < self.envelope.len() {
+                self.idx += 1;
+            }
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.inner.is_finished() && self.idx >= self.envelope.len()
     }
 }
 
@@ -2803,7 +2840,7 @@ pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<Box<dyn Voice>>
 }
 
 fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box<dyn Voice>> {
-    match data.synth_function_name.as_str() {
+    let base: Box<dyn Voice> = match data.synth_function_name.as_str() {
         "binaural_beat" => Some(Box::new(BinauralBeatVoice::new(
             &data.params,
             duration,
@@ -2883,5 +2920,12 @@ fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box
             sample_rate,
         ))),
         _ => None,
+    }?;
+
+    if let Some(env) = &data.volume_envelope {
+        let env_vec = build_volume_envelope(env, duration, sample_rate as u32);
+        Some(Box::new(VolumeEnvelopeVoice::new(base, env_vec)))
+    } else {
+        Some(base)
     }
 }

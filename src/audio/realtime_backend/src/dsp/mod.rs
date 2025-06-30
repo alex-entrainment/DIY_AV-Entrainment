@@ -258,3 +258,61 @@ pub fn calculate_transition_alpha(
 
     alpha
 }
+
+use crate::models::VolumeEnvelope;
+
+/// Build a volume envelope vector from a `VolumeEnvelope` description.
+/// If the type is unknown or parameters are missing, a flat envelope is returned.
+pub fn build_volume_envelope(
+    env: &VolumeEnvelope,
+    duration: f32,
+    sample_rate: u32,
+) -> Vec<f32> {
+    let total_samples = (duration * sample_rate as f32) as usize;
+    if total_samples == 0 {
+        return Vec::new();
+    }
+
+    match env.envelope_type.as_str() {
+        "linear_fade" => {
+            let fade_duration = env
+                .params
+                .get("fade_duration")
+                .copied()
+                .unwrap_or(0.0) as f32;
+            let start_amp = env
+                .params
+                .get("start_amp")
+                .copied()
+                .unwrap_or(0.0) as f32;
+            let end_amp = env
+                .params
+                .get("end_amp")
+                .copied()
+                .unwrap_or(1.0) as f32;
+            let fade_type = "in"; // only 'in' currently used
+            create_linear_fade_envelope(duration, sample_rate, fade_duration, start_amp, end_amp, fade_type)
+        }
+        "adsr" => {
+            let attack = env.params.get("attack").copied().unwrap_or(0.01) as f32;
+            let decay = env.params.get("decay").copied().unwrap_or(0.1) as f32;
+            let sustain_level = env
+                .params
+                .get("sustain_level")
+                .copied()
+                .unwrap_or(0.8) as f32;
+            let release = env.params.get("release").copied().unwrap_or(0.1) as f32;
+            let dt = 1.0 / sample_rate as f32;
+            let t: Vec<f32> = (0..total_samples).map(|i| i as f32 * dt).collect();
+            adsr_envelope(&t, attack, decay, sustain_level, release)
+        }
+        "linen" => {
+            let attack = env.params.get("attack").copied().unwrap_or(0.01) as f32;
+            let release = env.params.get("release").copied().unwrap_or(0.1) as f32;
+            let dt = 1.0 / sample_rate as f32;
+            let t: Vec<f32> = (0..total_samples).map(|i| i as f32 * dt).collect();
+            linen_envelope(&t, attack, release)
+        }
+        _ => vec![1.0; total_samples],
+    }
+}
