@@ -1,4 +1,4 @@
-use crate::models::TrackData;
+use crate::models::{StepData, TrackData};
 use crate::voices::voices_for_step;
 
 pub trait Voice: Send + Sync {
@@ -22,6 +22,26 @@ impl CrossfadeCurve {
             }
         }
     }
+}
+
+fn steps_have_continuous_voices(a: &StepData, b: &StepData) -> bool {
+    if a.voices.len() != b.voices.len() {
+        return false;
+    }
+
+    for (va, vb) in a.voices.iter().zip(&b.voices) {
+        if va.synth_function_name != vb.synth_function_name {
+            return false;
+        }
+        if va.params != vb.params {
+            return false;
+        }
+        if va.is_transition != vb.is_transition {
+            return false;
+        }
+    }
+
+    true
 }
 
 pub struct TrackScheduler {
@@ -78,12 +98,14 @@ impl TrackScheduler {
             && self.current_step + 1 < self.track.steps.len()
         {
             let step = &self.track.steps[self.current_step];
-            let step_samples = (step.duration * self.sample_rate as f64) as usize;
-            if self.current_sample >= step_samples.saturating_sub(self.crossfade_samples) {
-                let next_step = &self.track.steps[self.current_step + 1];
-                self.next_voices = voices_for_step(next_step, self.sample_rate);
-                self.crossfade_active = true;
-                self.next_step_sample = 0;
+            let next_step = &self.track.steps[self.current_step + 1];
+            if !steps_have_continuous_voices(step, next_step) {
+                let step_samples = (step.duration * self.sample_rate as f64) as usize;
+                if self.current_sample >= step_samples.saturating_sub(self.crossfade_samples) {
+                    self.next_voices = voices_for_step(next_step, self.sample_rate);
+                    self.crossfade_active = true;
+                    self.next_step_sample = 0;
+                }
             }
         }
 
