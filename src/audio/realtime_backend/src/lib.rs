@@ -2,6 +2,7 @@ mod audio_io;
 mod dsp;
 mod models;
 mod scheduler;
+mod voices;
 
 use models::TrackData;
 use pyo3::prelude::*;
