@@ -366,6 +366,81 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     display_current = amplitude_to_db(float(current_value))
 
             prefix, base_after = self._split_name_prefix(name)
+
+            if is_transition and prefix == 'start' and base_after in transition_pairs:
+                base_name_for_pair = base_after
+                end_name = transition_pairs[base_name_for_pair]['end']
+                if end_name in default_params_ordered:
+                    end_default_value = default_params_ordered.get(end_name, default_value)
+                    end_current_value = params_to_display.get(end_name, end_default_value)
+                    display_start = display_current
+                    display_end = end_current_value
+                    if isinstance(end_current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+                        nlow = end_name.lower()
+                        if any(s in nlow for s in ["amp", "gain", "level"]):
+                            from ..utils.amp_utils import amplitude_to_db
+                            display_end = amplitude_to_db(float(end_current_value))
+
+                    frame = QWidget()
+                    row_layout = QGridLayout(frame)
+                    row_layout.setContentsMargins(2,2,2,2)
+
+                    param_storage_type = 'str'
+                    param_type_hint = 'any'
+                    range_hint = self._get_param_range_hint(base_name_for_pair)
+                    if isinstance(default_value, bool):
+                        param_type_hint = 'bool'
+                    elif isinstance(default_value, int):
+                        param_type_hint = 'int'
+                    elif isinstance(default_value, float):
+                        param_type_hint = 'float'
+                    elif isinstance(default_value, str):
+                        param_type_hint = 'str'
+
+                    current_validator = None
+                    if param_type_hint == 'int':
+                        current_validator = QIntValidator(-999999, 999999, self)
+                        param_storage_type = 'int'
+                    elif param_type_hint == 'float':
+                        current_validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
+                        current_validator.setNotation(QDoubleValidator.StandardNotation)
+                        param_storage_type = 'float'
+                    else:
+                        param_storage_type = 'str'
+
+                    hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
+
+                    base_label = QLabel(f"{base_name_for_pair}:")
+                    row_layout.addWidget(base_label, 0, 0, Qt.AlignLeft)
+
+                    start_label = QLabel("Start:")
+                    row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
+                    start_entry = QLineEdit(str(display_start) if display_start is not None else "")
+                    if current_validator:
+                        start_entry.setValidator(current_validator)
+                    start_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                    start_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                    row_layout.addWidget(start_entry, 0, 2)
+                    self.param_widgets[name] = {'widget': start_entry, 'type': param_storage_type}
+
+                    end_label = QLabel("End:")
+                    row_layout.addWidget(end_label, 0, 3, Qt.AlignRight)
+                    end_entry = QLineEdit(str(display_end) if display_end is not None else "")
+                    if current_validator:
+                        end_entry.setValidator(current_validator)
+                    end_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                    end_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                    row_layout.addWidget(end_entry, 0, 4)
+                    self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
+
+                    row_layout.addWidget(QLabel(hint_text), 0, 5, Qt.AlignLeft)
+                    row_layout.setColumnStretch(0,1); row_layout.setColumnStretch(2,1)
+                    row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
+                    processed_names.add(name)
+                    processed_names.add(end_name)
+                    self.params_scroll_layout.addWidget(frame)
+                    continue
+
             lr_info = self._parse_lr_suffix(base_after)
             if lr_info:
                 base_lr, left_suffix, right_suffix = lr_info
