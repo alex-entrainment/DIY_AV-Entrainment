@@ -1,5 +1,5 @@
-use crate::dsp::{sine_wave, adsr_envelope};
-use crate::models::{TrackData, StepData, VoiceData};
+use crate::models::{TrackData};
+use crate::voices::voices_for_step;
 
 pub trait Voice: Send + Sync {
     fn process(&mut self, output: &mut [f32]);
@@ -34,17 +34,20 @@ impl TrackScheduler {
             return;
         }
         let step = &self.track.steps[self.current_step];
-        // TODO instantiate voices at step boundaries
+        if self.current_sample == 0 {
+            let new_voices = voices_for_step(step, self.sample_rate);
+            self.active_voices.extend(new_voices);
+        }
         for voice in &mut self.active_voices {
             voice.process(buffer);
         }
+        self.active_voices.retain(|v| !v.is_finished());
         // TODO crossfade and step transition logic
         self.current_sample += buffer.len();
         if self.current_sample as f32 / self.sample_rate >= step.duration as f32 {
             self.current_step += 1;
             self.current_sample = 0;
-            // TODO spawn voices for new step
-            self.active_voices.retain(|v| !v.is_finished());
+            // active_voices will be populated on next call when current_sample == 0
         }
     }
 }
