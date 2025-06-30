@@ -202,6 +202,37 @@ pub struct IsochronicToneTransitionVoice {
     elapsed: f32,
     duration: f32,
 }
+
+pub struct SpatialAngleModulationVoice {
+    amp: f32,
+    carrier_freq: f32,
+    beat_freq: f32,
+    path_radius: f32,
+    carrier_phase: f32,
+    spatial_phase: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+}
+
+pub struct SpatialAngleModulationTransitionVoice {
+    amp: f32,
+    start_carrier_freq: f32,
+    end_carrier_freq: f32,
+    start_beat_freq: f32,
+    end_beat_freq: f32,
+    start_path_radius: f32,
+    end_path_radius: f32,
+    curve: TransitionCurve,
+    initial_offset: f32,
+    post_offset: f32,
+    carrier_phase: f32,
+    spatial_phase: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+    duration: f32,
+}
 impl BinauralBeatVoice {
     pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
         let amp_l = get_f32(params, "ampL", 0.5);
@@ -592,6 +623,74 @@ impl IsochronicToneTransitionVoice {
             phase_l: start_start_phase_l,
             phase_r: start_start_phase_r,
             beat_phase: 0.0,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+}
+
+impl SpatialAngleModulationVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.7);
+        let carrier_freq = get_f32(params, "carrierFreq", 440.0);
+        let beat_freq = get_f32(params, "beatFreq", 4.0);
+        let path_radius = get_f32(params, "pathRadius", 1.0);
+
+        let total_samples = (duration * sample_rate) as usize;
+
+        Self {
+            amp,
+            carrier_freq,
+            beat_freq,
+            path_radius,
+            carrier_phase: 0.0,
+            spatial_phase: 0.0,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+        }
+    }
+}
+
+impl SpatialAngleModulationTransitionVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.7);
+        let start_carrier_freq =
+            get_f32(params, "startCarrierFreq", get_f32(params, "carrierFreq", 440.0));
+        let end_carrier_freq = get_f32(params, "endCarrierFreq", start_carrier_freq);
+        let start_beat_freq =
+            get_f32(params, "startBeatFreq", get_f32(params, "beatFreq", 4.0));
+        let end_beat_freq = get_f32(params, "endBeatFreq", start_beat_freq);
+        let start_path_radius =
+            get_f32(params, "startPathRadius", get_f32(params, "pathRadius", 1.0));
+        let end_path_radius = get_f32(params, "endPathRadius", start_path_radius);
+
+        let curve = TransitionCurve::from_str(
+            params
+                .get("transition_curve")
+                .and_then(|v| v.as_str())
+                .unwrap_or("linear"),
+        );
+        let initial_offset = get_f32(params, "initial_offset", 0.0);
+        let post_offset = get_f32(params, "post_offset", 0.0);
+
+        let total_samples = (duration * sample_rate) as usize;
+
+        Self {
+            amp,
+            start_carrier_freq,
+            end_carrier_freq,
+            start_beat_freq,
+            end_beat_freq,
+            start_path_radius,
+            end_path_radius,
+            curve,
+            initial_offset,
+            post_offset,
+            carrier_phase: 0.0,
+            spatial_phase: 0.0,
+            sample_rate,
+            remaining_samples: total_samples,
             elapsed: 0.0,
             duration,
         }
@@ -1017,6 +1116,85 @@ impl Voice for IsochronicToneVoice {
     }
 }
 
+impl Voice for SpatialAngleModulationVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let channels = 2;
+        let frames = output.len() / channels;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+
+            let sample = (self.carrier_phase).sin() * self.amp;
+            let pan = (self.spatial_phase).sin() * self.path_radius;
+            let (l, r) = pan2(sample, pan);
+            output[i * 2] += l;
+            output[i * 2 + 1] += r;
+
+            self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.spatial_phase += 2.0 * std::f32::consts::PI * self.beat_freq * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for SpatialAngleModulationTransitionVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let channels = 2;
+        let frames = output.len() / channels;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+            let t = self.elapsed;
+            let alpha = if t < self.initial_offset {
+                0.0
+            } else if t > self.duration - self.post_offset {
+                1.0
+            } else {
+                let span = self.duration - self.initial_offset - self.post_offset;
+                if span > 0.0 {
+                    (t - self.initial_offset) / span
+                } else {
+                    1.0
+                }
+            };
+            let alpha = self.curve.apply(alpha.clamp(0.0, 1.0));
+
+            let carrier_freq =
+                self.start_carrier_freq + (self.end_carrier_freq - self.start_carrier_freq) * alpha;
+            let beat_freq =
+                self.start_beat_freq + (self.end_beat_freq - self.start_beat_freq) * alpha;
+            let path_radius =
+                self.start_path_radius + (self.end_path_radius - self.start_path_radius) * alpha;
+
+            let sample = (self.carrier_phase).sin() * self.amp;
+            let pan = (self.spatial_phase).sin() * path_radius;
+            let (l, r) = pan2(sample, pan);
+            output[i * 2] += l;
+            output[i * 2 + 1] += r;
+
+            self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.spatial_phase += 2.0 * std::f32::consts::PI * beat_freq * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
 use crate::models::{StepData, VoiceData};
 
 pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<Box<dyn Voice>> {
@@ -1047,6 +1225,16 @@ fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box
             sample_rate,
         ))),
         "isochronic_tone_transition" => Some(Box::new(IsochronicToneTransitionVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "spatial_angle_modulation" => Some(Box::new(SpatialAngleModulationVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "spatial_angle_modulation_transition" => Some(Box::new(SpatialAngleModulationTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
