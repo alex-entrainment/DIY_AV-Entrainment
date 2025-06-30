@@ -81,3 +81,38 @@ pub fn pan2(signal: f32, pan: f32) -> (f32, f32) {
     let right = angle.sin() * signal;
     (left, right)
 }
+
+pub fn trapezoid_envelope(
+    t_in_cycle: f32,
+    cycle_len: f32,
+    ramp_percent: f32,
+    gap_percent: f32,
+) -> f32 {
+    if cycle_len <= 0.0 {
+        return 0.0;
+    }
+
+    let audible_len = (1.0 - gap_percent).clamp(0.0, 1.0) * cycle_len;
+    let ramp_total = (audible_len * ramp_percent * 2.0).clamp(0.0, audible_len);
+    let stable_len = audible_len - ramp_total;
+    let ramp_up_len = ramp_total / 2.0;
+    let stable_end = ramp_up_len + stable_len;
+
+    if t_in_cycle >= audible_len {
+        0.0
+    } else if t_in_cycle < ramp_up_len {
+        if ramp_up_len > 0.0 {
+            t_in_cycle / ramp_up_len
+        } else {
+            0.0
+        }
+    } else if t_in_cycle >= stable_end {
+        if ramp_up_len > 0.0 {
+            1.0 - (t_in_cycle - stable_end) / ramp_up_len
+        } else {
+            0.0
+        }
+    } else {
+        1.0
+    }
+}
