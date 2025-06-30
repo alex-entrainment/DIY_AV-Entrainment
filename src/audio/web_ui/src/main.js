@@ -1,4 +1,4 @@
-import init, { start_stream, process_block, stop_stream } from './realtime_backend.js';
+import init, { start_stream, process_block, stop_stream } from '/pkg/realtime_backend.js';
 
 let audioCtx = null;
 let scriptNode = null;

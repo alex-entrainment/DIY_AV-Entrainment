@@ -4,4 +4,6 @@
 
 __pycache__/
 *.pyc
+node_modules/
+src/audio/web_ui/dist/
 
