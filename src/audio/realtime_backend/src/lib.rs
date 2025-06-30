@@ -17,6 +17,8 @@ use std::sync::Arc;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(feature = "python")]
+use pyo3::prelude::Bound;
+#[cfg(feature = "python")]
 use crossbeam::channel::{unbounded, Sender};
 #[cfg(feature = "web")]
 use wasm_bindgen::prelude::*;
@@ -99,7 +101,7 @@ pub fn stop_stream() {
 
 #[cfg(feature = "python")]
 #[pymodule]
-fn realtime_backend(_py: Python, m: &PyModule) -> PyResult<()> {
+fn realtime_backend(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_stream, m)?)?;
     m.add_function(wrap_pyfunction!(stop_stream, m)?)?;
     m.add_function(wrap_pyfunction!(update_track, m)?)?;
