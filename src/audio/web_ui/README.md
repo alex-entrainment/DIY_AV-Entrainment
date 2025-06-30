@@ -12,17 +12,18 @@ from a web page.
    cd ../realtime_backend
    wasm-pack build --target web --release --no-default-features --features web
    ```
-3. Copy the generated `pkg` folder into this directory so `index.html` can load
-   `realtime_backend.js` and `realtime_backend_bg.wasm`.
+3. Copy the generated `pkg` folder into `public/` so Vite can serve
+    `realtime_backend.js` and `realtime_backend_bg.wasm`.
 
 ## Running the Demo
 
-Serve the `web_ui` directory with any static web server. One simple option is:
+Install the npm dependencies and start the development server:
 
 ```bash
-python -m http.server
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:8000` in your browser. Paste a track JSON object into
+Vite will serve the application at the printed URL. Paste a track JSON object into
 the text box and click **Start** to begin playback. Press **Stop** to halt the
 engine.
