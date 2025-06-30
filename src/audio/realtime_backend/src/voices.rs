@@ -13,7 +13,7 @@ use symphonia::default::{get_codecs, get_probe};
 
 use crate::dsp::{pan2, trapezoid_envelope, build_volume_envelope};
 use crate::scheduler::Voice;
-use crate::models::{StepData, VoiceData, VolumeEnvelope};
+use crate::models::{StepData, VoiceData};
 
 fn get_f32(params: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
     params
@@ -2841,86 +2841,83 @@ pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<Box<dyn Voice>>
 
 fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box<dyn Voice>> {
     let base: Box<dyn Voice> = match data.synth_function_name.as_str() {
-        "binaural_beat" => Some(Box::new(BinauralBeatVoice::new(
+        "binaural_beat" => Box::new(BinauralBeatVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "binaural_beat_transition" => Some(Box::new(BinauralBeatTransitionVoice::new(
+        )),
+        "binaural_beat_transition" => Box::new(BinauralBeatTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "isochronic_tone" => Some(Box::new(IsochronicToneVoice::new(
+        )),
+        "isochronic_tone" => Box::new(IsochronicToneVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "isochronic_tone_transition" => Some(Box::new(IsochronicToneTransitionVoice::new(
+        )),
+        "isochronic_tone_transition" => Box::new(IsochronicToneTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "qam_beat" => Some(Box::new(QamBeatVoice::new(
+        )),
+        "qam_beat" => Box::new(QamBeatVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "qam_beat_transition" => Some(Box::new(QamBeatTransitionVoice::new(
+        )),
+        "qam_beat_transition" => Box::new(QamBeatTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "rhythmic_waveshaping" => Some(Box::new(RhythmicWaveshapingVoice::new(
+        )),
+        "rhythmic_waveshaping" => Box::new(RhythmicWaveshapingVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "rhythmic_waveshaping_transition" =>
-            Some(Box::new(RhythmicWaveshapingTransitionVoice::new(
-                &data.params,
-                duration,
-                sample_rate,
-            ))),
-        "stereo_am_independent" => Some(Box::new(StereoAmIndependentVoice::new(
+        )),
+        "rhythmic_waveshaping_transition" => Box::new(RhythmicWaveshapingTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "stereo_am_independent_transition" =>
-            Some(Box::new(StereoAmIndependentTransitionVoice::new(
-                &data.params,
-                duration,
-                sample_rate,
-            ))),
-        "wave_shape_stereo_am" => Some(Box::new(WaveShapeStereoAmVoice::new(
+        )),
+        "stereo_am_independent" => Box::new(StereoAmIndependentVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "wave_shape_stereo_am_transition" =>
-            Some(Box::new(WaveShapeStereoAmTransitionVoice::new(
-                &data.params,
-                duration,
-                sample_rate,
-            ))),
-        "spatial_angle_modulation" => Some(Box::new(SpatialAngleModulationVoice::new(
+        )),
+        "stereo_am_independent_transition" => Box::new(StereoAmIndependentTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "spatial_angle_modulation_transition" => Some(Box::new(SpatialAngleModulationTransitionVoice::new(
+        )),
+        "wave_shape_stereo_am" => Box::new(WaveShapeStereoAmVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        "subliminal_encode" => Some(Box::new(SubliminalEncodeVoice::new(
+        )),
+        "wave_shape_stereo_am_transition" => Box::new(WaveShapeStereoAmTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
-        ))),
-        _ => None,
-    }?;
+        )),
+        "spatial_angle_modulation" => Box::new(SpatialAngleModulationVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        )),
+        "spatial_angle_modulation_transition" => Box::new(SpatialAngleModulationTransitionVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        )),
+        "subliminal_encode" => Box::new(SubliminalEncodeVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        )),
+        _ => return None,
+    };
 
     if let Some(env) = &data.volume_envelope {
         let env_vec = build_volume_envelope(env, duration, sample_rate as u32);
