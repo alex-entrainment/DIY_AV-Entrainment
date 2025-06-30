@@ -74,3 +74,6 @@ duration adapts to the step length:
 
 This behaviour ensures that very long steps do not delay the preview yet short
 steps can still be heard in full.
+
+### WebAssembly DSP Backend
+For browser-based projects you can compile the Rust realtime backend to WebAssembly. See [src/audio/realtime_backend/WASM_GUIDE.md](src/audio/realtime_backend/WASM_GUIDE.md) for build and usage steps.
