@@ -366,6 +366,42 @@ pub struct SpatialAngleModulationTransitionVoice {
     duration: f32,
 }
 
+pub struct RhythmicWaveshapingVoice {
+    amp: f32,
+    carrier_freq: f32,
+    mod_freq: f32,
+    mod_depth: f32,
+    shape_amount: f32,
+    pan: f32,
+    carrier_phase: f32,
+    lfo_phase: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+}
+
+pub struct RhythmicWaveshapingTransitionVoice {
+    amp: f32,
+    start_carrier_freq: f32,
+    end_carrier_freq: f32,
+    start_mod_freq: f32,
+    end_mod_freq: f32,
+    start_mod_depth: f32,
+    end_mod_depth: f32,
+    start_shape_amount: f32,
+    end_shape_amount: f32,
+    pan: f32,
+    curve: TransitionCurve,
+    initial_offset: f32,
+    post_offset: f32,
+    carrier_phase: f32,
+    lfo_phase: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+    duration: f32,
+}
+
 pub struct SubliminalEncodeVoice {
     samples: Vec<f32>,
     position: usize,
@@ -1269,6 +1305,83 @@ impl SpatialAngleModulationTransitionVoice {
     }
 }
 
+impl RhythmicWaveshapingVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.25);
+        let carrier_freq = get_f32(params, "carrierFreq", 200.0);
+        let mod_freq = get_f32(params, "modFreq", 4.0);
+        let mod_depth = get_f32(params, "modDepth", 1.0);
+        let shape_amount = get_f32(params, "shapeAmount", 5.0);
+        let pan = get_f32(params, "pan", 0.0);
+
+        let total_samples = (duration * sample_rate) as usize;
+
+        Self {
+            amp,
+            carrier_freq,
+            mod_freq,
+            mod_depth,
+            shape_amount,
+            pan,
+            carrier_phase: 0.0,
+            lfo_phase: 0.0,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+        }
+    }
+}
+
+impl RhythmicWaveshapingTransitionVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.25);
+        let start_carrier_freq =
+            get_f32(params, "startCarrierFreq", get_f32(params, "carrierFreq", 200.0));
+        let end_carrier_freq = get_f32(params, "endCarrierFreq", start_carrier_freq);
+        let start_mod_freq = get_f32(params, "startModFreq", get_f32(params, "modFreq", 4.0));
+        let end_mod_freq = get_f32(params, "endModFreq", start_mod_freq);
+        let start_mod_depth = get_f32(params, "startModDepth", get_f32(params, "modDepth", 1.0));
+        let end_mod_depth = get_f32(params, "endModDepth", start_mod_depth);
+        let start_shape_amount =
+            get_f32(params, "startShapeAmount", get_f32(params, "shapeAmount", 5.0));
+        let end_shape_amount = get_f32(params, "endShapeAmount", start_shape_amount);
+        let pan = get_f32(params, "pan", 0.0);
+
+        let curve = TransitionCurve::from_str(
+            params
+                .get("transition_curve")
+                .and_then(|v| v.as_str())
+                .unwrap_or("linear"),
+        );
+        let initial_offset = get_f32(params, "initial_offset", 0.0);
+        let post_offset = get_f32(params, "post_offset", 0.0);
+
+        let total_samples = (duration * sample_rate) as usize;
+
+        Self {
+            amp,
+            start_carrier_freq,
+            end_carrier_freq,
+            start_mod_freq,
+            end_mod_freq,
+            start_mod_depth,
+            end_mod_depth,
+            start_shape_amount,
+            end_shape_amount,
+            pan,
+            curve,
+            initial_offset,
+            post_offset,
+            carrier_phase: 0.0,
+            lfo_phase: 0.0,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+}
+
 impl Voice for BinauralBeatVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
@@ -2061,6 +2174,97 @@ impl Voice for SpatialAngleModulationTransitionVoice {
     }
 }
 
+impl Voice for RhythmicWaveshapingVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let channels = 2;
+        let frames = output.len() / channels;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+
+            let carrier = self.carrier_phase.sin();
+            let lfo = self.lfo_phase.sin();
+            let shape_lfo = 1.0 - self.mod_depth * (1.0 - lfo) * 0.5;
+            let mod_input = carrier * shape_lfo;
+            let amt = self.shape_amount.max(1e-6);
+            let shaped = (mod_input * amt).tanh() / amt.tanh();
+            let mono = shaped * self.amp;
+            let (l, r) = pan2(mono, self.pan);
+            output[i * 2] += l;
+            output[i * 2 + 1] += r;
+
+            self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.lfo_phase += 2.0 * std::f32::consts::PI * self.mod_freq * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for RhythmicWaveshapingTransitionVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let channels = 2;
+        let frames = output.len() / channels;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+            let t = self.elapsed;
+            let alpha = if t < self.initial_offset {
+                0.0
+            } else if t > self.duration - self.post_offset {
+                1.0
+            } else {
+                let span = self.duration - self.initial_offset - self.post_offset;
+                if span > 0.0 {
+                    (t - self.initial_offset) / span
+                } else {
+                    1.0
+                }
+            };
+            let alpha = self.curve.apply(alpha.clamp(0.0, 1.0));
+
+            let carrier_freq =
+                self.start_carrier_freq + (self.end_carrier_freq - self.start_carrier_freq) * alpha;
+            let mod_freq =
+                self.start_mod_freq + (self.end_mod_freq - self.start_mod_freq) * alpha;
+            let mod_depth =
+                self.start_mod_depth + (self.end_mod_depth - self.start_mod_depth) * alpha;
+            let shape_amount =
+                self.start_shape_amount + (self.end_shape_amount - self.start_shape_amount) * alpha;
+
+            let carrier = self.carrier_phase.sin();
+            let lfo = self.lfo_phase.sin();
+            let shape_lfo = 1.0 - mod_depth * (1.0 - lfo) * 0.5;
+            let mod_input = carrier * shape_lfo;
+            let amt = shape_amount.max(1e-6);
+            let shaped = (mod_input * amt).tanh() / amt.tanh();
+            let mono = shaped * self.amp;
+            let (l, r) = pan2(mono, self.pan);
+            output[i * 2] += l;
+            output[i * 2 + 1] += r;
+
+            self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.lfo_phase += 2.0 * std::f32::consts::PI * mod_freq * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
 impl Voice for SubliminalEncodeVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
@@ -2131,6 +2335,16 @@ fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box
             sample_rate,
         ))),
         "spatial_angle_modulation_transition" => Some(Box::new(SpatialAngleModulationTransitionVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "rhythmic_waveshaping" => Some(Box::new(RhythmicWaveshapingVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "rhythmic_waveshaping_transition" => Some(Box::new(RhythmicWaveshapingTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
