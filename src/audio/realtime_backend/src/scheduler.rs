@@ -1,4 +1,5 @@
 use crate::models::{StepData, TrackData};
+use crate::dsp::{generate_brown_noise_samples, generate_pink_noise_samples};
 use crate::voices::voices_for_step;
 use std::fs::File;
 
@@ -66,11 +67,18 @@ pub struct TrackScheduler {
     pub crossfade_active: bool,
     pub absolute_sample: usize,
     pub clips: Vec<LoadedClip>,
+    pub background_noise: Option<BackgroundNoise>,
 }
 
 pub struct LoadedClip {
     samples: Vec<f32>,
     start_sample: usize,
+    position: usize,
+    gain: f32,
+}
+
+pub struct BackgroundNoise {
+    samples: Vec<f32>,
     position: usize,
     gain: f32,
 }
@@ -166,6 +174,27 @@ impl TrackScheduler {
             }
         }
 
+        let background_noise = if let Some(noise_cfg) = &track.background_noise {
+            let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
+            let total_samples = (total_duration * sample_rate as f64) as usize;
+            let samples = match noise_cfg.noise_type.to_lowercase().as_str() {
+                "brown" => crate::dsp::generate_brown_noise_samples(total_samples),
+                _ => crate::dsp::generate_pink_noise_samples(total_samples),
+            };
+            let mut stereo = Vec::with_capacity(samples.len() * 2);
+            for s in samples {
+                stereo.push(s);
+                stereo.push(s);
+            }
+            Some(BackgroundNoise {
+                samples: stereo,
+                position: 0,
+                gain: noise_cfg.amp,
+            })
+        } else {
+            None
+        };
+
         Self {
             track,
             current_sample: 0,
@@ -179,6 +208,7 @@ impl TrackScheduler {
             crossfade_active: false,
             absolute_sample: 0,
             clips,
+            background_noise,
         }
     }
 
@@ -268,6 +298,18 @@ impl TrackScheduler {
         }
 
         let frames = buffer.len() / 2;
+
+        if let Some(noise) = &mut self.background_noise {
+            for i in 0..frames {
+                if noise.position + 1 >= noise.samples.len() {
+                    break;
+                }
+                buffer[i * 2] += noise.samples[noise.position] * noise.gain;
+                buffer[i * 2 + 1] += noise.samples[noise.position + 1] * noise.gain;
+                noise.position += 2;
+            }
+        }
+
         let start_sample = self.absolute_sample;
         for clip in &mut self.clips {
             if start_sample + frames < clip.start_sample {

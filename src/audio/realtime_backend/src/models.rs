@@ -36,7 +36,8 @@ pub struct TrackData {
     pub steps: Vec<StepData>,
     #[serde(default)]
     pub clips: Vec<ClipData>,
-    // TODO: Add background noise when implemented
+    #[serde(default)]
+    pub background_noise: Option<BackgroundNoiseData>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -46,5 +47,13 @@ pub struct ClipData {
     #[serde(default, alias = "start_time")]
     pub start: f64,
     #[serde(default, alias = "gain")]
+    pub amp: f32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct BackgroundNoiseData {
+    #[serde(default, rename = "type")]
+    pub noise_type: String,
+    #[serde(default, alias = "gain", alias = "amp")]
     pub amp: f32,
 }
