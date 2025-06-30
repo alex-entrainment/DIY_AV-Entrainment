@@ -366,6 +366,74 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     display_current = amplitude_to_db(float(current_value))
 
             prefix, base_after = self._split_name_prefix(name)
+
+            base_name_for_pair = None
+            is_pair_start = False
+            if is_transition and name.startswith('start'):
+                base_name_for_pair_candidate = name[len('start'):]
+                if base_name_for_pair_candidate in transition_pairs and transition_pairs[base_name_for_pair_candidate]['start'] == name:
+                    base_name_for_pair = base_name_for_pair_candidate
+                    is_pair_start = True
+
+            if is_pair_start:
+                start_name = name
+                end_name = transition_pairs[base_name_for_pair]['end']
+                end_default_value = default_params_ordered.get(end_name, default_value)
+                end_current_value = params_to_display.get(end_name, end_default_value)
+                display_start = display_current
+                display_end = end_current_value
+                if isinstance(end_current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
+                    nlow = end_name.lower()
+                    if any(s in nlow for s in ["amp", "gain", "level"]):
+                        from ..utils.amp_utils import amplitude_to_db
+                        display_end = amplitude_to_db(float(end_current_value))
+
+                current_validator = None
+                if param_type_hint == 'int':
+                    current_validator = QIntValidator(-999999, 999999, self)
+                    param_storage_type = 'int'
+                elif param_type_hint == 'float':
+                    current_validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
+                    current_validator.setNotation(QDoubleValidator.StandardNotation)
+                    param_storage_type = 'float'
+
+                hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
+
+                frame = QWidget()
+                row_layout = QGridLayout(frame)
+                row_layout.setContentsMargins(2,2,2,2)
+
+                base_label = QLabel(f"{base_name_for_pair}:")
+                row_layout.addWidget(base_label, 0, 0, Qt.AlignLeft)
+
+                start_label = QLabel("Start:")
+                row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
+                start_entry = QLineEdit(str(display_start) if display_start is not None else "")
+                if current_validator:
+                    start_entry.setValidator(current_validator)
+                start_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                start_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                row_layout.addWidget(start_entry, 0, 2)
+                self.param_widgets[start_name] = {'widget': start_entry, 'type': param_storage_type}
+
+                end_label = QLabel("End:")
+                row_layout.addWidget(end_label, 0, 3, Qt.AlignRight)
+                end_entry = QLineEdit(str(display_end) if display_end is not None else "")
+                if current_validator:
+                    end_entry.setValidator(current_validator)
+                end_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                end_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                row_layout.addWidget(end_entry, 0, 4)
+                self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
+
+                row_layout.addWidget(QLabel(hint_text), 0, 5, Qt.AlignLeft)
+                row_layout.setColumnStretch(0,1); row_layout.setColumnStretch(2,1)
+                row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
+                processed_names.add(start_name)
+                processed_names.add(end_name)
+                self.params_scroll_layout.addWidget(frame)
+                continue
+
             lr_info = self._parse_lr_suffix(base_after)
             if lr_info:
                 base_lr, left_suffix, right_suffix = lr_info
@@ -439,87 +507,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     processed_names.add(left_name)
                     # right_name will be handled separately on its own row
                     continue
-            base_name_for_pair = None
-            is_pair_start = False
-            if is_transition and name.startswith('start'):
-                base_name_for_pair_candidate = name[len('start'):]
-                if base_name_for_pair_candidate in transition_pairs and transition_pairs[base_name_for_pair_candidate]['start'] == name:
-                    base_name_for_pair = base_name_for_pair_candidate
-                    is_pair_start = True
-            
-            frame = QWidget()
-            row_layout = QGridLayout(frame)
-            row_layout.setContentsMargins(2,2,2,2)
-            
-            param_storage_type = 'str'
-            param_type_hint = "any"
-            range_hint = self._get_param_range_hint(name if not is_pair_start else base_name_for_pair)
 
-            if default_value is not None:
-                if isinstance(default_value, bool): param_type_hint = 'bool'
-                elif isinstance(default_value, int): param_type_hint = 'int'
-                elif isinstance(default_value, float): param_type_hint = 'float'
-                elif isinstance(default_value, str): param_type_hint = 'str'
-            else:
-                name_lower = name.lower()
-                if 'bool' in name_lower or 'enable' in name_lower: param_type_hint = 'bool'
-                elif any(s in name_lower for s in ['freq', 'depth', 'dur', 'amp', 'pan', 'rate', 'gain', 'level', 'radius', 'width', 'ratio', 'amount', 'offset', 'range', 'interval']): param_type_hint = 'float'
-                elif any(s in name_lower for s in ['count', 'factor', 'index', 'type']): param_type_hint = 'int'
-                else: param_type_hint = 'str'
-
-            if is_pair_start:
-                start_name = name
-                end_name = transition_pairs[base_name_for_pair]['end']
-                end_default_value = default_params_ordered.get(end_name, default_value)
-                end_current_value = params_to_display.get(end_name, end_default_value)
-                display_start = display_current
-                display_end = end_current_value
-                if isinstance(end_current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
-                    nlow = end_name.lower()
-                    if any(s in nlow for s in ["amp", "gain", "level"]):
-                        from ..utils.amp_utils import amplitude_to_db
-                        display_end = amplitude_to_db(float(end_current_value))
-
-                current_validator = None # Create a new validator instance for each pair or reuse type
-                if param_type_hint == 'int':
-                    current_validator = QIntValidator(-999999, 999999, self) # New instance
-                    param_storage_type = 'int'
-                elif param_type_hint == 'float':
-                    current_validator = QDoubleValidator(-999999.0, 999999.0, 6, self) # New instance
-                    current_validator.setNotation(QDoubleValidator.StandardNotation)
-                    param_storage_type = 'float'
-                # else: validator remains None for string types
-                
-                hint_text = f"({param_storage_type}{', ' + range_hint if range_hint else ''})"
-
-                base_label = QLabel(f"{base_name_for_pair}:")
-                row_layout.addWidget(base_label, 0, 0, Qt.AlignLeft)
-
-                start_label = QLabel("Start:")
-                row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
-                start_entry = QLineEdit(str(display_start) if display_start is not None else "")
-                if current_validator: start_entry.setValidator(current_validator) # Assign directly
-                start_entry.setMinimumWidth(self.ENTRY_WIDTH)
-                start_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                row_layout.addWidget(start_entry, 0, 2)
-                self.param_widgets[start_name] = {'widget': start_entry, 'type': param_storage_type}
-
-                end_label = QLabel("End:")
-                row_layout.addWidget(end_label, 0, 3, Qt.AlignRight)
-                end_entry = QLineEdit(str(display_end) if display_end is not None else "")
-                if current_validator: end_entry.setValidator(current_validator) # Assign directly (can reuse if settings are same, or make another new one)
-                # If you need truly independent validators for start/end (e.g. different ranges), create another new one here.
-                # For simplicity, if they share the same type/range, reusing is fine.
-                end_entry.setMinimumWidth(self.ENTRY_WIDTH)
-                end_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                row_layout.addWidget(end_entry, 0, 4)
-                self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
-
-                row_layout.addWidget(QLabel(hint_text), 0, 5, Qt.AlignLeft)
-                row_layout.setColumnStretch(0,1); row_layout.setColumnStretch(2,1)
-                row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
-                processed_names.add(start_name)
-                processed_names.add(end_name)
             else: # Single parameter or right side of L/R pair
                 widget = None
                 sub_label_txt = ""
