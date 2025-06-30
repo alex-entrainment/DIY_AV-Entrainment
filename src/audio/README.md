@@ -232,3 +232,22 @@ is provided). Step boundaries are shown as dashed lines so you can quickly
 identify when the track transitions from one step to the next. If a file path
 ending in `.html` is supplied, the timeline is saved as a standalone web page.
 
+
+## Web Interface
+
+A small browser-based demo is located in `src/audio/web_ui`. It uses the
+`realtime_backend` crate compiled to WebAssembly to play tracks directly in the
+browser.
+
+1. Build the backend with `wasm-pack`:
+   ```bash
+   cd src/audio/realtime_backend
+   wasm-pack build --target web --release --no-default-features --features web
+   ```
+2. Copy the resulting `pkg` directory into `src/audio/web_ui/`.
+3. Serve the `web_ui` folder with any HTTP server, e.g. `python -m http.server`,
+   and open the page in your browser.
+
+Paste a track JSON object into the text area and press **Start** to hear it
+render in real time.
+
