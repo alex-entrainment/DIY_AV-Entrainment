@@ -1,6 +1,15 @@
 use crate::models::{StepData, TrackData};
 use crate::voices::voices_for_step;
+use std::fs::File;
 
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::errors::Error as SymphoniaError;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+use symphonia::default::{get_codecs, get_probe};
 pub trait Voice: Send + Sync {
     fn process(&mut self, output: &mut [f32]);
     fn is_finished(&self) -> bool;
@@ -55,6 +64,85 @@ pub struct TrackScheduler {
     pub crossfade_curve: CrossfadeCurve,
     pub next_step_sample: usize,
     pub crossfade_active: bool,
+    pub absolute_sample: usize,
+    pub clips: Vec<LoadedClip>,
+}
+
+pub struct LoadedClip {
+    samples: Vec<f32>,
+    start_sample: usize,
+    position: usize,
+    gain: f32,
+}
+
+fn load_clip_file(path: &str, sample_rate: u32) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    let file = File::open(path)?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let probed = get_probe().format(
+        &Hint::new(),
+        mss,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    )?;
+    let mut format = probed.format;
+    let track = format.default_track().ok_or("no default track")?;
+    let mut decoder = get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
+    let src_rate = track.codec_params.sample_rate.ok_or("unknown sample rate")?;
+    let channels = track.codec_params.channels.ok_or("unknown channel count")?.count();
+
+    let mut sample_buf: Option<SampleBuffer<f32>> = None;
+    let mut samples: Vec<f32> = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(SymphoniaError::IoError(_)) => break,
+            Err(SymphoniaError::ResetRequired) => {
+                decoder.reset();
+                continue;
+            }
+            Err(e) => return Err(Box::new(e)),
+        };
+        let decoded = decoder.decode(&packet)?;
+        if sample_buf.is_none() {
+            sample_buf = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec()));
+        }
+        let sbuf = sample_buf.as_mut().unwrap();
+        sbuf.copy_interleaved_ref(decoded);
+        let data = sbuf.samples();
+        for frame in data.chunks(channels) {
+            let l = frame[0];
+            let r = if channels > 1 { frame[1] } else { frame[0] };
+            samples.push(l);
+            samples.push(r);
+        }
+    }
+    if src_rate != sample_rate {
+        samples = resample_linear_stereo(&samples, src_rate, sample_rate);
+    }
+    Ok(samples)
+}
+
+fn resample_linear_stereo(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
+    if src_rate == dst_rate || input.is_empty() {
+        return input.to_vec();
+    }
+    let frames = input.len() / 2;
+    let duration = frames as f64 / src_rate as f64;
+    let out_frames = (duration * dst_rate as f64).round() as usize;
+    let mut out = vec![0.0f32; out_frames * 2];
+    for i in 0..out_frames {
+        let t = i as f64 / dst_rate as f64;
+        let pos = t * src_rate as f64;
+        let idx = pos.floor() as usize;
+        let frac = pos - idx as f64;
+        let idx2 = if idx + 1 < frames { idx + 1 } else { idx };
+        for ch in 0..2 {
+            let x0 = input[idx * 2 + ch];
+            let x1 = input[idx2 * 2 + ch];
+            out[i * 2 + ch] = ((1.0 - frac) * x0 as f64 + frac * x1 as f64) as f32;
+        }
+    }
+    out
 }
 
 impl TrackScheduler {
@@ -66,6 +154,18 @@ impl TrackScheduler {
             "equal_power" => CrossfadeCurve::EqualPower,
             _ => CrossfadeCurve::Linear,
         };
+        let mut clips = Vec::new();
+        for c in &track.clips {
+            if let Ok(samples) = load_clip_file(&c.file_path, track.global_settings.sample_rate) {
+                clips.push(LoadedClip {
+                    samples,
+                    start_sample: (c.start * sample_rate as f64) as usize,
+                    position: 0,
+                    gain: c.amp,
+                });
+            }
+        }
+
         Self {
             track,
             current_sample: 0,
@@ -77,6 +177,8 @@ impl TrackScheduler {
             crossfade_curve,
             next_step_sample: 0,
             crossfade_active: false,
+            absolute_sample: 0,
+            clips,
         }
     }
 
@@ -164,5 +266,32 @@ impl TrackScheduler {
                 self.active_voices.clear();
             }
         }
+
+        let frames = buffer.len() / 2;
+        let start_sample = self.absolute_sample;
+        for clip in &mut self.clips {
+            if start_sample + frames < clip.start_sample {
+                continue;
+            }
+            let mut pos = clip.position;
+            if start_sample < clip.start_sample {
+                let offset = clip.start_sample - start_sample;
+                pos += offset * 2;
+            }
+            for i in 0..frames {
+                let global_idx = start_sample + i;
+                if global_idx < clip.start_sample {
+                    continue;
+                }
+                if pos + 1 >= clip.samples.len() {
+                    break;
+                }
+                buffer[i * 2] += clip.samples[pos] * clip.gain;
+                buffer[i * 2 + 1] += clip.samples[pos + 1] * clip.gain;
+                pos += 2;
+            }
+            clip.position = pos;
+        }
+        self.absolute_sample += frames;
     }
 }
