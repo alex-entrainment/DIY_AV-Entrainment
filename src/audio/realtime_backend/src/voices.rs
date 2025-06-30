@@ -1,5 +1,15 @@
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs::File;
+
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::errors::Error as SymphoniaError;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+use symphonia::default::{get_codecs, get_probe};
 
 use crate::dsp::{pan2, trapezoid_envelope};
 use crate::scheduler::Voice;
@@ -354,6 +364,192 @@ pub struct SpatialAngleModulationTransitionVoice {
     remaining_samples: usize,
     elapsed: f32,
     duration: f32,
+}
+
+pub struct SubliminalEncodeVoice {
+    samples: Vec<f32>,
+    position: usize,
+    remaining_samples: usize,
+}
+
+impl SubliminalEncodeVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let carrier = get_f32(params, "carrierFreq", 17500.0).clamp(15000.0, 20000.0);
+        let amp = get_f32(params, "amp", 0.5);
+        let mode = params
+            .get("mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("sequence")
+            .to_lowercase();
+
+        let mut paths: Vec<String> = Vec::new();
+        if let Some(v) = params.get("audio_paths") {
+            if let Some(s) = v.as_str() {
+                for p in s.split(';') {
+                    let p = p.trim();
+                    if !p.is_empty() {
+                        paths.push(p.to_string());
+                    }
+                }
+            } else if let Some(arr) = v.as_array() {
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        paths.push(s.to_string());
+                    }
+                }
+            }
+        }
+        if paths.is_empty() {
+            if let Some(p) = params.get("audio_path").and_then(|v| v.as_str()) {
+                paths.push(p.to_string());
+            }
+        }
+
+        let mut segments: Vec<Vec<f32>> = Vec::new();
+        for p in &paths {
+            if let Some(seg) = load_and_modulate(p, sample_rate as u32, carrier) {
+                segments.push(seg);
+            }
+        }
+
+        let total_samples = (duration * sample_rate) as usize;
+        if segments.is_empty() || total_samples == 0 {
+            return Self {
+                samples: vec![0.0; total_samples * 2],
+                position: 0,
+                remaining_samples: total_samples,
+            };
+        }
+
+        let mut mono = vec![0.0f32; total_samples];
+        if mode == "stack" {
+            for seg in &segments {
+                for i in 0..total_samples {
+                    mono[i] += seg[i % seg.len()];
+                }
+            }
+            if segments.len() > 1 {
+                for v in &mut mono {
+                    *v /= segments.len() as f32;
+                }
+            }
+        } else {
+            let mut pos = 0usize;
+            let mut idx = 0usize;
+            let pause = sample_rate as usize;
+            while pos < total_samples {
+                let seg = &segments[idx % segments.len()];
+                let len = seg.len().min(total_samples - pos);
+                mono[pos..pos + len].copy_from_slice(&seg[..len]);
+                pos += len;
+                if pos >= total_samples {
+                    break;
+                }
+                let pad = pause.min(total_samples - pos);
+                pos += pad;
+                idx += 1;
+            }
+        }
+
+        let max_val = mono.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        if max_val > 0.0 {
+            for v in &mut mono {
+                *v = *v / max_val * amp;
+            }
+        }
+
+        let mut samples = Vec::with_capacity(total_samples * 2);
+        for s in &mono {
+            samples.push(*s);
+            samples.push(*s);
+        }
+
+        Self {
+            samples,
+            position: 0,
+            remaining_samples: total_samples,
+        }
+    }
+}
+
+fn load_audio_file(path: &str) -> Result<(Vec<f32>, u32), Box<dyn std::error::Error>> {
+    let file = File::open(path)?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let hint = Hint::new();
+    let probed = get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())?;
+    let mut format = probed.format;
+    let track = format.default_track().ok_or("no default track")?;
+    let mut decoder = get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
+    let sample_rate = track.codec_params.sample_rate.ok_or("unknown sample rate")?;
+    let channels = track.codec_params.channels.ok_or("unknown channel count")?.count();
+
+    let mut sample_buf: Option<SampleBuffer<f32>> = None;
+    let mut samples = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(SymphoniaError::IoError(_)) => break,
+            Err(SymphoniaError::ResetRequired) => {
+                decoder.reset();
+                continue;
+            }
+            Err(e) => return Err(Box::new(e)),
+        };
+        let decoded = decoder.decode(&packet)?;
+        if sample_buf.is_none() {
+            sample_buf = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec()));
+        }
+        let sbuf = sample_buf.as_mut().unwrap();
+        sbuf.copy_interleaved_ref(decoded);
+        let data = sbuf.samples();
+        for frame in data.chunks(channels) {
+            let sum: f32 = frame.iter().copied().sum();
+            samples.push(sum / channels as f32);
+        }
+    }
+    Ok((samples, sample_rate))
+}
+
+fn resample_linear(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
+    if src_rate == dst_rate || input.is_empty() {
+        return input.to_vec();
+    }
+    let duration = input.len() as f64 / src_rate as f64;
+    let n_out = (duration * dst_rate as f64).round() as usize;
+    let mut out = Vec::with_capacity(n_out);
+    for i in 0..n_out {
+        let t = i as f64 / dst_rate as f64;
+        let pos = t * src_rate as f64;
+        let idx = pos.floor() as usize;
+        let frac = pos - idx as f64;
+        let x0 = input[idx];
+        let x1 = if idx + 1 < input.len() { input[idx + 1] } else { x0 };
+        out.push(((1.0 - frac) * x0 as f64 + frac * x1 as f64) as f32);
+    }
+    out
+}
+
+fn load_and_modulate(path: &str, sample_rate: u32, carrier: f32) -> Option<Vec<f32>> {
+    let (mut data, sr) = load_audio_file(path).ok()?;
+    if sr != sample_rate {
+        data = resample_linear(&data, sr, sample_rate);
+    }
+    if data.is_empty() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(data.len());
+    for (i, sample) in data.into_iter().enumerate() {
+        let t = i as f32 / sample_rate as f32;
+        let m = (2.0 * std::f32::consts::PI * carrier * t).sin();
+        out.push(sample * m);
+    }
+    let max_val = out.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    if max_val > 0.0 {
+        for v in &mut out {
+            *v /= max_val;
+        }
+    }
+    Some(out)
 }
 
 impl BinauralBeatVoice {
@@ -1865,6 +2061,27 @@ impl Voice for SpatialAngleModulationTransitionVoice {
     }
 }
 
+impl Voice for SubliminalEncodeVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let channels = 2;
+        let frames = output.len() / channels;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let sample = self.samples[self.position];
+            output[i * 2] += sample;
+            output[i * 2 + 1] += self.samples[self.position + 1];
+            self.position += 2;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
 
 pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<Box<dyn Voice>> {
     let mut out: Vec<Box<dyn Voice>> = Vec::new();
@@ -1914,6 +2131,11 @@ fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box
             sample_rate,
         ))),
         "spatial_angle_modulation_transition" => Some(Box::new(SpatialAngleModulationTransitionVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "subliminal_encode" => Some(Box::new(SubliminalEncodeVoice::new(
             &data.params,
             duration,
             sample_rate,
