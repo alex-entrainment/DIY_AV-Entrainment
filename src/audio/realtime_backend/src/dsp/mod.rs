@@ -126,11 +126,11 @@ pub fn sine_wave_varying(freq_array: &[f32], t: &[f32], _sample_rate: f32) -> Ve
     let n = t.len();
     let mut out = Vec::with_capacity(n);
     let mut phase = 2.0 * std::f32::consts::PI * freq_array[0].max(1e-9) * t[0];
-    out.push(phase.sin());
+    out.push(sine_wave(0.0, 0.0, phase));
     for i in 1..n {
         let dt = t[i] - t[i - 1];
         phase += 2.0 * std::f32::consts::PI * freq_array[i].max(1e-9) * dt;
-        out.push(phase.sin());
+        out.push(sine_wave(0.0, 0.0, phase));
     }
     out
 }

@@ -1,5 +1,8 @@
+use crate::dsp::noise_flanger::generate_swept_notch_noise;
+use crate::dsp::{
+    calculate_transition_alpha, generate_brown_noise_samples, generate_pink_noise_samples,
+};
 use crate::models::{StepData, TrackData};
-use crate::dsp::{generate_brown_noise_samples, generate_pink_noise_samples};
 use crate::voices::voices_for_step;
 use std::fs::File;
 
@@ -63,6 +66,7 @@ pub struct TrackScheduler {
     pub sample_rate: f32,
     pub crossfade_samples: usize,
     pub crossfade_curve: CrossfadeCurve,
+    pub crossfade_envelope: Vec<f32>,
     pub next_step_sample: usize,
     pub crossfade_active: bool,
     pub absolute_sample: usize,
@@ -95,8 +99,15 @@ fn load_clip_file(path: &str, sample_rate: u32) -> Result<Vec<f32>, Box<dyn std:
     let mut format = probed.format;
     let track = format.default_track().ok_or("no default track")?;
     let mut decoder = get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
-    let src_rate = track.codec_params.sample_rate.ok_or("unknown sample rate")?;
-    let channels = track.codec_params.channels.ok_or("unknown channel count")?.count();
+    let src_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or("unknown sample rate")?;
+    let channels = track
+        .codec_params
+        .channels
+        .ok_or("unknown channel count")?
+        .count();
 
     let mut sample_buf: Option<SampleBuffer<f32>> = None;
     let mut samples: Vec<f32> = Vec::new();
@@ -112,7 +123,10 @@ fn load_clip_file(path: &str, sample_rate: u32) -> Result<Vec<f32>, Box<dyn std:
         };
         let decoded = decoder.decode(&packet)?;
         if sample_buf.is_none() {
-            sample_buf = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec()));
+            sample_buf = Some(SampleBuffer::<f32>::new(
+                decoded.capacity() as u64,
+                *decoded.spec(),
+            ));
         }
         let sbuf = sample_buf.as_mut().unwrap();
         sbuf.copy_interleaved_ref(decoded);
@@ -178,8 +192,20 @@ impl TrackScheduler {
             let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
             let total_samples = (total_duration * sample_rate as f64) as usize;
             let samples = match noise_cfg.noise_type.to_lowercase().as_str() {
-                "brown" => crate::dsp::generate_brown_noise_samples(total_samples),
-                _ => crate::dsp::generate_pink_noise_samples(total_samples),
+                "brown" => generate_brown_noise_samples(total_samples),
+                "swept_notch" => generate_swept_notch_noise(
+                    total_duration as f32,
+                    track.global_settings.sample_rate,
+                    1.0 / 12.0,
+                    &[(1000.0, 10000.0)],
+                    &[25.0],
+                    &[10],
+                    90.0,
+                    0.0,
+                    "pink",
+                    "sine",
+                ),
+                _ => generate_pink_noise_samples(total_samples),
             };
             let mut stereo = Vec::with_capacity(samples.len() * 2);
             for s in samples {
@@ -204,6 +230,7 @@ impl TrackScheduler {
             sample_rate,
             crossfade_samples,
             crossfade_curve,
+            crossfade_envelope: Vec::new(),
             next_step_sample: 0,
             crossfade_active: false,
             absolute_sample: 0,
@@ -237,6 +264,16 @@ impl TrackScheduler {
                     self.next_voices = voices_for_step(next_step, self.sample_rate);
                     self.crossfade_active = true;
                     self.next_step_sample = 0;
+                    self.crossfade_envelope = calculate_transition_alpha(
+                        self.crossfade_samples as f32 / self.sample_rate,
+                        self.sample_rate,
+                        0.0,
+                        0.0,
+                        match self.crossfade_curve {
+                            CrossfadeCurve::Linear => "linear",
+                            CrossfadeCurve::EqualPower => "logarithmic",
+                        },
+                    );
                 }
             }
         }
@@ -258,7 +295,11 @@ impl TrackScheduler {
                 let idx = i * 2;
                 let progress = self.next_step_sample + i;
                 if progress < self.crossfade_samples {
-                    let ratio = progress as f32 / self.crossfade_samples as f32;
+                    let ratio = if progress < self.crossfade_envelope.len() {
+                        self.crossfade_envelope[progress]
+                    } else {
+                        progress as f32 / self.crossfade_samples as f32
+                    };
                     let (g_out, g_in) = self.crossfade_curve.gains(ratio);
                     buffer[idx] = prev_buf[idx] * g_out + next_buf[idx] * g_in;
                     buffer[idx + 1] = prev_buf[idx + 1] * g_out + next_buf[idx + 1] * g_in;
@@ -280,6 +321,7 @@ impl TrackScheduler {
                 self.next_step_sample = 0;
                 self.active_voices = std::mem::take(&mut self.next_voices);
                 self.crossfade_active = false;
+                self.crossfade_envelope.clear();
             }
         } else {
             for voice in &mut self.active_voices {
