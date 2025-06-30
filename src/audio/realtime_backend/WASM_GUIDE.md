@@ -17,10 +17,10 @@ This document explains how to compile the Rust based realtime DSP backend into a
    cd src/audio/realtime_backend
    ```
 
-2. Build with `wasm-pack`:
+2. Build with `wasm-pack` (using the `web` feature):
 
    ```bash
-   wasm-pack build --target web --release
+   wasm-pack build --target web --release --no-default-features --features web
    ```
 
    This generates a `pkg/` directory containing `realtime_backend.js` and `realtime_backend_bg.wasm`.
