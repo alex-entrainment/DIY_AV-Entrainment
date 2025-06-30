@@ -335,6 +335,142 @@ pub struct QamBeatTransitionVoice {
     cross_idx: usize,
 }
 
+pub struct RhythmicWaveshapingVoice {
+    amp: f32,
+    carrier_freq: f32,
+    mod_freq: f32,
+    mod_depth: f32,
+    shape_amount: f32,
+    pan: f32,
+    carrier_phase: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+}
+
+pub struct RhythmicWaveshapingTransitionVoice {
+    amp: f32,
+    start_carrier_freq: f32,
+    end_carrier_freq: f32,
+    start_mod_freq: f32,
+    end_mod_freq: f32,
+    start_mod_depth: f32,
+    end_mod_depth: f32,
+    start_shape_amount: f32,
+    end_shape_amount: f32,
+    pan: f32,
+    curve: TransitionCurve,
+    initial_offset: f32,
+    post_offset: f32,
+    carrier_phase: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+    duration: f32,
+}
+
+pub struct StereoAmIndependentVoice {
+    amp: f32,
+    carrier_freq: f32,
+    stereo_width_hz: f32,
+    mod_freq_l: f32,
+    mod_depth_l: f32,
+    mod_phase_l: f32,
+    mod_freq_r: f32,
+    mod_depth_r: f32,
+    mod_phase_r: f32,
+    phase_carrier_l: f32,
+    phase_carrier_r: f32,
+    phase_mod_l: f32,
+    phase_mod_r: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+}
+
+pub struct StereoAmIndependentTransitionVoice {
+    amp: f32,
+    start_carrier_freq: f32,
+    end_carrier_freq: f32,
+    start_stereo_width_hz: f32,
+    end_stereo_width_hz: f32,
+    start_mod_freq_l: f32,
+    end_mod_freq_l: f32,
+    start_mod_depth_l: f32,
+    end_mod_depth_l: f32,
+    mod_phase_l: f32,
+    start_mod_freq_r: f32,
+    end_mod_freq_r: f32,
+    start_mod_depth_r: f32,
+    end_mod_depth_r: f32,
+    mod_phase_r: f32,
+    curve: TransitionCurve,
+    initial_offset: f32,
+    post_offset: f32,
+    phase_carrier_l: f32,
+    phase_carrier_r: f32,
+    phase_mod_l: f32,
+    phase_mod_r: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+    duration: f32,
+}
+
+pub struct WaveShapeStereoAmVoice {
+    amp: f32,
+    carrier_freq: f32,
+    shape_mod_freq: f32,
+    shape_mod_depth: f32,
+    shape_amount: f32,
+    stereo_mod_freq_l: f32,
+    stereo_mod_depth_l: f32,
+    stereo_mod_phase_l: f32,
+    stereo_mod_freq_r: f32,
+    stereo_mod_depth_r: f32,
+    stereo_mod_phase_r: f32,
+    phase_carrier: f32,
+    phase_shape: f32,
+    phase_stereo_l: f32,
+    phase_stereo_r: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+}
+
+pub struct WaveShapeStereoAmTransitionVoice {
+    amp: f32,
+    start_carrier_freq: f32,
+    end_carrier_freq: f32,
+    start_shape_mod_freq: f32,
+    end_shape_mod_freq: f32,
+    start_shape_mod_depth: f32,
+    end_shape_mod_depth: f32,
+    start_shape_amount: f32,
+    end_shape_amount: f32,
+    start_stereo_mod_freq_l: f32,
+    end_stereo_mod_freq_l: f32,
+    start_stereo_mod_depth_l: f32,
+    end_stereo_mod_depth_l: f32,
+    stereo_mod_phase_l: f32,
+    start_stereo_mod_freq_r: f32,
+    end_stereo_mod_freq_r: f32,
+    start_stereo_mod_depth_r: f32,
+    end_stereo_mod_depth_r: f32,
+    stereo_mod_phase_r: f32,
+    curve: TransitionCurve,
+    initial_offset: f32,
+    post_offset: f32,
+    phase_carrier: f32,
+    phase_shape: f32,
+    phase_stereo_l: f32,
+    phase_stereo_r: f32,
+    sample_rate: f32,
+    remaining_samples: usize,
+    elapsed: f32,
+    duration: f32,
+}
+
 pub struct SpatialAngleModulationVoice {
     amp: f32,
     carrier_freq: f32,
@@ -1237,6 +1373,266 @@ impl QamBeatTransitionVoice {
     }
 }
 
+impl RhythmicWaveshapingVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.25);
+        let carrier_freq = get_f32(params, "carrierFreq", 200.0);
+        let mod_freq = get_f32(params, "modFreq", 4.0);
+        let mod_depth = get_f32(params, "modDepth", 1.0);
+        let shape_amount = get_f32(params, "shapeAmount", 5.0);
+        let pan = get_f32(params, "pan", 0.0);
+        let total_samples = (duration * sample_rate) as usize;
+        Self {
+            amp,
+            carrier_freq,
+            mod_freq,
+            mod_depth,
+            shape_amount,
+            pan,
+            carrier_phase: 0.0,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+        }
+    }
+}
+
+impl RhythmicWaveshapingTransitionVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.25);
+        let start_carrier_freq = get_f32(params, "startCarrierFreq", 200.0);
+        let end_carrier_freq = get_f32(params, "endCarrierFreq", 80.0);
+        let start_mod_freq = get_f32(params, "startModFreq", 12.0);
+        let end_mod_freq = get_f32(params, "endModFreq", 7.83);
+        let start_mod_depth = get_f32(params, "startModDepth", 1.0);
+        let end_mod_depth = get_f32(params, "endModDepth", 1.0);
+        let start_shape_amount = get_f32(params, "startShapeAmount", 5.0);
+        let end_shape_amount = get_f32(params, "endShapeAmount", 5.0);
+        let pan = get_f32(params, "pan", 0.0);
+        let curve = TransitionCurve::from_str(
+            params
+                .get("transition_curve")
+                .and_then(|v| v.as_str())
+                .unwrap_or("linear"),
+        );
+        let initial_offset = get_f32(params, "initial_offset", 0.0);
+        let post_offset = get_f32(params, "post_offset", 0.0);
+        let total_samples = (duration * sample_rate) as usize;
+        Self {
+            amp,
+            start_carrier_freq,
+            end_carrier_freq,
+            start_mod_freq,
+            end_mod_freq,
+            start_mod_depth,
+            end_mod_depth,
+            start_shape_amount,
+            end_shape_amount,
+            pan,
+            curve,
+            initial_offset,
+            post_offset,
+            carrier_phase: 0.0,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+}
+
+impl StereoAmIndependentVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.25);
+        let carrier_freq = get_f32(params, "carrierFreq", 200.0);
+        let mod_freq_l = get_f32(params, "modFreqL", 4.0);
+        let mod_depth_l = get_f32(params, "modDepthL", 0.8);
+        let mod_phase_l = get_f32(params, "modPhaseL", 0.0);
+        let mod_freq_r = get_f32(params, "modFreqR", 4.0);
+        let mod_depth_r = get_f32(params, "modDepthR", 0.8);
+        let mod_phase_r = get_f32(params, "modPhaseR", 0.0);
+        let stereo_width_hz = get_f32(params, "stereo_width_hz", 0.2);
+        let total_samples = (duration * sample_rate) as usize;
+        Self {
+            amp,
+            carrier_freq,
+            stereo_width_hz,
+            mod_freq_l,
+            mod_depth_l,
+            mod_phase_l,
+            mod_freq_r,
+            mod_depth_r,
+            mod_phase_r,
+            phase_carrier_l: 0.0,
+            phase_carrier_r: 0.0,
+            phase_mod_l: mod_phase_l,
+            phase_mod_r: mod_phase_r,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+        }
+    }
+}
+
+impl StereoAmIndependentTransitionVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.25);
+        let start_carrier_freq = get_f32(params, "startCarrierFreq", 200.0);
+        let end_carrier_freq = get_f32(params, "endCarrierFreq", 250.0);
+        let start_mod_freq_l = get_f32(params, "startModFreqL", 4.0);
+        let end_mod_freq_l = get_f32(params, "endModFreqL", 6.0);
+        let start_mod_depth_l = get_f32(params, "startModDepthL", 0.8);
+        let end_mod_depth_l = get_f32(params, "endModDepthL", 0.8);
+        let mod_phase_l = get_f32(params, "startModPhaseL", 0.0);
+        let start_mod_freq_r = get_f32(params, "startModFreqR", 4.1);
+        let end_mod_freq_r = get_f32(params, "endModFreqR", 5.9);
+        let start_mod_depth_r = get_f32(params, "startModDepthR", 0.8);
+        let end_mod_depth_r = get_f32(params, "endModDepthR", 0.8);
+        let mod_phase_r = get_f32(params, "startModPhaseR", 0.0);
+        let start_stereo_width_hz = get_f32(params, "startStereoWidthHz", 0.2);
+        let end_stereo_width_hz = get_f32(params, "endStereoWidthHz", 0.2);
+        let curve = TransitionCurve::from_str(
+            params
+                .get("transition_curve")
+                .and_then(|v| v.as_str())
+                .unwrap_or("linear"),
+        );
+        let initial_offset = get_f32(params, "initial_offset", 0.0);
+        let post_offset = get_f32(params, "post_offset", 0.0);
+        let total_samples = (duration * sample_rate) as usize;
+        Self {
+            amp,
+            start_carrier_freq,
+            end_carrier_freq,
+            start_stereo_width_hz,
+            end_stereo_width_hz,
+            start_mod_freq_l,
+            end_mod_freq_l,
+            start_mod_depth_l,
+            end_mod_depth_l,
+            mod_phase_l,
+            start_mod_freq_r,
+            end_mod_freq_r,
+            start_mod_depth_r,
+            end_mod_depth_r,
+            mod_phase_r,
+            curve,
+            initial_offset,
+            post_offset,
+            phase_carrier_l: 0.0,
+            phase_carrier_r: 0.0,
+            phase_mod_l: mod_phase_l,
+            phase_mod_r: mod_phase_r,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+}
+
+impl WaveShapeStereoAmVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.15);
+        let carrier_freq = get_f32(params, "carrierFreq", 200.0);
+        let shape_mod_freq = get_f32(params, "shapeModFreq", 4.0);
+        let shape_mod_depth = get_f32(params, "shapeModDepth", 0.8);
+        let shape_amount = get_f32(params, "shapeAmount", 0.5);
+        let stereo_mod_freq_l = get_f32(params, "stereoModFreqL", 4.1);
+        let stereo_mod_depth_l = get_f32(params, "stereoModDepthL", 0.8);
+        let stereo_mod_phase_l = get_f32(params, "stereoModPhaseL", 0.0);
+        let stereo_mod_freq_r = get_f32(params, "stereoModFreqR", 4.0);
+        let stereo_mod_depth_r = get_f32(params, "stereoModDepthR", 0.8);
+        let stereo_mod_phase_r = get_f32(params, "stereoModPhaseR", std::f32::consts::FRAC_PI_2);
+        let total_samples = (duration * sample_rate) as usize;
+        Self {
+            amp,
+            carrier_freq,
+            shape_mod_freq,
+            shape_mod_depth,
+            shape_amount,
+            stereo_mod_freq_l,
+            stereo_mod_depth_l,
+            stereo_mod_phase_l,
+            stereo_mod_freq_r,
+            stereo_mod_depth_r,
+            stereo_mod_phase_r,
+            phase_carrier: 0.0,
+            phase_shape: 0.0,
+            phase_stereo_l: stereo_mod_phase_l,
+            phase_stereo_r: stereo_mod_phase_r,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+        }
+    }
+}
+
+impl WaveShapeStereoAmTransitionVoice {
+    pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
+        let amp = get_f32(params, "amp", 0.15);
+        let start_carrier_freq = get_f32(params, "startCarrierFreq", 200.0);
+        let end_carrier_freq = get_f32(params, "endCarrierFreq", 100.0);
+        let start_shape_mod_freq = get_f32(params, "startShapeModFreq", 4.0);
+        let end_shape_mod_freq = get_f32(params, "endShapeModFreq", 8.0);
+        let start_shape_mod_depth = get_f32(params, "startShapeModDepth", 0.8);
+        let end_shape_mod_depth = get_f32(params, "endShapeModDepth", 0.8);
+        let start_shape_amount = get_f32(params, "startShapeAmount", 0.5);
+        let end_shape_amount = get_f32(params, "endShapeAmount", 0.5);
+        let start_stereo_mod_freq_l = get_f32(params, "startStereoModFreqL", 4.1);
+        let end_stereo_mod_freq_l = get_f32(params, "endStereoModFreqL", 6.0);
+        let start_stereo_mod_depth_l = get_f32(params, "startStereoModDepthL", 0.8);
+        let end_stereo_mod_depth_l = get_f32(params, "endStereoModDepthL", 0.8);
+        let stereo_mod_phase_l = get_f32(params, "startStereoModPhaseL", 0.0);
+        let start_stereo_mod_freq_r = get_f32(params, "startStereoModFreqR", 4.0);
+        let end_stereo_mod_freq_r = get_f32(params, "endStereoModFreqR", 6.1);
+        let start_stereo_mod_depth_r = get_f32(params, "startStereoModDepthR", 0.9);
+        let end_stereo_mod_depth_r = get_f32(params, "endStereoModDepthR", 0.9);
+        let stereo_mod_phase_r = get_f32(params, "startStereoModPhaseR", std::f32::consts::FRAC_PI_2);
+        let curve = TransitionCurve::from_str(
+            params
+                .get("transition_curve")
+                .and_then(|v| v.as_str())
+                .unwrap_or("linear"),
+        );
+        let initial_offset = get_f32(params, "initial_offset", 0.0);
+        let post_offset = get_f32(params, "post_offset", 0.0);
+        let total_samples = (duration * sample_rate) as usize;
+        Self {
+            amp,
+            start_carrier_freq,
+            end_carrier_freq,
+            start_shape_mod_freq,
+            end_shape_mod_freq,
+            start_shape_mod_depth,
+            end_shape_mod_depth,
+            start_shape_amount,
+            end_shape_amount,
+            start_stereo_mod_freq_l,
+            end_stereo_mod_freq_l,
+            start_stereo_mod_depth_l,
+            end_stereo_mod_depth_l,
+            stereo_mod_phase_l,
+            start_stereo_mod_freq_r,
+            end_stereo_mod_freq_r,
+            start_stereo_mod_depth_r,
+            end_stereo_mod_depth_r,
+            stereo_mod_phase_r,
+            curve,
+            initial_offset,
+            post_offset,
+            phase_carrier: 0.0,
+            phase_shape: 0.0,
+            phase_stereo_l: stereo_mod_phase_l,
+            phase_stereo_r: stereo_mod_phase_r,
+            sample_rate,
+            remaining_samples: total_samples,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+}
+
 impl SpatialAngleModulationVoice {
     pub fn new(params: &HashMap<String, Value>, duration: f32, sample_rate: f32) -> Self {
         let amp = get_f32(params, "amp", 0.7);
@@ -2095,6 +2491,298 @@ impl Voice for QamBeatTransitionVoice {
     }
 }
 
+impl Voice for RhythmicWaveshapingVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+            let t = self.elapsed;
+
+            let carrier = self.carrier_phase.sin();
+            let lfo = (2.0 * std::f32::consts::PI * self.mod_freq * t).sin();
+            let shape_lfo = 1.0 - self.mod_depth * (1.0 - lfo) * 0.5;
+            let modulated = carrier * shape_lfo;
+            let sa = self.shape_amount.max(1e-6);
+            let shaped = (modulated * sa).tanh() / sa.tanh();
+            let mono = shaped * self.amp;
+            let (l, r) = pan2(mono, self.pan);
+            output[i * 2] += l;
+            output[i * 2 + 1] += r;
+
+            self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for RhythmicWaveshapingTransitionVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+            let t = self.elapsed;
+            let mut alpha = if t < self.initial_offset {
+                0.0
+            } else if t > self.duration - self.post_offset {
+                1.0
+            } else {
+                let span = self.duration - self.initial_offset - self.post_offset;
+                if span > 0.0 {
+                    (t - self.initial_offset) / span
+                } else {
+                    1.0
+                }
+            };
+            alpha = self.curve.apply(alpha.clamp(0.0, 1.0));
+
+            let carrier_freq =
+                self.start_carrier_freq + (self.end_carrier_freq - self.start_carrier_freq) * alpha;
+            let mod_freq = self.start_mod_freq + (self.end_mod_freq - self.start_mod_freq) * alpha;
+            let mod_depth = self.start_mod_depth + (self.end_mod_depth - self.start_mod_depth) * alpha;
+            let shape_amount =
+                self.start_shape_amount + (self.end_shape_amount - self.start_shape_amount) * alpha;
+
+            let carrier = self.carrier_phase.sin();
+            let lfo = (2.0 * std::f32::consts::PI * mod_freq * t).sin();
+            let shape_lfo = 1.0 - mod_depth * (1.0 - lfo) * 0.5;
+            let modulated = carrier * shape_lfo;
+            let sa = shape_amount.max(1e-6);
+            let shaped = (modulated * sa).tanh() / sa.tanh();
+            let mono = shaped * self.amp;
+            let (l, r) = pan2(mono, self.pan);
+            output[i * 2] += l;
+            output[i * 2 + 1] += r;
+
+            self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for StereoAmIndependentVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+
+            let carrier_l = self.phase_carrier_l.sin();
+            let carrier_r = self.phase_carrier_r.sin();
+            let lfo_l = self.phase_mod_l.sin();
+            let lfo_r = self.phase_mod_r.sin();
+            let mod_l = 1.0 - self.mod_depth_l * (1.0 - lfo_l) * 0.5;
+            let mod_r = 1.0 - self.mod_depth_r * (1.0 - lfo_r) * 0.5;
+
+            output[i * 2] += carrier_l * mod_l * self.amp;
+            output[i * 2 + 1] += carrier_r * mod_r * self.amp;
+
+            let freq_l = self.carrier_freq - self.stereo_width_hz * 0.5;
+            let freq_r = self.carrier_freq + self.stereo_width_hz * 0.5;
+            self.phase_carrier_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_carrier_r += 2.0 * std::f32::consts::PI * freq_r * dt;
+            self.phase_mod_l += 2.0 * std::f32::consts::PI * self.mod_freq_l * dt;
+            self.phase_mod_r += 2.0 * std::f32::consts::PI * self.mod_freq_r * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for StereoAmIndependentTransitionVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+            let t = self.elapsed;
+            let mut alpha = if t < self.initial_offset {
+                0.0
+            } else if t > self.duration - self.post_offset {
+                1.0
+            } else {
+                let span = self.duration - self.initial_offset - self.post_offset;
+                if span > 0.0 {
+                    (t - self.initial_offset) / span
+                } else {
+                    1.0
+                }
+            };
+            alpha = self.curve.apply(alpha.clamp(0.0, 1.0));
+
+            let carrier_freq =
+                self.start_carrier_freq + (self.end_carrier_freq - self.start_carrier_freq) * alpha;
+            let stereo_width_hz =
+                self.start_stereo_width_hz + (self.end_stereo_width_hz - self.start_stereo_width_hz) * alpha;
+            let mod_freq_l =
+                self.start_mod_freq_l + (self.end_mod_freq_l - self.start_mod_freq_l) * alpha;
+            let mod_freq_r =
+                self.start_mod_freq_r + (self.end_mod_freq_r - self.start_mod_freq_r) * alpha;
+            let mod_depth_l =
+                self.start_mod_depth_l + (self.end_mod_depth_l - self.start_mod_depth_l) * alpha;
+            let mod_depth_r =
+                self.start_mod_depth_r + (self.end_mod_depth_r - self.start_mod_depth_r) * alpha;
+
+            let carrier_l = self.phase_carrier_l.sin();
+            let carrier_r = self.phase_carrier_r.sin();
+            let lfo_l = self.phase_mod_l.sin();
+            let lfo_r = self.phase_mod_r.sin();
+            let mod_l = 1.0 - mod_depth_l * (1.0 - lfo_l) * 0.5;
+            let mod_r = 1.0 - mod_depth_r * (1.0 - lfo_r) * 0.5;
+
+            output[i * 2] += carrier_l * mod_l * self.amp;
+            output[i * 2 + 1] += carrier_r * mod_r * self.amp;
+
+            let freq_l = carrier_freq - stereo_width_hz * 0.5;
+            let freq_r = carrier_freq + stereo_width_hz * 0.5;
+            self.phase_carrier_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_carrier_r += 2.0 * std::f32::consts::PI * freq_r * dt;
+            self.phase_mod_l += 2.0 * std::f32::consts::PI * mod_freq_l * dt;
+            self.phase_mod_r += 2.0 * std::f32::consts::PI * mod_freq_r * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for WaveShapeStereoAmVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+
+            let carrier = self.phase_carrier.sin();
+            let shape_lfo_wave = self.phase_shape.sin();
+            let shape_env = 1.0 - self.shape_mod_depth * (1.0 - shape_lfo_wave) * 0.5;
+            let modulated = carrier * shape_env;
+            let sa = self.shape_amount.max(1e-6);
+            let shaped = (modulated * sa).tanh() / sa.tanh();
+
+            let stereo_lfo_l = self.phase_stereo_l.sin();
+            let stereo_lfo_r = self.phase_stereo_r.sin();
+            let mod_l = 1.0 - self.stereo_mod_depth_l * (1.0 - stereo_lfo_l) * 0.5;
+            let mod_r = 1.0 - self.stereo_mod_depth_r * (1.0 - stereo_lfo_r) * 0.5;
+
+            output[i * 2] += shaped * mod_l * self.amp;
+            output[i * 2 + 1] += shaped * mod_r * self.amp;
+
+            self.phase_carrier += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.phase_shape += 2.0 * std::f32::consts::PI * self.shape_mod_freq * dt;
+            self.phase_stereo_l += 2.0 * std::f32::consts::PI * self.stereo_mod_freq_l * dt;
+            self.phase_stereo_r += 2.0 * std::f32::consts::PI * self.stereo_mod_freq_r * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
+impl Voice for WaveShapeStereoAmTransitionVoice {
+    fn process(&mut self, output: &mut [f32]) {
+        let frames = output.len() / 2;
+        for i in 0..frames {
+            if self.remaining_samples == 0 {
+                break;
+            }
+            let dt = 1.0 / self.sample_rate;
+            let t = self.elapsed;
+            let mut alpha = if t < self.initial_offset {
+                0.0
+            } else if t > self.duration - self.post_offset {
+                1.0
+            } else {
+                let span = self.duration - self.initial_offset - self.post_offset;
+                if span > 0.0 {
+                    (t - self.initial_offset) / span
+                } else {
+                    1.0
+                }
+            };
+            alpha = self.curve.apply(alpha.clamp(0.0, 1.0));
+
+            let carrier_freq =
+                self.start_carrier_freq + (self.end_carrier_freq - self.start_carrier_freq) * alpha;
+            let shape_mod_freq =
+                self.start_shape_mod_freq + (self.end_shape_mod_freq - self.start_shape_mod_freq) * alpha;
+            let shape_mod_depth =
+                self.start_shape_mod_depth + (self.end_shape_mod_depth - self.start_shape_mod_depth) * alpha;
+            let shape_amount =
+                self.start_shape_amount + (self.end_shape_amount - self.start_shape_amount) * alpha;
+            let stereo_mod_freq_l =
+                self.start_stereo_mod_freq_l + (self.end_stereo_mod_freq_l - self.start_stereo_mod_freq_l) * alpha;
+            let stereo_mod_freq_r =
+                self.start_stereo_mod_freq_r + (self.end_stereo_mod_freq_r - self.start_stereo_mod_freq_r) * alpha;
+            let stereo_mod_depth_l =
+                self.start_stereo_mod_depth_l + (self.end_stereo_mod_depth_l - self.start_stereo_mod_depth_l) * alpha;
+            let stereo_mod_depth_r =
+                self.start_stereo_mod_depth_r + (self.end_stereo_mod_depth_r - self.start_stereo_mod_depth_r) * alpha;
+
+            let carrier = self.phase_carrier.sin();
+            let shape_lfo_wave = self.phase_shape.sin();
+            let shape_env = 1.0 - shape_mod_depth * (1.0 - shape_lfo_wave) * 0.5;
+            let modulated = carrier * shape_env;
+            let sa = shape_amount.max(1e-6);
+            let shaped = (modulated * sa).tanh() / sa.tanh();
+
+            let stereo_lfo_l = self.phase_stereo_l.sin();
+            let stereo_lfo_r = self.phase_stereo_r.sin();
+            let mod_l = 1.0 - stereo_mod_depth_l * (1.0 - stereo_lfo_l) * 0.5;
+            let mod_r = 1.0 - stereo_mod_depth_r * (1.0 - stereo_lfo_r) * 0.5;
+
+            output[i * 2] += shaped * mod_l * self.amp;
+            output[i * 2 + 1] += shaped * mod_r * self.amp;
+
+            self.phase_carrier += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.phase_shape += 2.0 * std::f32::consts::PI * shape_mod_freq * dt;
+            self.phase_stereo_l += 2.0 * std::f32::consts::PI * stereo_mod_freq_l * dt;
+            self.phase_stereo_r += 2.0 * std::f32::consts::PI * stereo_mod_freq_r * dt;
+
+            self.elapsed += dt;
+            self.remaining_samples -= 1;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.remaining_samples == 0
+    }
+}
+
 impl Voice for SpatialAngleModulationVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
@@ -2329,6 +3017,39 @@ fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box
             duration,
             sample_rate,
         ))),
+        "rhythmic_waveshaping" => Some(Box::new(RhythmicWaveshapingVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "rhythmic_waveshaping_transition" =>
+            Some(Box::new(RhythmicWaveshapingTransitionVoice::new(
+                &data.params,
+                duration,
+                sample_rate,
+            ))),
+        "stereo_am_independent" => Some(Box::new(StereoAmIndependentVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "stereo_am_independent_transition" =>
+            Some(Box::new(StereoAmIndependentTransitionVoice::new(
+                &data.params,
+                duration,
+                sample_rate,
+            ))),
+        "wave_shape_stereo_am" => Some(Box::new(WaveShapeStereoAmVoice::new(
+            &data.params,
+            duration,
+            sample_rate,
+        ))),
+        "wave_shape_stereo_am_transition" =>
+            Some(Box::new(WaveShapeStereoAmTransitionVoice::new(
+                &data.params,
+                duration,
+                sample_rate,
+            ))),
         "spatial_angle_modulation" => Some(Box::new(SpatialAngleModulationVoice::new(
             &data.params,
             duration,
