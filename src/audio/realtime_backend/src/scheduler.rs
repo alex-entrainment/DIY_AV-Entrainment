@@ -239,6 +239,91 @@ impl TrackScheduler {
         }
     }
 
+    /// Replace the current track data while preserving playback progress.
+    pub fn update_track(&mut self, track: TrackData) {
+        let abs_samples = self.absolute_sample;
+
+        self.sample_rate = track.global_settings.sample_rate as f32;
+        self.crossfade_samples =
+            (track.global_settings.crossfade_duration * self.sample_rate as f64) as usize;
+        self.crossfade_curve = match track.global_settings.crossfade_curve.as_str() {
+            "equal_power" => CrossfadeCurve::EqualPower,
+            _ => CrossfadeCurve::Linear,
+        };
+
+        self.track = track.clone();
+
+        self.clips.clear();
+        for c in &track.clips {
+            if let Ok(samples) = load_clip_file(&c.file_path, track.global_settings.sample_rate) {
+                let start_sample = (c.start * self.sample_rate as f64) as usize;
+                let position = if abs_samples > start_sample {
+                    (abs_samples - start_sample) * 2
+                } else {
+                    0
+                };
+                self.clips.push(LoadedClip {
+                    samples,
+                    start_sample,
+                    position,
+                    gain: c.amp,
+                });
+            }
+        }
+
+        self.background_noise = if let Some(noise_cfg) = &track.background_noise {
+            let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
+            let total_samples = (total_duration * self.sample_rate as f64) as usize;
+            let samples = match noise_cfg.noise_type.to_lowercase().as_str() {
+                "brown" => generate_brown_noise_samples(total_samples),
+                "swept_notch" => generate_swept_notch_noise(
+                    total_duration as f32,
+                    track.global_settings.sample_rate,
+                    1.0 / 12.0,
+                    &[(1000.0, 10000.0)],
+                    &[25.0],
+                    &[10],
+                    90.0,
+                    0.0,
+                    "pink",
+                    "sine",
+                ),
+                _ => generate_pink_noise_samples(total_samples),
+            };
+            let mut stereo = Vec::with_capacity(samples.len() * 2);
+            for s in samples {
+                stereo.push(s);
+                stereo.push(s);
+            }
+            let pos = (abs_samples * 2).min(stereo.len());
+            Some(BackgroundNoise {
+                samples: stereo,
+                position: pos,
+                gain: noise_cfg.amp,
+            })
+        } else {
+            None
+        };
+
+        let mut remaining = abs_samples;
+        self.current_step = 0;
+        self.current_sample = 0;
+        for (idx, step) in track.steps.iter().enumerate() {
+            let step_samples = (step.duration * self.sample_rate as f64) as usize;
+            if remaining < step_samples {
+                self.current_step = idx;
+                self.current_sample = remaining;
+                break;
+            }
+            remaining = remaining.saturating_sub(step_samples);
+        }
+
+        self.active_voices.clear();
+        self.next_voices.clear();
+        self.crossfade_active = false;
+        self.next_step_sample = 0;
+    }
+
     pub fn process_block(&mut self, buffer: &mut [f32]) {
         buffer.fill(0.0);
 
