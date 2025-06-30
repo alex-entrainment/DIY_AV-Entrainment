@@ -119,3 +119,142 @@ pub fn trapezoid_envelope(
         1.0
     }
 }
+
+pub fn sine_wave_varying(freq_array: &[f32], t: &[f32], _sample_rate: f32) -> Vec<f32> {
+    if t.len() == 0 || freq_array.len() != t.len() {
+        return Vec::new();
+    }
+    let n = t.len();
+    let mut out = Vec::with_capacity(n);
+    let mut phase = 2.0 * std::f32::consts::PI * freq_array[0].max(1e-9) * t[0];
+    out.push(phase.sin());
+    for i in 1..n {
+        let dt = t[i] - t[i - 1];
+        phase += 2.0 * std::f32::consts::PI * freq_array[i].max(1e-9) * dt;
+        out.push(phase.sin());
+    }
+    out
+}
+
+pub fn linen_envelope(t: &[f32], attack: f32, release: f32) -> Vec<f32> {
+    let total_samples = t.len();
+    if total_samples == 0 {
+        return Vec::new();
+    }
+    let duration = t[total_samples - 1] - t[0] + if total_samples > 1 { t[1] - t[0] } else { 0.0 };
+    let sr = if duration > 0.0 { total_samples as f32 / duration } else { 44100.0 };
+
+    let mut attack_s = (attack.max(0.0) * sr) as usize;
+    let mut release_s = (release.max(0.0) * sr) as usize;
+    if attack_s + release_s > total_samples && attack_s + release_s > 0 {
+        let scale = total_samples as f32 / (attack_s + release_s) as f32;
+        attack_s = (attack_s as f32 * scale) as usize;
+        release_s = total_samples.saturating_sub(attack_s);
+    }
+    let sustain_s = total_samples.saturating_sub(attack_s + release_s);
+
+    let mut env = Vec::with_capacity(total_samples);
+    for i in 0..attack_s {
+        env.push(i as f32 / attack_s as f32);
+    }
+    for _ in 0..sustain_s {
+        env.push(1.0);
+    }
+    for i in 0..release_s {
+        env.push(1.0 - (i as f32 / release_s as f32));
+    }
+    env.truncate(total_samples);
+    env
+}
+
+pub fn create_linear_fade_envelope(
+    total_duration: f32,
+    sample_rate: u32,
+    fade_duration: f32,
+    start_amp: f32,
+    end_amp: f32,
+    fade_type: &str,
+) -> Vec<f32> {
+    let total_samples = (total_duration * sample_rate as f32) as usize;
+    if total_samples == 0 {
+        return Vec::new();
+    }
+    let fade_samples = (fade_duration * sample_rate as f32).min(total_samples as f32) as usize;
+    let mut env = vec![1.0f32; total_samples];
+    if fade_samples == 0 {
+        let fill = if fade_type == "in" { end_amp } else { start_amp };
+        env.fill(fill);
+        return env;
+    }
+
+    match fade_type {
+        "in" => {
+            for i in 0..fade_samples {
+                let alpha = i as f32 / fade_samples as f32;
+                env[i] = start_amp + alpha * (end_amp - start_amp);
+            }
+            for v in env.iter_mut().skip(fade_samples) {
+                *v = end_amp;
+            }
+        }
+        "out" => {
+            let sustain = total_samples.saturating_sub(fade_samples);
+            for i in 0..sustain {
+                env[i] = start_amp;
+            }
+            for i in 0..fade_samples {
+                let alpha = i as f32 / fade_samples as f32;
+                env[sustain + i] = start_amp + alpha * (end_amp - start_amp);
+            }
+        }
+        _ => {}
+    }
+    env
+}
+
+pub fn calculate_transition_alpha(
+    total_duration: f32,
+    sample_rate: f32,
+    initial_offset: f32,
+    post_offset: f32,
+    curve: &str,
+) -> Vec<f32> {
+    let n = (total_duration * sample_rate) as usize;
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut alpha = Vec::with_capacity(n);
+    let dt = 1.0 / sample_rate;
+    for i in 0..n {
+        let t = i as f32 * dt;
+        let val = if t < initial_offset {
+            0.0
+        } else if t > total_duration - post_offset {
+            1.0
+        } else {
+            let span = total_duration - initial_offset - post_offset;
+            if span > 0.0 {
+                (t - initial_offset) / span
+            } else {
+                1.0
+            }
+        };
+        alpha.push(val);
+    }
+
+    match curve {
+        "logarithmic" => {
+            for a in &mut alpha {
+                *a = 1.0 - (1.0 - *a).powi(2);
+            }
+        }
+        "exponential" => {
+            for a in &mut alpha {
+                *a = a.powi(2);
+            }
+        }
+        _ => {}
+    }
+
+    alpha
+}
