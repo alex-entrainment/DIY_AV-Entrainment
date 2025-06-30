@@ -1,7 +1,5 @@
 use crate::dsp::noise_flanger::generate_swept_notch_noise;
-use crate::dsp::{
-    calculate_transition_alpha, generate_brown_noise_samples, generate_pink_noise_samples,
-};
+use crate::dsp::{generate_brown_noise_samples, generate_pink_noise_samples};
 use crate::models::{StepData, TrackData};
 use crate::voices::voices_for_step;
 use std::fs::File;
@@ -65,6 +63,7 @@ pub struct TrackScheduler {
     pub next_voices: Vec<Box<dyn Voice>>,
     pub sample_rate: f32,
     pub crossfade_samples: usize,
+    pub current_crossfade_samples: usize,
     pub crossfade_curve: CrossfadeCurve,
     pub crossfade_envelope: Vec<f32>,
     pub next_step_sample: usize,
@@ -229,6 +228,7 @@ impl TrackScheduler {
             next_voices: Vec::new(),
             sample_rate,
             crossfade_samples,
+            current_crossfade_samples: 0,
             crossfade_curve,
             crossfade_envelope: Vec::new(),
             next_step_sample: 0,
@@ -321,6 +321,7 @@ impl TrackScheduler {
         self.active_voices.clear();
         self.next_voices.clear();
         self.crossfade_active = false;
+        self.current_crossfade_samples = 0;
         self.next_step_sample = 0;
     }
 
@@ -345,20 +346,20 @@ impl TrackScheduler {
             let next_step = &self.track.steps[self.current_step + 1];
             if !steps_have_continuous_voices(step, next_step) {
                 let step_samples = (step.duration * self.sample_rate as f64) as usize;
-                if self.current_sample >= step_samples.saturating_sub(self.crossfade_samples) {
+                let fade_len = self.crossfade_samples.min(step_samples);
+                if self.current_sample >= step_samples.saturating_sub(fade_len) {
                     self.next_voices = voices_for_step(next_step, self.sample_rate);
                     self.crossfade_active = true;
                     self.next_step_sample = 0;
-                    self.crossfade_envelope = calculate_transition_alpha(
-                        self.crossfade_samples as f32 / self.sample_rate,
-                        self.sample_rate,
-                        0.0,
-                        0.0,
-                        match self.crossfade_curve {
-                            CrossfadeCurve::Linear => "linear",
-                            CrossfadeCurve::EqualPower => "logarithmic",
-                        },
-                    );
+                    let next_samples = (next_step.duration * self.sample_rate as f64) as usize;
+                    self.current_crossfade_samples = self.crossfade_samples.min(step_samples).min(next_samples);
+                    self.crossfade_envelope = if self.current_crossfade_samples <= 1 {
+                        vec![0.0; self.current_crossfade_samples]
+                    } else {
+                        (0..self.current_crossfade_samples)
+                            .map(|i| i as f32 / (self.current_crossfade_samples - 1) as f32)
+                            .collect()
+                    };
                 }
             }
         }
@@ -379,11 +380,11 @@ impl TrackScheduler {
             for i in 0..frames {
                 let idx = i * 2;
                 let progress = self.next_step_sample + i;
-                if progress < self.crossfade_samples {
+                if progress < self.current_crossfade_samples {
                     let ratio = if progress < self.crossfade_envelope.len() {
                         self.crossfade_envelope[progress]
                     } else {
-                        progress as f32 / self.crossfade_samples as f32
+                        progress as f32 / (self.current_crossfade_samples - 1) as f32
                     };
                     let (g_out, g_in) = self.crossfade_curve.gains(ratio);
                     buffer[idx] = prev_buf[idx] * g_out + next_buf[idx] * g_in;
@@ -400,13 +401,14 @@ impl TrackScheduler {
             self.active_voices.retain(|v| !v.is_finished());
             self.next_voices.retain(|v| !v.is_finished());
 
-            if self.next_step_sample >= self.crossfade_samples {
+            if self.next_step_sample >= self.current_crossfade_samples {
                 self.current_step += 1;
                 self.current_sample = self.next_step_sample;
                 self.next_step_sample = 0;
                 self.active_voices = std::mem::take(&mut self.next_voices);
                 self.crossfade_active = false;
                 self.crossfade_envelope.clear();
+                self.current_crossfade_samples = 0;
             }
         } else {
             for voice in &mut self.active_voices {
@@ -462,5 +464,30 @@ impl TrackScheduler {
             clip.position = pos;
         }
         self.absolute_sample += frames;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CrossfadeCurve;
+
+    #[test]
+    fn test_fade_curves_match_python() {
+        let samples = 5;
+        for curve in [CrossfadeCurve::Linear, CrossfadeCurve::EqualPower] {
+            for i in 0..samples {
+                let ratio = i as f32 / (samples - 1) as f32;
+                let (g_out, g_in) = curve.gains(ratio);
+                let (exp_out, exp_in) = match curve {
+                    CrossfadeCurve::Linear => (1.0 - ratio, ratio),
+                    CrossfadeCurve::EqualPower => {
+                        let theta = ratio * std::f32::consts::FRAC_PI_2;
+                        (theta.cos(), theta.sin())
+                    }
+                };
+                assert!((g_out - exp_out).abs() < 1e-6);
+                assert!((g_in - exp_in).abs() < 1e-6);
+            }
+        }
     }
 }
