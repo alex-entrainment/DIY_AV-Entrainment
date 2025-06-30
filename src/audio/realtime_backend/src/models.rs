@@ -34,5 +34,17 @@ pub struct GlobalSettings {
 pub struct TrackData {
     pub global_settings: GlobalSettings,
     pub steps: Vec<StepData>,
-    // TODO: Add background noise and clips when implemented
+    #[serde(default)]
+    pub clips: Vec<ClipData>,
+    // TODO: Add background noise when implemented
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ClipData {
+    #[serde(alias = "path", alias = "file")]
+    pub file_path: String,
+    #[serde(default, alias = "start_time")]
+    pub start: f64,
+    #[serde(default, alias = "gain")]
+    pub amp: f32,
 }
