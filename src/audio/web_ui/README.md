@@ -17,7 +17,7 @@ from a web page.
 
 ## Running the Demo
 
-Install the npm dependencies and start the development server:
+Install the npm dependencies and start the development server. **Vite 5 requires Node.js 20 or newer**, so ensure you have an up-to-date Node.js installation:
 
 ```bash
 npm install
