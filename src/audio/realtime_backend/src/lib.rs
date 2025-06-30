@@ -10,8 +10,10 @@ use scheduler::TrackScheduler;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use once_cell::sync::Lazy;
+use crossbeam::channel::{unbounded, Sender};
 
 static ENGINE_STATE: Lazy<Mutex<Option<Arc<Mutex<TrackScheduler>>>>> = Lazy::new(|| Mutex::new(None));
+static STOP_SENDER: Lazy<Mutex<Option<Sender<()>>>> = Lazy::new(|| Mutex::new(None));
 
 #[pyfunction]
 fn start_stream(track_json_str: String) -> PyResult<()> {
@@ -19,8 +21,12 @@ fn start_stream(track_json_str: String) -> PyResult<()> {
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
     let scheduler = Arc::new(Mutex::new(TrackScheduler::new(track_data)));
     *ENGINE_STATE.lock() = Some(scheduler.clone());
+
+    let (tx, rx) = unbounded();
+    *STOP_SENDER.lock() = Some(tx);
+
     std::thread::spawn(move || {
-        audio_io::run_audio_stream(scheduler);
+        audio_io::run_audio_stream(scheduler, rx);
     });
     Ok(())
 }
@@ -28,7 +34,9 @@ fn start_stream(track_json_str: String) -> PyResult<()> {
 #[pyfunction]
 fn stop_stream() -> PyResult<()> {
     *ENGINE_STATE.lock() = None;
-    audio_io::stop_audio_stream();
+    if let Some(tx) = STOP_SENDER.lock().take() {
+        audio_io::stop_audio_stream(&tx);
+    }
     Ok(())
 }
 

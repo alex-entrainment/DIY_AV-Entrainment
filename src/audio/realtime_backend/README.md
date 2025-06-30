@@ -10,13 +10,12 @@ Implemented components:
 - **Track models** mirroring the Python data structures.
 - **Basic DSP utilities** (noise generators, sine wave, ADSR, pan).
 - **Skeleton scheduler** capable of processing blocks and advancing steps.
-- **Audio thread bootstrap** using CPAL (currently loops forever).
+- **Audio thread bootstrap** using CPAL with a stoppable loop.
 - **Python bindings** with `start_stream` and `stop_stream` functions.
 
 Remaining tasks (see `REALTIME_BACKEND_PLAN.md` for full roadmap):
 
 - Proper voice implementations for each synth function.
 - Crossfade and transition handling in `TrackScheduler`.
-- A robust mechanism to stop the audio thread from Python.
 - Unit tests comparing DSP routines with the Python version.
 - Integration with the rest of the application via a high-level Python wrapper.
