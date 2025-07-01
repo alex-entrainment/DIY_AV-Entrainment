@@ -544,14 +544,17 @@ class TrackEditorApp(QMainWindow):
         self.add_step_button = QPushButton("Add Step")
         self.load_external_step_button = QPushButton("Load External Step")
         self.duplicate_step_button = QPushButton("Duplicate Step")
+        self.create_end_state_button = QPushButton("Create End State Step")
         self.remove_step_button = QPushButton("Remove Step(s)")
         self.add_step_button.clicked.connect(self.add_step)
         self.load_external_step_button.clicked.connect(self.load_external_step)
         self.duplicate_step_button.clicked.connect(self.duplicate_step)
+        self.create_end_state_button.clicked.connect(self.create_end_state_step)
         self.remove_step_button.clicked.connect(self.remove_step)
         steps_button_layout_1.addWidget(self.add_step_button)
         steps_button_layout_1.addWidget(self.load_external_step_button)
         steps_button_layout_1.addWidget(self.duplicate_step_button)
+        steps_button_layout_1.addWidget(self.create_end_state_button)
         steps_button_layout_1.addWidget(self.remove_step_button)
         steps_button_layout_1.addStretch(1)
         steps_groupbox_layout.addLayout(steps_button_layout_1)
@@ -738,6 +741,7 @@ class TrackEditorApp(QMainWindow):
         self.load_external_step_button.setEnabled(True)
         self.remove_step_button.setEnabled(has_selection)
         self.duplicate_step_button.setEnabled(is_single_selection)
+        self.create_end_state_button.setEnabled(is_single_selection)
         self.edit_duration_button.setEnabled(is_single_selection)
         self.edit_description_button.setEnabled(is_single_selection)
         # Enable Add Voice if a single step is selected. Availability of the
@@ -1272,6 +1276,56 @@ class TrackEditorApp(QMainWindow):
         except IndexError: QMessageBox.critical(self, "Error", "Failed to duplicate step (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to duplicate step:\n{e}"); traceback.print_exc()
         # refresh_steps_tree calls on_step_select which calls _update_step_actions_state
+
+    @pyqtSlot()
+    def create_end_state_step(self):
+        selected_index = self.get_selected_step_index()
+        if selected_index is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Create End State Step", "Please select exactly one step to use as the previous step.")
+            return
+        try:
+            prev_step = self.track_data["steps"][selected_index]
+        except IndexError:
+            QMessageBox.critical(self, "Error", "Failed to access selected step.")
+            return
+
+        new_step = copy.deepcopy(prev_step)
+        for voice in new_step.get("voices", []):
+            if voice.get("is_transition", False):
+                params = voice.get("params", {})
+                new_params = {}
+                for k, v in params.items():
+                    base = None
+                    if k.startswith("end_"):
+                        base = k[4:]
+                    elif k.startswith("end"):
+                        base = k[3:]
+                    elif k.startswith("start_") or k.startswith("start"):
+                        continue
+                    if base is not None:
+                        if base and base[0].isupper():
+                            base = base[0].lower() + base[1:]
+                        new_params[base] = v
+                    else:
+                        new_params[k] = v
+
+                func_name = voice.get("synth_function_name", "")
+                if func_name.endswith("_transition"):
+                    func_name = func_name[:-11]
+                voice["synth_function_name"] = func_name
+                voice["is_transition"] = False
+                voice["params"] = new_params
+
+        insert_index = selected_index + 1
+        self.track_data["steps"].insert(insert_index, new_step)
+        self.refresh_steps_tree()
+        if 0 <= insert_index < self.step_model.rowCount():
+            idx = self.step_model.index(insert_index, 0)
+            self.steps_tree.selectionModel().clearSelection()
+            self.steps_tree.setCurrentIndex(idx)
+            self.steps_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
+        self._push_history_state()
 
     @pyqtSlot()
     def remove_step(self):
