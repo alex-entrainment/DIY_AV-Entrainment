@@ -463,6 +463,22 @@ impl TrackScheduler {
             }
             clip.position = pos;
         }
+
+        // Normalize the mixed buffer to prevent clipping
+        let mut max_abs = 0.0f32;
+        for &sample in buffer.iter() {
+            let val = sample.abs();
+            if val > max_abs {
+                max_abs = val;
+            }
+        }
+        if max_abs > 1.0 {
+            let norm = 1.0 / max_abs;
+            for v in buffer.iter_mut() {
+                *v *= norm;
+            }
+        }
+
         self.absolute_sample += frames;
     }
 }
