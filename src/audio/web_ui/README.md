@@ -27,3 +27,8 @@ npm run dev
 Vite will serve the application at the printed URL. You can either paste a track
 JSON object into the text box or use the **Upload** field to load a `.json`
 file. Click **Start** to begin playback and **Stop** to halt the engine.
+
+The JavaScript code now creates the `AudioContext` using the `sample_rate`
+specified in the track JSON (falling back to `44100` if not provided). This
+prevents pitch or tempo shifts when the track was rendered for a different
+sample rate than your browser's default.
