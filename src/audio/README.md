@@ -92,7 +92,6 @@ Creates the classic binaural beat illusion by playing two close frequencies.
 | `ampL` / `ampR` | 0.5 | Amplitude of each ear |
 | `baseFreq` | 200 | Center frequency of the beat |
 | `beatFreq` | 4 | Difference between left and right tones |
-| `forceMono` | False | If true, forces both ears to the same tone |
 | `startPhaseL` / `startPhaseR` | 0 | Initial phase of each tone |
 | `ampOscDepthL` / `ampOscDepthR` | 0 | Depth of amplitude modulation |
 | `ampOscFreqL` / `ampOscFreqR` | 0 | Frequency of amplitude modulation |
