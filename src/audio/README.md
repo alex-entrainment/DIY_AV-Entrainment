@@ -13,6 +13,19 @@ data = load_track_from_json("track.json")
 generate_audio(data, "output.wav")
 ```
 
+Track definition files now use a nested structure:
+
+```json
+{
+  "global": {"sample_rate": 44100, "crossfade_duration": 1.0},
+  "progression": [
+    {"start": 0, "duration": 8.0, "voices": []}
+  ],
+  "background_noise": {},
+  "overlay_clips": []
+}
+```
+
 Noise generator settings can be stored separately using `.noise` files:
 
 ```
@@ -211,7 +224,8 @@ If omitted, `linear` is used.
 
 Additional audio material can be layered on top of the generated voices using
 the **Overlay Clips** panel in the editor.  Each clip entry stores the file
-path, a start time, amplitude, pan position and optional fade times.  The
+path, a start time, amplitude, pan position and optional fade times.  In the
+JSON definition these live under the ``overlay_clips`` list. The
 duration and finish time columns are populated automatically after a file is
 selected.  You can audition a single clip without exporting the entire track by
 highlighting it and pressing **Start Clip**; the button changes to **Stop Clip**
@@ -222,8 +236,8 @@ while the preview is playing.
 The helper function `audio.visualize_track_timeline()` now renders a more
 "DAW-like" timeline view using **Plotly**. Each track lane is drawn similar to
 clips in a digital audio workstation, making it easier to see how binaural
-voices, vocals, sound effects and background noise overlap. Pass the same JSON
-structure used for audio generation to this function and it will display (or
+voices, vocals, sound effects and background noise overlap. Pass the track
+definition (as shown above) to this function and it will display (or
 save) the interactive timeline. You can zoom, pan and hover to inspect specific
 segments. Individual voices and overlay clips are color-coded within their
 categories and labeled using their descriptions (or filenames if no description

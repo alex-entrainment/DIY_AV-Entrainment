@@ -36,7 +36,9 @@ export async function start() {
   let sampleRate = 44100;
   try {
     const trackObj = JSON.parse(trackJson);
-    if (trackObj.global_settings && trackObj.global_settings.sample_rate) {
+    if (trackObj.global && trackObj.global.sample_rate) {
+      sampleRate = trackObj.global.sample_rate;
+    } else if (trackObj.global_settings && trackObj.global_settings.sample_rate) {
       sampleRate = trackObj.global_settings.sample_rate;
     } else if (trackObj.sample_rate) {
       sampleRate = trackObj.sample_rate;

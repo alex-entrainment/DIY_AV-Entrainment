@@ -7,7 +7,7 @@
 <body>
   <h1>Realtime Backend Web Demo</h1>
   <input type="file" id="json-upload" accept=".json"><br>
-  <textarea id="track-json" rows="10" cols="80">{\n  \"sample_rate\": 44100,\n  \"crossfade\": 0.05,\n  \"steps\": []\n}</textarea><br>
+  <textarea id="track-json" rows="10" cols="80">{\n  \"global\": {\"sample_rate\": 44100},\n  \"progression\": [],\n  \"background_noise\": {},\n  \"overlay_clips\": []\n}</textarea><br>
   <button id="start">Start</button>
   <button id="stop">Stop</button>
   <script type="module" src="/src/main.js"></script>
