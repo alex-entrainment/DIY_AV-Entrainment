@@ -13,10 +13,13 @@ pub struct VolumeEnvelope {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct VoiceData {
+    #[serde(alias = "synthFunctionName", alias = "synth_function")]
     pub synth_function_name: String,
+    #[serde(alias = "parameters", default)]
     pub params: HashMap<String, serde_json::Value>,
+    #[serde(alias = "volumeEnvelope")]
     pub volume_envelope: Option<VolumeEnvelope>,
-    #[serde(default)]
+    #[serde(default, alias = "isTransition")]
     pub is_transition: bool,
     #[serde(default)]
     pub description: String,
@@ -24,6 +27,7 @@ pub struct VoiceData {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct StepData {
+    #[serde(alias = "Duration", alias = "durationSeconds", alias = "stepDuration")]
     pub duration: f64,
     #[serde(default)]
     pub description: String,
@@ -32,17 +36,19 @@ pub struct StepData {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GlobalSettings {
+    #[serde(alias = "sampleRate")]
     pub sample_rate: u32,
-    #[serde(default = "default_crossfade_duration")]
+    #[serde(default = "default_crossfade_duration", alias = "crossfadeDuration")]
     pub crossfade_duration: f64,
-    #[serde(default = "default_crossfade_curve")]
+    #[serde(default = "default_crossfade_curve", alias = "crossfadeCurve")]
     pub crossfade_curve: String,
-    #[serde(default)]
+    #[serde(default, alias = "outputFilename")]
     pub output_filename: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TrackData {
+    #[serde(alias = "globalSettings")]
     pub global_settings: GlobalSettings,
     pub steps: Vec<StepData>,
     #[serde(default)]
