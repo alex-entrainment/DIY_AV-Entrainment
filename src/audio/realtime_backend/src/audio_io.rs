@@ -13,7 +13,13 @@ pub fn run_audio_stream(scheduler: Arc<Mutex<TrackScheduler>>, stop_rx: Receiver
         .expect("no output device available");
     let supported_config = device.default_output_config().expect("no default config");
     let sample_format = supported_config.sample_format();
-    let config: StreamConfig = supported_config.into();
+    let mut config: StreamConfig = supported_config.into();
+
+    // Use the scheduler's sample rate if it differs from the device default.
+    let desired_rate = scheduler.lock().sample_rate as u32;
+    if desired_rate != config.sample_rate.0 {
+        config.sample_rate.0 = desired_rate;
+    }
 
     let audio_callback = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
         let mut scheduler = scheduler.lock();
