@@ -11,9 +11,11 @@ async function ensureWasmLoaded() {
   }
 }
 
-function setupAudio() {
+function setupAudio(sampleRate) {
   const bufferSize = 1024;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate,
+  });
   scriptNode = audioCtx.createScriptProcessor(bufferSize, 0, 2);
   scriptNode.onaudioprocess = (e) => {
     const frames = e.outputBuffer.length;
@@ -31,8 +33,19 @@ function setupAudio() {
 export async function start() {
   await ensureWasmLoaded();
   const trackJson = document.getElementById('track-json').value;
+  let sampleRate = 44100;
+  try {
+    const trackObj = JSON.parse(trackJson);
+    if (trackObj.global_settings && trackObj.global_settings.sample_rate) {
+      sampleRate = trackObj.global_settings.sample_rate;
+    } else if (trackObj.sample_rate) {
+      sampleRate = trackObj.sample_rate;
+    }
+  } catch (e) {
+    console.warn('Unable to parse track JSON for sample rate:', e);
+  }
   start_stream(trackJson);
-  setupAudio();
+  setupAudio(sampleRate);
 }
 
 export function stop() {
