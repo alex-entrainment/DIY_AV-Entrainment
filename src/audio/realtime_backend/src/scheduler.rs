@@ -464,7 +464,7 @@ impl TrackScheduler {
             clip.position = pos;
         }
 
-        // Normalize the mixed buffer to prevent clipping
+        // Normalize the mixed buffer so the peak does not exceed 0.3
         let mut max_abs = 0.0f32;
         for &sample in buffer.iter() {
             let val = sample.abs();
@@ -472,8 +472,8 @@ impl TrackScheduler {
                 max_abs = val;
             }
         }
-        if max_abs > 1.0 {
-            let norm = 1.0 / max_abs;
+        if max_abs > 1e-9 {
+            let norm = 0.3 / max_abs;
             for v in buffer.iter_mut() {
                 *v *= norm;
             }
