@@ -3,6 +3,7 @@ from scipy.signal import butter, lfilter, sosfiltfilt
 from scipy.io.wavfile import write
 import soundfile as sf
 import json
+import copy
 
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
@@ -479,7 +480,19 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
         return np.zeros((sample_rate, 2)) # Return 1 second silence
 
     # --- Calculate Track Length Estimation ---
-    estimated_total_duration = sum(float(step.get("duration", 0)) for step in steps_data)
+    if not steps_data:
+        estimated_total_duration = 0.0
+    else:
+        current_est = 0.0
+        end_times = []
+        for step in steps_data:
+            dur = float(step.get("duration", 0))
+            start_t = float(step.get("start", step.get("start_time", current_est)))
+            if "start" not in step and "start_time" not in step:
+                start_t = current_est
+                current_est += dur
+            end_times.append(start_t + dur)
+        estimated_total_duration = max(end_times)
     if estimated_total_duration <= 0:
         print("Warning: Track has zero or negative estimated total duration.")
         return np.zeros((sample_rate, 2))
@@ -513,12 +526,19 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
             print(f"Skipping step {i+1} with zero or negative duration.")
             continue
 
+        step_start_time = float(step_data.get("start", step_data.get("start_time", current_time)))
+        if step_start_time < 0:
+            step_start_time = 0.0
+
         # --- Calculate Placement Indices ---
-        step_start_sample_abs = int(current_time * sample_rate)
+        step_start_sample_abs = int(step_start_time * sample_rate)
         N_step = int(step_duration * sample_rate)
         step_end_sample_abs = step_start_sample_abs + N_step
 
-        print(f"  Processing Step {i+1}: Place Start: {current_time:.2f}s ({step_start_sample_abs}), Duration: {step_duration:.2f}s, Samples: {N_step}")
+        print(
+            f"  Processing Step {i+1}: Place Start: {step_start_time:.2f}s ({step_start_sample_abs}), "
+            f"Duration: {step_duration:.2f}s, Samples: {N_step}"
+        )
 
         # Generate audio for all voices in this step and mix them
         step_audio_mix = np.zeros((N_step, 2), dtype=np.float32) # Use float32
@@ -636,9 +656,15 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
 
         # --- Update Markers for Next Loop ---
         last_step_end_sample_in_track = max(last_step_end_sample_in_track, safe_place_end)
-        # Advance current_time for the START of the next step, pulling back by crossfade duration
-        effective_advance_duration = max(0.0, step_duration - crossfade_duration) if crossfade_samples > 0 else step_duration
-        current_time += effective_advance_duration
+        if "start" in step_data or "start_time" in step_data:
+            current_time = step_start_time + step_duration
+        else:
+            effective_advance_duration = (
+                max(0.0, step_duration - crossfade_duration)
+                if crossfade_samples > 0
+                else step_duration
+            )
+            current_time += effective_advance_duration
 
         if progress_callback:
             try:
@@ -817,24 +843,39 @@ class NumpyEncoder(json.JSONEncoder):
         return super(NumpyEncoder, self).default(obj)
 
 def load_track_from_json(filepath):
-    """Loads track definition from a JSON file."""
+    """Loads track definition from a JSON file.
+
+    The loader accepts both the legacy structure (``global_settings``/``steps``)
+    and the new v2 structure (``global``/``progression``). The returned dict
+    always uses ``global_settings``/``steps`` keys so existing code can operate
+    on the result without modification.
+    """
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            track_data = json.load(f)
+        with open(filepath, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+
         print(f"Track data loaded successfully from {filepath}")
-        # Basic validation
-        if not isinstance(track_data, dict) or \
-           "global_settings" not in track_data or \
-           "steps" not in track_data or \
-           not isinstance(track_data["steps"], list) or \
-           not isinstance(track_data["global_settings"], dict):
-            print("Error: Invalid JSON structure. Missing 'global_settings' dict or 'steps' list.")
+
+        if "progression" in raw or "global" in raw:
+            new_data = {
+                "global_settings": raw.get("global", {}),
+                "steps": raw.get("progression", []),
+                "background_noise": raw.get("background_noise", raw.get("noise", {})),
+                "clips": raw.get("overlay_clips", raw.get("clips", [])),
+            }
+            raw = new_data
+
+        if not isinstance(raw, dict) or "steps" not in raw or "global_settings" not in raw:
+            print("Error: Invalid JSON structure. Missing required keys.")
             return None
-        # Ensure new optional sections exist
-        track_data.setdefault("background_noise", {})
-        track_data.setdefault("clips", [])
-        # Further validation could check step/voice structure if needed
-        return track_data
+
+        if not isinstance(raw["steps"], list) or not isinstance(raw["global_settings"], dict):
+            print("Error: Invalid JSON structure types for 'steps' or 'global_settings'.")
+            return None
+
+        raw.setdefault("background_noise", {})
+        raw.setdefault("clips", [])
+        return raw
     except FileNotFoundError:
         print(f"Error: File not found at {filepath}")
         return None
@@ -847,20 +888,37 @@ def load_track_from_json(filepath):
         return None
 
 def save_track_to_json(track_data, filepath):
-    """Saves track definition to a JSON file."""
+    """Saves track definition to a JSON file using the new v2 structure."""
     try:
-        # Ensure output directory exists
         output_dir = os.path.dirname(filepath)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
             print(f"Created output directory: {output_dir}")
 
-        # Ensure optional sections exist before serializing
         track_data.setdefault("background_noise", {})
         track_data.setdefault("clips", [])
 
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(track_data, f, indent=4, cls=NumpyEncoder)
+        v2_data = {
+            "global": track_data.get("global_settings", {}),
+            "progression": [],
+            "background_noise": track_data.get("background_noise", {}),
+            "overlay_clips": track_data.get("clips", []),
+        }
+
+        current_time = 0.0
+        for step in track_data.get("steps", []):
+            step_copy = copy.deepcopy(step)
+            if "start" not in step_copy and "start_time" not in step_copy:
+                step_copy["start"] = current_time
+                current_time += float(step_copy.get("duration", 0))
+            else:
+                step_copy["start"] = float(step_copy.get("start", step_copy.get("start_time", 0)))
+                current_time = max(current_time, step_copy["start"] + float(step_copy.get("duration", 0)))
+            step_copy.pop("start_time", None)
+            v2_data["progression"].append(step_copy)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(v2_data, f, indent=4, cls=NumpyEncoder)
         print(f"Track data saved successfully to {filepath}")
         return True
     except IOError as e:
