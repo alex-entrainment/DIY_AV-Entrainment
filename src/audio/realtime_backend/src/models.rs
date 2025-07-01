@@ -48,12 +48,13 @@ pub struct GlobalSettings {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TrackData {
-    #[serde(alias = "globalSettings")]
+    #[serde(alias = "globalSettings", alias = "global")]
     pub global_settings: GlobalSettings,
+    #[serde(alias = "progression")]
     pub steps: Vec<StepData>,
-    #[serde(default)]
+    #[serde(default, alias = "overlay_clips")]
     pub clips: Vec<ClipData>,
-    #[serde(default)]
+    #[serde(default, alias = "noise")]
     pub background_noise: Option<BackgroundNoiseData>,
 }
 
