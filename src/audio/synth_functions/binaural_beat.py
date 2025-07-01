@@ -10,7 +10,6 @@ def binaural_beat(duration, sample_rate=44100, **params):
     ampR = float(params.get('ampR', 0.5))
     baseF = float(params.get('baseFreq', 200.0))
     beatF = float(params.get('beatFreq', 4.0))
-    force_mono = bool(params.get('forceMono', False))
     startL = float(params.get('startPhaseL', 0.0)) # in radians
     startR = float(params.get('startPhaseR', 0.0)) # in radians
     aODL = float(params.get('ampOscDepthL', 0.0))
@@ -96,7 +95,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
         N,
         float(duration),
         float(sample_rate),
-        ampL, ampR, baseF, beatF, force_mono,
+        ampL, ampR, baseF, beatF,
         startL, startR, pOF, pOR,
         aODL, aOFL, aODR, aOFR,
         ampOscPhaseOffsetL, ampOscPhaseOffsetR,
@@ -108,7 +107,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
 @numba.njit(parallel=True, fastmath=True)
 def _binaural_beat_core(
     N, duration, sample_rate,
-    ampL, ampR, baseF, beatF, force_mono,
+    ampL, ampR, baseF, beatF,
     startL, startR, pOF, pOR,
     aODL, aOFL, aODR, aOFR,
     ampOscPhaseOffsetL, ampOscPhaseOffsetR,
@@ -135,7 +134,7 @@ def _binaural_beat_core(
         instL[i] = max(0.0, fL_base + vibL)
         instR[i] = max(0.0, fR_base + vibR)
     
-    if force_mono or beatF == 0.0:
+    if beatF == 0.0:
         for i in numba.prange(N): # Use prange
             instL[i] = baseF
             instR[i] = baseF
@@ -208,9 +207,6 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     startBeatF = float(params.get('startBeatFreq', params.get('beatFreq', 4.0)))
     endBeatF = float(params.get('endBeatFreq', startBeatF))
 
-    # New transitional parameters from binaural_beat
-    startForceMono = float(params.get('startForceMono', params.get('forceMono', 0.0))) # 0.0 for False, 1.0 for True
-    endForceMono = float(params.get('endForceMono', startForceMono))
     startStartPhaseL = float(params.get('startStartPhaseL', params.get('startPhaseL', 0.0)))
     endStartPhaseL = float(params.get('endStartPhaseL', startStartPhaseL))
     startStartPhaseR = float(params.get('startStartPhaseR', params.get('startPhaseR', 0.0)))
@@ -330,7 +326,6 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
         N, float(duration), float(sample_rate),
         startAmpL, endAmpL, startAmpR, endAmpR,
         startBaseF, endBaseF, startBeatF, endBeatF,
-        startForceMono, endForceMono,
         startStartPhaseL, endStartPhaseL, startStartPhaseR, endStartPhaseR,
         startPOF, endPOF, startPOR, endPOR,
         startAODL, endAODL, startAOFL, endAOFL,
@@ -349,7 +344,6 @@ def _binaural_beat_transition_core(
     N, duration, sample_rate,
     startAmpL, endAmpL, startAmpR, endAmpR,
     startBaseF, endBaseF, startBeatF, endBeatF,
-    startForceMono, endForceMono,
     startStartPhaseL, endStartPhaseL, startStartPhaseR, endStartPhaseR,
     startPOF, endPOF, startPOR, endPOR,
     startAODL, endAODL, startAOFL, endAOFL,
@@ -371,7 +365,6 @@ def _binaural_beat_transition_core(
     ampR_arr = np.empty(N, np.float64)
     baseF_arr = np.empty(N, np.float64)
     beatF_arr = np.empty(N, np.float64)
-    force_mono_arr = np.empty(N, np.float64) # Interpolate as float
 
     pOF_arr = np.empty(N, np.float64)
     pOR_arr = np.empty(N, np.float64)
@@ -398,7 +391,6 @@ def _binaural_beat_transition_core(
         ampR_arr[i] = startAmpR + (endAmpR - startAmpR) * alpha
         baseF_arr[i] = startBaseF + (endBaseF - startBaseF) * alpha
         beatF_arr[i] = startBeatF + (endBeatF - startBeatF) * alpha
-        force_mono_arr[i] = startForceMono + (endForceMono - startForceMono) * alpha
 
         pOF_arr[i] = startPOF + (endPOF - startPOF) * alpha
         pOR_arr[i] = startPOR + (endPOR - startPOR) * alpha
@@ -427,7 +419,7 @@ def _binaural_beat_transition_core(
         instL[i] = instL_candidate if instL_candidate > 0.0 else 0.0
         instR[i] = instR_candidate if instR_candidate > 0.0 else 0.0
         
-        if force_mono_arr[i] > 0.5 or beatF_arr[i] == 0.0: # Apply force_mono
+        if beatF_arr[i] == 0.0:
             instL[i] = baseF_arr[i]
             instR[i] = baseF_arr[i]
             if instL[i] < 0.0: instL[i] = 0.0 # Ensure baseF is not negative

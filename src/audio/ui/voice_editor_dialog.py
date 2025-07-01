@@ -1224,7 +1224,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
             "binaural_beat": { # This is an example, ensure it's correct
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5), ('baseFreq', 200.0), ('beatFreq', 4.0),
-                    ('forceMono', False), ('startPhaseL', 0.0), ('startPhaseR', 0.0),
+                    ('startPhaseL', 0.0), ('startPhaseR', 0.0),
                     ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0),
                     ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0),
                     ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0),
@@ -1239,7 +1239,6 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startAmpR', 0.5), ('endAmpR', 0.5),
                     ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
                     ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
-                    ('startForceMono', 0.0), ('endForceMono', 0.0), # Should be bool if possible, or handled as 0/1
                     ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
                     ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
                     ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
