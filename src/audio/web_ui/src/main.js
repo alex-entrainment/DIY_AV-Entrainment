@@ -49,3 +49,13 @@ export function stop() {
 
 document.getElementById('start').addEventListener('click', start);
 document.getElementById('stop').addEventListener('click', stop);
+
+document.getElementById('json-upload').addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('track-json').value = e.target.result;
+  };
+  reader.readAsText(file);
+});
