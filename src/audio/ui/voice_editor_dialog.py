@@ -896,7 +896,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
         updated_params = OrderedDict()
         if is_transition:
-            base_map = { _norm(k): v for k, v in current_params_in_data.items() }
+            base_map = {_norm(k): v for k, v in current_params_in_data.items()}
             for name, default_val in new_default_params.items():
                 if name.startswith("start"):
                     base_key = _norm(name[len("start"):])
@@ -906,6 +906,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         updated_params[name] = base_map[base_key]
                     else:
                         updated_params[name] = default_val
+                elif name.startswith("end"):
+                    base_key = _norm(name[len("end"):])
+                    if name in current_params_in_data:
+                        updated_params[name] = current_params_in_data[name]
+                    elif base_key in base_map:
+                        updated_params[name] = base_map[base_key]
+                    else:
+                        start_name = "start" + name[len("end"):]
+                        if start_name in current_params_in_data:
+                            updated_params[name] = current_params_in_data[start_name]
+                        else:
+                            updated_params[name] = default_val
                 else:
                     updated_params[name] = current_params_in_data.get(name, default_val)
         else:
