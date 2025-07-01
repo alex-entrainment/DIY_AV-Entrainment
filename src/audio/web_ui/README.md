@@ -24,6 +24,6 @@ npm install
 npm run dev
 ```
 
-Vite will serve the application at the printed URL. Paste a track JSON object into
-the text box and click **Start** to begin playback. Press **Stop** to halt the
-engine.
+Vite will serve the application at the printed URL. You can either paste a track
+JSON object into the text box or use the **Upload** field to load a `.json`
+file. Click **Start** to begin playback and **Stop** to halt the engine.
