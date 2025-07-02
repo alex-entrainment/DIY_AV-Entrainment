@@ -167,8 +167,8 @@ fn resample_linear_stereo(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f3
 }
 
 impl TrackScheduler {
-    pub fn new(track: TrackData) -> Self {
-        let sample_rate = track.global_settings.sample_rate as f32;
+    pub fn new(track: TrackData, device_rate: u32) -> Self {
+        let sample_rate = device_rate as f32; 
         let crossfade_samples =
             (track.global_settings.crossfade_duration * sample_rate as f64) as usize;
         let crossfade_curve = match track.global_settings.crossfade_curve.as_str() {
