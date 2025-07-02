@@ -68,9 +68,10 @@ pub struct TrackScheduler {
     pub crossfade_envelope: Vec<f32>,
     pub next_step_sample: usize,
     pub crossfade_active: bool,
-    pub absolute_sample: usize,
+    pub absolute_sample: u64,
     pub clips: Vec<LoadedClip>,
     pub background_noise: Option<BackgroundNoise>,
+    pub scratch: Vec<f32>,
 }
 
 pub struct LoadedClip {
@@ -85,6 +86,8 @@ pub struct BackgroundNoise {
     position: usize,
     gain: f32,
 }
+
+use crate::command::Command;
 
 fn load_clip_file(path: &str, sample_rate: u32) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
@@ -177,7 +180,7 @@ impl TrackScheduler {
         };
         let mut clips = Vec::new();
         for c in &track.clips {
-            if let Ok(samples) = load_clip_file(&c.file_path, track.global_settings.sample_rate) {
+            if let Ok(samples) = load_clip_file(&c.file_path, device_rate) {
                 clips.push(LoadedClip {
                     samples,
                     start_sample: (c.start * sample_rate as f64) as usize,
@@ -194,7 +197,7 @@ impl TrackScheduler {
                 "brown" => generate_brown_noise_samples(total_samples),
                 "swept_notch" => generate_swept_notch_noise(
                     total_duration as f32,
-                    track.global_settings.sample_rate,
+                    device_rate,
                     1.0 / 12.0,
                     &[(1000.0, 10000.0)],
                     &[25.0],
@@ -236,14 +239,14 @@ impl TrackScheduler {
             absolute_sample: 0,
             clips,
             background_noise,
+            scratch: Vec::new(),
         }
     }
 
     /// Replace the current track data while preserving playback progress.
     pub fn update_track(&mut self, track: TrackData) {
-        let abs_samples = self.absolute_sample;
+        let abs_samples = self.absolute_sample as usize;
 
-        self.sample_rate = track.global_settings.sample_rate as f32;
         self.crossfade_samples =
             (track.global_settings.crossfade_duration * self.sample_rate as f64) as usize;
         self.crossfade_curve = match track.global_settings.crossfade_curve.as_str() {
@@ -255,7 +258,7 @@ impl TrackScheduler {
 
         self.clips.clear();
         for c in &track.clips {
-            if let Ok(samples) = load_clip_file(&c.file_path, track.global_settings.sample_rate) {
+            if let Ok(samples) = load_clip_file(&c.file_path, self.sample_rate as u32) {
                 let start_sample = (c.start * self.sample_rate as f64) as usize;
                 let position = if abs_samples > start_sample {
                     (abs_samples - start_sample) * 2
@@ -278,7 +281,7 @@ impl TrackScheduler {
                 "brown" => generate_brown_noise_samples(total_samples),
                 "swept_notch" => generate_swept_notch_noise(
                     total_duration as f32,
-                    track.global_settings.sample_rate,
+                    self.sample_rate as u32,
                     1.0 / 12.0,
                     &[(1000.0, 10000.0)],
                     &[25.0],
@@ -323,6 +326,12 @@ impl TrackScheduler {
         self.crossfade_active = false;
         self.current_crossfade_samples = 0;
         self.next_step_sample = 0;
+    }
+
+    pub fn handle_command(&mut self, cmd: Command) {
+        match cmd {
+            Command::UpdateTrack(t) => self.update_track(t),
+        }
     }
 
     pub fn process_block(&mut self, buffer: &mut [f32]) {
@@ -429,14 +438,14 @@ impl TrackScheduler {
             let num_voices = self.active_voices.len();
             if num_voices > 0 {
                 let gain = 1.0 / num_voices as f32;
-                // Create a single temporary buffer outside the loop to reuse.
-                let mut voice_buf = vec![0.0f32; buffer.len()];
+                if self.scratch.len() != buffer.len() {
+                    self.scratch.resize(buffer.len(), 0.0);
+                }
                 for voice in &mut self.active_voices {
-                    voice_buf.fill(0.0);
-                    voice.process(&mut voice_buf);
-                    // Now, scale by the gain and add to the main output buffer.
+                    self.scratch.fill(0.0);
+                    voice.process(&mut self.scratch);
                     for i in 0..buffer.len() {
-                        buffer[i] += voice_buf[i] * gain;
+                        buffer[i] += self.scratch[i] * gain;
                     }
                 }
             }
@@ -465,7 +474,7 @@ impl TrackScheduler {
             }
         }
 
-        let start_sample = self.absolute_sample;
+        let start_sample = self.absolute_sample as usize;
         for clip in &mut self.clips {
             if start_sample + frames < clip.start_sample {
                 continue;
@@ -490,12 +499,19 @@ impl TrackScheduler {
             clip.position = pos;
         }
 
-        // Apply a simple hard limiter for safety
-        for sample in buffer.iter_mut() {
-            *sample = sample.clamp(-0.95, 0.95);
+        // Apply a soft clipper with smooth knee
+        const THRESH: f32 = 0.95;
+        for i in 0..buffer.len() {
+            let x = buffer[i];
+            buffer[i] = if x.abs() <= THRESH {
+                x
+            } else {
+                let sign = x.signum();
+                sign * (1.0 - (-((x.abs() - THRESH) / (1.0 - THRESH))).exp())
+            };
         }
 
-        self.absolute_sample += frame_count;
+        self.absolute_sample += frame_count as u64;
     }
 }
 
