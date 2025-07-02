@@ -77,3 +77,14 @@ steps can still be heard in full.
 
 ### WebAssembly DSP Backend
 For browser-based projects you can compile the Rust realtime backend to WebAssembly. See [src/audio/realtime_backend/WASM_GUIDE.md](src/audio/realtime_backend/WASM_GUIDE.md) for build and usage steps.
+
+### CLI Playback
+In addition to the Python bindings, the realtime backend provides a small command
+line interface. After building the crate with Cargo you can directly play a track
+JSON file:
+
+```bash
+cargo run -p realtime_backend --bin play_json -- path/to/track.json
+```
+
+Use `Ctrl+C` to stop playback.

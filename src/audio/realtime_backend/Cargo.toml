@@ -6,7 +6,7 @@ edition = "2021"
 
 [lib]
 name = "realtime_backend"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["python"]
@@ -28,7 +28,10 @@ parking_lot = "0.12"
 once_cell = "1.19"
 symphonia = { version = "0.5.4", features = ["default", "mp3"] }
 getrandom = { version = "0.2", features = ["js"] }
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
 hound = "3.5.1"
+
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cpal = "0.15.3"
