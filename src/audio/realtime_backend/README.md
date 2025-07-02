@@ -60,12 +60,15 @@ The generated `pkg/` folder contains `realtime_backend.js` and `realtime_backend
 
 ## Command Line Usage
 
-A small CLI binary is included for quickly auditioning track definitions without
-Python. Build the project normally and run `play_json` with a path to a JSON
-file exported from the GUI:
+A command line interface is provided for quickly auditioning or rendering tracks
+without Python. Build the project normally and run the `realtime_backend`
+binary. Pass the path to a track JSON file and optionally enable full
+rendering:
 
 ```bash
-cargo run --bin play_json -- path/to/track.json
+cargo run --bin realtime_backend -- --path path/to/track.json --generate false
 ```
 
-Press `Ctrl+C` to stop playback.
+If `--generate true` is supplied, the entire track is written to the
+`outputFilename` specified in the JSON. Otherwise it streams the audio directly
+to the default output device. Press `Ctrl+C` to stop streaming.
