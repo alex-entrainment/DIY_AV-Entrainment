@@ -326,6 +326,7 @@ impl TrackScheduler {
     }
 
     pub fn process_block(&mut self, buffer: &mut [f32]) {
+        let frame_count = buffer.len() / 2;
         buffer.fill(0.0);
 
         if self.current_step >= self.track.steps.len() {
@@ -352,7 +353,8 @@ impl TrackScheduler {
                     self.crossfade_active = true;
                     self.next_step_sample = 0;
                     let next_samples = (next_step.duration * self.sample_rate as f64) as usize;
-                    self.current_crossfade_samples = self.crossfade_samples.min(step_samples).min(next_samples);
+                    self.current_crossfade_samples =
+                        self.crossfade_samples.min(step_samples).min(next_samples);
                     self.crossfade_envelope = if self.current_crossfade_samples <= 1 {
                         vec![0.0; self.current_crossfade_samples]
                     } else {
@@ -423,22 +425,24 @@ impl TrackScheduler {
                 self.current_crossfade_samples = 0;
             }
         } else {
-            let gain = if self.active_voices.is_empty() {
-                0.0
-            } else {
-                1.0 / self.active_voices.len() as f32
-            };
-            let mut voice_buf = vec![0.0f32; buffer.len()];
-            for voice in &mut self.active_voices {
-                voice_buf.fill(0.0);
-                voice.process(&mut voice_buf);
-                for (out, sample) in buffer.iter_mut().zip(&voice_buf) {
-                    *out += sample * gain;
+            // --- EFFICIENT GAIN STAGING FOR NORMAL PLAYBACK ---
+            let num_voices = self.active_voices.len();
+            if num_voices > 0 {
+                let gain = 1.0 / num_voices as f32;
+                // Create a single temporary buffer outside the loop to reuse.
+                let mut voice_buf = vec![0.0f32; buffer.len()];
+                for voice in &mut self.active_voices {
+                    voice_buf.fill(0.0);
+                    voice.process(&mut voice_buf);
+                    // Now, scale by the gain and add to the main output buffer.
+                    for i in 0..buffer.len() {
+                        buffer[i] += voice_buf[i] * gain;
+                    }
                 }
             }
+
             self.active_voices.retain(|v| !v.is_finished());
-            let frames = buffer.len() / 2;
-            self.current_sample += frames;
+            self.current_sample += frame_count;
             let step = &self.track.steps[self.current_step];
             let step_samples = (step.duration * self.sample_rate as f64) as usize;
             if self.current_sample >= step_samples {
@@ -448,7 +452,7 @@ impl TrackScheduler {
             }
         }
 
-        let frames = buffer.len() / 2;
+        let frames = frame_count;
 
         if let Some(noise) = &mut self.background_noise {
             for i in 0..frames {
@@ -491,7 +495,7 @@ impl TrackScheduler {
             *sample = sample.clamp(-0.95, 0.95);
         }
 
-        self.absolute_sample += frames;
+        self.absolute_sample += frame_count;
     }
 }
 
