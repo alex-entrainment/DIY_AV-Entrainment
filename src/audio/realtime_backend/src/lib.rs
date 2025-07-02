@@ -27,6 +27,8 @@ use pyo3::prelude::*;
 use pyo3::prelude::Bound;
 #[cfg(feature = "python")]
 use crossbeam::channel::{unbounded, Sender};
+#[cfg(feature = "python")]
+use hound;
 #[cfg(feature = "web")]
 use wasm_bindgen::prelude::*;
 
@@ -84,6 +86,49 @@ fn update_track(track_json_str: String) -> PyResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "python")]
+#[pyfunction]
+fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
+    use hound::{WavSpec, WavWriter, SampleFormat};
+    let track_data: TrackData = serde_json::from_str(&track_json_str)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+
+    let sample_rate = track_data.global_settings.sample_rate;
+    let mut scheduler = TrackScheduler::new(track_data.clone(), sample_rate);
+    let track_frames: usize = track_data
+        .steps
+        .iter()
+        .map(|s| (s.duration * sample_rate as f64) as usize)
+        .sum();
+    let target_frames = (sample_rate as usize * 60).min(track_frames);
+
+    let spec = WavSpec {
+        channels: 2,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: SampleFormat::Int,
+    };
+
+    let mut writer = WavWriter::create(&out_path, spec)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+
+    let mut remaining = target_frames;
+    let mut buffer = vec![0.0f32; 512 * 2];
+    while remaining > 0 {
+        let frames = 512.min(remaining);
+        buffer.resize(frames * 2, 0.0);
+        scheduler.process_block(&mut buffer);
+        for sample in &buffer[..frames * 2] {
+            let s = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+            writer.write_sample(s).map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+        }
+        remaining -= frames;
+    }
+
+    writer.finalize().map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    Ok(())
+}
+
 #[cfg(feature = "web")]
 #[wasm_bindgen]
 pub fn start_stream(track_json_str: &str, sample_rate: u32) {
@@ -134,5 +179,6 @@ fn realtime_backend(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_stream, m)?)?;
     m.add_function(wrap_pyfunction!(stop_stream, m)?)?;
     m.add_function(wrap_pyfunction!(update_track, m)?)?;
+    m.add_function(wrap_pyfunction!(render_sample_wav, m)?)?;
     Ok(())
 }
