@@ -37,6 +37,9 @@ import realtime_backend
 
 # `track_json` should be a JSON string exported by the GUI
 realtime_backend.start_stream(track_json)
+
+# Render a 60 second sample to a wav file
+realtime_backend.render_sample_wav(track_json, "sample.wav")
 ```
 
 Call `realtime_backend.stop_stream()` to halt playback.
