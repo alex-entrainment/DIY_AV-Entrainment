@@ -377,6 +377,17 @@ impl TrackScheduler {
                 v.process(&mut next_buf);
             }
 
+            let out_gain = if self.active_voices.is_empty() {
+                0.0
+            } else {
+                1.0 / self.active_voices.len() as f32
+            };
+            let in_gain = if self.next_voices.is_empty() {
+                0.0
+            } else {
+                1.0 / self.next_voices.len() as f32
+            };
+
             for i in 0..frames {
                 let idx = i * 2;
                 let progress = self.next_step_sample + i;
@@ -387,11 +398,12 @@ impl TrackScheduler {
                         progress as f32 / (self.current_crossfade_samples - 1) as f32
                     };
                     let (g_out, g_in) = self.crossfade_curve.gains(ratio);
-                    buffer[idx] = prev_buf[idx] * g_out + next_buf[idx] * g_in;
-                    buffer[idx + 1] = prev_buf[idx + 1] * g_out + next_buf[idx + 1] * g_in;
+                    buffer[idx] = prev_buf[idx] * g_out * out_gain + next_buf[idx] * g_in * in_gain;
+                    buffer[idx + 1] =
+                        prev_buf[idx + 1] * g_out * out_gain + next_buf[idx + 1] * g_in * in_gain;
                 } else {
-                    buffer[idx] = next_buf[idx];
-                    buffer[idx + 1] = next_buf[idx + 1];
+                    buffer[idx] = next_buf[idx] * in_gain;
+                    buffer[idx + 1] = next_buf[idx + 1] * in_gain;
                 }
             }
 
@@ -411,8 +423,18 @@ impl TrackScheduler {
                 self.current_crossfade_samples = 0;
             }
         } else {
+            let gain = if self.active_voices.is_empty() {
+                0.0
+            } else {
+                1.0 / self.active_voices.len() as f32
+            };
+            let mut voice_buf = vec![0.0f32; buffer.len()];
             for voice in &mut self.active_voices {
-                voice.process(buffer);
+                voice_buf.fill(0.0);
+                voice.process(&mut voice_buf);
+                for (out, sample) in buffer.iter_mut().zip(&voice_buf) {
+                    *out += sample * gain;
+                }
             }
             self.active_voices.retain(|v| !v.is_finished());
             let frames = buffer.len() / 2;
@@ -464,19 +486,9 @@ impl TrackScheduler {
             clip.position = pos;
         }
 
-        // Normalize the mixed buffer so the peak does not exceed 0.3
-        let mut max_abs = 0.0f32;
-        for &sample in buffer.iter() {
-            let val = sample.abs();
-            if val > max_abs {
-                max_abs = val;
-            }
-        }
-        if max_abs > 1e-9 {
-            let norm = 0.3 / max_abs;
-            for v in buffer.iter_mut() {
-                *v *= norm;
-            }
+        // Apply a simple hard limiter for safety
+        for sample in buffer.iter_mut() {
+            *sample = sample.clamp(-0.95, 0.95);
         }
 
         self.absolute_sample += frames;
