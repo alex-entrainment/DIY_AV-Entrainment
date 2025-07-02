@@ -72,3 +72,18 @@ cargo run --bin realtime_backend -- --path path/to/track.json --generate false
 If `--generate true` is supplied, the entire track is written to the
 `outputFilename` specified in the JSON. Otherwise it streams the audio directly
 to the default output device. Press `Ctrl+C` to stop streaming.
+
+## Optional GPU Acceleration
+
+The backend includes an experimental GPU mixing path behind the `gpu` Cargo
+feature. When enabled, a compute shader is used to sum the active voice buffers
+for each processed block.
+
+Build the library with GPU support using:
+
+```bash
+cargo build --features gpu
+```
+
+If the feature is disabled (the default), mixing falls back to a CPU
+implementation.

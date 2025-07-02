@@ -2,6 +2,7 @@ use crate::dsp::noise_flanger::generate_swept_notch_noise;
 use crate::dsp::{generate_brown_noise_samples, generate_pink_noise_samples};
 use crate::models::{StepData, TrackData};
 use crate::voices::voices_for_step;
+use crate::gpu::GpuMixer;
 use std::fs::File;
 
 use symphonia::core::audio::SampleBuffer;
@@ -72,6 +73,8 @@ pub struct TrackScheduler {
     pub clips: Vec<LoadedClip>,
     pub background_noise: Option<BackgroundNoise>,
     pub scratch: Vec<f32>,
+    #[cfg(feature = "gpu")]
+    pub gpu: GpuMixer,
 }
 
 pub struct LoadedClip {
@@ -240,6 +243,8 @@ impl TrackScheduler {
             clips,
             background_noise,
             scratch: Vec::new(),
+            #[cfg(feature = "gpu")]
+            gpu: GpuMixer::new(),
         }
     }
 
@@ -326,6 +331,10 @@ impl TrackScheduler {
         self.crossfade_active = false;
         self.current_crossfade_samples = 0;
         self.next_step_sample = 0;
+        #[cfg(feature = "gpu")]
+        {
+            self.gpu = GpuMixer::new();
+        }
     }
 
     pub fn handle_command(&mut self, cmd: Command) {
@@ -437,15 +446,29 @@ impl TrackScheduler {
             // --- EFFICIENT GAIN STAGING FOR NORMAL PLAYBACK ---
             let num_voices = self.active_voices.len();
             if num_voices > 0 {
-                let gain = 1.0 / num_voices as f32;
                 if self.scratch.len() != buffer.len() {
                     self.scratch.resize(buffer.len(), 0.0);
                 }
-                for voice in &mut self.active_voices {
-                    self.scratch.fill(0.0);
-                    voice.process(&mut self.scratch);
-                    for i in 0..buffer.len() {
-                        buffer[i] += self.scratch[i] * gain;
+                #[cfg(feature = "gpu")]
+                {
+                    let mut voice_bufs: Vec<Vec<f32>> = Vec::with_capacity(num_voices);
+                    for voice in &mut self.active_voices {
+                        let mut local = vec![0.0f32; buffer.len()];
+                        voice.process(&mut local);
+                        voice_bufs.push(local);
+                    }
+                    let refs: Vec<&[f32]> = voice_bufs.iter().map(|b| b.as_slice()).collect();
+                    self.gpu.mix(&refs, buffer);
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    let gain = 1.0 / num_voices as f32;
+                    for voice in &mut self.active_voices {
+                        self.scratch.fill(0.0);
+                        voice.process(&mut self.scratch);
+                        for i in 0..buffer.len() {
+                            buffer[i] += self.scratch[i] * gain;
+                        }
                     }
                 }
             }
