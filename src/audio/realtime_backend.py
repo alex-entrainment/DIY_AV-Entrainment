@@ -62,9 +62,31 @@ def write_sample_wav(track_definition: Dict[str, Any] | str, output_path: str) -
     _backend.render_sample_wav(track_json, output_path)
 
 
+def write_wav(track_definition: Dict[str, Any] | str, output_path: str) -> None:
+    """Render the entire track to a WAV file.
+
+    Parameters
+    ----------
+    track_definition:
+        Track data as ``dict`` or JSON string.
+    output_path:
+        Destination filename for the output.
+    """
+    if isinstance(track_definition, str):
+        try:
+            json.loads(track_definition)
+            track_json = track_definition
+        except json.JSONDecodeError as exc:
+            raise ValueError("Invalid JSON track definition") from exc
+    else:
+        track_json = json.dumps(track_definition)
+    _backend.render_full_wav(track_json, output_path)
+
+
 __all__ = [
     "play_track",
     "play_track_file",
     "stop",
     "write_sample_wav",
+    "write_wav",
 ]

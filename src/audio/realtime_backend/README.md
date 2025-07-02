@@ -40,6 +40,9 @@ realtime_backend.start_stream(track_json)
 
 # Render a 60 second sample to a wav file
 realtime_backend.render_sample_wav(track_json, "sample.wav")
+
+# Render the entire track to a wav file
+realtime_backend.render_full_wav(track_json, "full_output.wav")
 ```
 
 Call `realtime_backend.stop_stream()` to halt playback.
