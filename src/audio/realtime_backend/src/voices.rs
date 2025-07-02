@@ -1750,7 +1750,9 @@ impl Voice for BinauralBeatVoice {
             // Advance phase
             let dt = 1.0 / self.sample_rate;
             self.phase_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_l = self.phase_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_r += 2.0 * std::f32::consts::PI * freq_r * dt;
+            self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             // Phase modulation
             let mut ph_l = self.phase_l;
@@ -1877,7 +1879,9 @@ impl Voice for BinauralBeatTransitionVoice {
             }
 
             self.phase_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_l = self.phase_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_r += 2.0 * std::f32::consts::PI * freq_r * dt;
+            self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
             if phase_osc_freq != 0.0 || phase_osc_range != 0.0 {
@@ -1953,8 +1957,11 @@ impl Voice for IsochronicToneVoice {
             let iso_env = trapezoid_envelope(t_in_cycle, cycle_len, self.ramp_percent, self.gap_percent);
 
             self.phase_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_l = self.phase_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_r += 2.0 * std::f32::consts::PI * freq_r * dt;
-            self.beat_phase = (self.beat_phase + self.beat_freq * dt).fract();
+            self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
+            self.beat_phase += self.beat_freq * dt;
+            self.beat_phase = self.beat_phase.rem_euclid(1.0);
 
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
@@ -2085,8 +2092,11 @@ impl Voice for IsochronicToneTransitionVoice {
             let iso_env = trapezoid_envelope(t_in_cycle, cycle_len, self.ramp_percent, self.gap_percent);
 
             self.phase_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_l = self.phase_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_r += 2.0 * std::f32::consts::PI * freq_r * dt;
-            self.beat_phase = (self.beat_phase + beat_freq * dt).fract();
+            self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
+            self.beat_phase += beat_freq * dt;
+            self.beat_phase = self.beat_phase.rem_euclid(1.0);
 
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
@@ -2204,7 +2214,9 @@ impl Voice for QamBeatVoice {
             }
 
             self.phase_l += 2.0 * std::f32::consts::PI * self.base_freq_l * dt;
+            self.phase_l = self.phase_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_r += 2.0 * std::f32::consts::PI * self.base_freq_r * dt;
+            self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
             if self.phase_osc_freq != 0.0 || self.phase_osc_range != 0.0 {
@@ -2380,7 +2392,9 @@ impl Voice for QamBeatTransitionVoice {
             }
 
             self.phase_l += 2.0 * std::f32::consts::PI * base_freq_l * dt;
+            self.phase_l = self.phase_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_r += 2.0 * std::f32::consts::PI * base_freq_r * dt;
+            self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
             if phase_osc_freq != 0.0 || phase_osc_range != 0.0 {
@@ -2451,9 +2465,15 @@ impl Voice for StereoAmIndependentVoice {
             let freq_l = self.carrier_freq - self.stereo_width_hz * 0.5;
             let freq_r = self.carrier_freq + self.stereo_width_hz * 0.5;
             self.phase_carrier_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_carrier_l =
+                self.phase_carrier_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_carrier_r += 2.0 * std::f32::consts::PI * freq_r * dt;
+            self.phase_carrier_r =
+                self.phase_carrier_r.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_mod_l += 2.0 * std::f32::consts::PI * self.mod_freq_l * dt;
+            self.phase_mod_l = self.phase_mod_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_mod_r += 2.0 * std::f32::consts::PI * self.mod_freq_r * dt;
+            self.phase_mod_r = self.phase_mod_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2514,9 +2534,15 @@ impl Voice for StereoAmIndependentTransitionVoice {
             let freq_l = carrier_freq - stereo_width_hz * 0.5;
             let freq_r = carrier_freq + stereo_width_hz * 0.5;
             self.phase_carrier_l += 2.0 * std::f32::consts::PI * freq_l * dt;
+            self.phase_carrier_l =
+                self.phase_carrier_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_carrier_r += 2.0 * std::f32::consts::PI * freq_r * dt;
+            self.phase_carrier_r =
+                self.phase_carrier_r.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_mod_l += 2.0 * std::f32::consts::PI * mod_freq_l * dt;
+            self.phase_mod_l = self.phase_mod_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_mod_r += 2.0 * std::f32::consts::PI * mod_freq_r * dt;
+            self.phase_mod_r = self.phase_mod_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2553,9 +2579,13 @@ impl Voice for WaveShapeStereoAmVoice {
             output[i * 2 + 1] += shaped * mod_r * self.amp;
 
             self.phase_carrier += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.phase_carrier = self.phase_carrier.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_shape += 2.0 * std::f32::consts::PI * self.shape_mod_freq * dt;
+            self.phase_shape = self.phase_shape.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_stereo_l += 2.0 * std::f32::consts::PI * self.stereo_mod_freq_l * dt;
+            self.phase_stereo_l = self.phase_stereo_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_stereo_r += 2.0 * std::f32::consts::PI * self.stereo_mod_freq_r * dt;
+            self.phase_stereo_r = self.phase_stereo_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2623,9 +2653,13 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
             output[i * 2 + 1] += shaped * mod_r * self.amp;
 
             self.phase_carrier += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.phase_carrier = self.phase_carrier.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_shape += 2.0 * std::f32::consts::PI * shape_mod_freq * dt;
+            self.phase_shape = self.phase_shape.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_stereo_l += 2.0 * std::f32::consts::PI * stereo_mod_freq_l * dt;
+            self.phase_stereo_l = self.phase_stereo_l.rem_euclid(2.0 * std::f32::consts::PI);
             self.phase_stereo_r += 2.0 * std::f32::consts::PI * stereo_mod_freq_r * dt;
+            self.phase_stereo_r = self.phase_stereo_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2654,7 +2688,9 @@ impl Voice for SpatialAngleModulationVoice {
             output[i * 2 + 1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
             self.spatial_phase += 2.0 * std::f32::consts::PI * self.beat_freq * dt;
+            self.spatial_phase = self.spatial_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2704,7 +2740,9 @@ impl Voice for SpatialAngleModulationTransitionVoice {
             output[i * 2 + 1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
             self.spatial_phase += 2.0 * std::f32::consts::PI * beat_freq * dt;
+            self.spatial_phase = self.spatial_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2738,7 +2776,9 @@ impl Voice for RhythmicWaveshapingVoice {
             output[i * 2 + 1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
+            self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
             self.lfo_phase += 2.0 * std::f32::consts::PI * self.mod_freq * dt;
+            self.lfo_phase = self.lfo_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
@@ -2795,7 +2835,9 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
             output[i * 2 + 1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
+            self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
             self.lfo_phase += 2.0 * std::f32::consts::PI * mod_freq * dt;
+            self.lfo_phase = self.lfo_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.elapsed += dt;
             self.remaining_samples -= 1;
