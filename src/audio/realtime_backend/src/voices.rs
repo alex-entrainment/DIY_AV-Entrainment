@@ -113,7 +113,7 @@ pub struct BinauralBeatVoice {
     phase_r: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
 }
 
 pub struct BinauralBeatTransitionVoice {
@@ -162,7 +162,7 @@ pub struct BinauralBeatTransitionVoice {
     remaining_samples: usize,
     phase_l: f32,
     phase_r: f32,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
 }
 
@@ -194,7 +194,7 @@ pub struct IsochronicToneVoice {
     beat_phase: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
 }
 
 pub struct IsochronicToneTransitionVoice {
@@ -247,7 +247,7 @@ pub struct IsochronicToneTransitionVoice {
     phase_l: f32,
     phase_r: f32,
     beat_phase: f32,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
 }
 
@@ -288,7 +288,7 @@ pub struct QamBeatVoice {
     release_time: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
     phase_l: f32,
     phase_r: f32,
@@ -363,7 +363,7 @@ pub struct QamBeatTransitionVoice {
     post_offset: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
     phase_l: f32,
     phase_r: f32,
@@ -389,7 +389,7 @@ pub struct StereoAmIndependentVoice {
     phase_mod_r: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
 }
 
 pub struct StereoAmIndependentTransitionVoice {
@@ -417,7 +417,7 @@ pub struct StereoAmIndependentTransitionVoice {
     phase_mod_r: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
 }
 
@@ -439,7 +439,7 @@ pub struct WaveShapeStereoAmVoice {
     phase_stereo_r: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
 }
 
 pub struct WaveShapeStereoAmTransitionVoice {
@@ -471,7 +471,7 @@ pub struct WaveShapeStereoAmTransitionVoice {
     phase_stereo_r: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
 }
 
@@ -484,7 +484,7 @@ pub struct SpatialAngleModulationVoice {
     spatial_phase: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
 }
 
 pub struct SpatialAngleModulationTransitionVoice {
@@ -502,7 +502,7 @@ pub struct SpatialAngleModulationTransitionVoice {
     spatial_phase: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
 }
 
@@ -517,7 +517,7 @@ pub struct RhythmicWaveshapingVoice {
     lfo_phase: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
 }
 
 pub struct RhythmicWaveshapingTransitionVoice {
@@ -538,7 +538,7 @@ pub struct RhythmicWaveshapingTransitionVoice {
     lfo_phase: f32,
     sample_rate: f32,
     remaining_samples: usize,
-    elapsed: f32,
+    sample_idx: usize,
     duration: f32,
 }
 
@@ -775,7 +775,7 @@ impl BinauralBeatVoice {
             phase_r: start_phase_r,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
         }
     }
 }
@@ -946,7 +946,7 @@ impl BinauralBeatTransitionVoice {
             remaining_samples: total_samples,
             phase_l: start_start_phase_l,
             phase_r: start_start_phase_r,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
         }
     }
@@ -1008,7 +1008,7 @@ impl IsochronicToneVoice {
             beat_phase: 0.0,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
         }
     }
 }
@@ -1118,7 +1118,7 @@ impl IsochronicToneTransitionVoice {
             phase_l: start_start_phase_l,
             phase_r: start_start_phase_r,
             beat_phase: 0.0,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
         }
     }
@@ -1200,7 +1200,7 @@ impl QamBeatVoice {
             release_time,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
             phase_l: start_phase_l,
             phase_r: start_phase_r,
@@ -1358,7 +1358,7 @@ impl QamBeatTransitionVoice {
             post_offset,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
             phase_l: start_start_phase_l,
             phase_r: start_start_phase_r,
@@ -1406,7 +1406,7 @@ impl StereoAmIndependentVoice {
             phase_mod_r: mod_phase_r,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
         }
     }
 }
@@ -1462,7 +1462,7 @@ impl StereoAmIndependentTransitionVoice {
             phase_mod_r: mod_phase_r,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
         }
     }
@@ -1500,7 +1500,7 @@ impl WaveShapeStereoAmVoice {
             phase_stereo_r: stereo_mod_phase_r,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
         }
     }
 }
@@ -1564,7 +1564,7 @@ impl WaveShapeStereoAmTransitionVoice {
             phase_stereo_r: stereo_mod_phase_r,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
         }
     }
@@ -1588,7 +1588,7 @@ impl SpatialAngleModulationVoice {
             spatial_phase: 0.0,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
         }
     }
 }
@@ -1632,7 +1632,7 @@ impl SpatialAngleModulationTransitionVoice {
             spatial_phase: 0.0,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
         }
     }
@@ -1660,7 +1660,7 @@ impl RhythmicWaveshapingVoice {
             lfo_phase: 0.0,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
         }
     }
 }
@@ -1709,7 +1709,7 @@ impl RhythmicWaveshapingTransitionVoice {
             lfo_phase: 0.0,
             sample_rate,
             remaining_samples: total_samples,
-            elapsed: 0.0,
+            sample_idx: 0,
             duration,
         }
     }
@@ -1723,7 +1723,7 @@ impl Voice for BinauralBeatVoice {
             if self.remaining_samples == 0 {
                 break;
             }
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
 
             // Instantaneous frequency with vibrato
             let half_beat = self.beat_freq * 0.5;
@@ -1784,8 +1784,8 @@ impl Voice for BinauralBeatVoice {
             output[i * 2] += sample_l;
             output[i * 2 + 1] += sample_r;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -1803,7 +1803,7 @@ impl Voice for BinauralBeatTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -1908,8 +1908,8 @@ impl Voice for BinauralBeatTransitionVoice {
             output[i * 2] += sample_l;
             output[i * 2 + 1] += sample_r;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -1927,7 +1927,7 @@ impl Voice for IsochronicToneVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
 
             let mut freq_l = self.base_freq
                 + (self.freq_osc_range_l * 0.5)
@@ -1993,8 +1993,8 @@ impl Voice for IsochronicToneVoice {
             output[i * 2] += sample_l;
             output[i * 2 + 1] += sample_r;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2012,7 +2012,7 @@ impl Voice for IsochronicToneTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2125,8 +2125,8 @@ impl Voice for IsochronicToneTransitionVoice {
             output[i * 2] += sample_l;
             output[i * 2 + 1] += sample_r;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2144,7 +2144,7 @@ impl Voice for QamBeatVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
 
             let mut env_l = 1.0;
             if self.qam_am_freq_l != 0.0 && self.qam_am_depth_l != 0.0 {
@@ -2243,8 +2243,8 @@ impl Voice for QamBeatVoice {
             output[i * 2] += sig_l * self.amp_l * env_mult;
             output[i * 2 + 1] += sig_r * self.amp_r * env_mult;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2262,7 +2262,7 @@ impl Voice for QamBeatTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2418,8 +2418,8 @@ impl Voice for QamBeatTransitionVoice {
             output[i * 2] += sig_l * amp_l * env_mult;
             output[i * 2 + 1] += sig_r * amp_r * env_mult;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2455,8 +2455,8 @@ impl Voice for StereoAmIndependentVoice {
             self.phase_mod_l += 2.0 * std::f32::consts::PI * self.mod_freq_l * dt;
             self.phase_mod_r += 2.0 * std::f32::consts::PI * self.mod_freq_r * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2473,7 +2473,7 @@ impl Voice for StereoAmIndependentTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let mut alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2518,8 +2518,8 @@ impl Voice for StereoAmIndependentTransitionVoice {
             self.phase_mod_l += 2.0 * std::f32::consts::PI * mod_freq_l * dt;
             self.phase_mod_r += 2.0 * std::f32::consts::PI * mod_freq_r * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2557,8 +2557,8 @@ impl Voice for WaveShapeStereoAmVoice {
             self.phase_stereo_l += 2.0 * std::f32::consts::PI * self.stereo_mod_freq_l * dt;
             self.phase_stereo_r += 2.0 * std::f32::consts::PI * self.stereo_mod_freq_r * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2575,7 +2575,7 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let mut alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2627,8 +2627,8 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
             self.phase_stereo_l += 2.0 * std::f32::consts::PI * stereo_mod_freq_l * dt;
             self.phase_stereo_r += 2.0 * std::f32::consts::PI * stereo_mod_freq_r * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2656,8 +2656,8 @@ impl Voice for SpatialAngleModulationVoice {
             self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
             self.spatial_phase += 2.0 * std::f32::consts::PI * self.beat_freq * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2675,7 +2675,7 @@ impl Voice for SpatialAngleModulationTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2706,8 +2706,8 @@ impl Voice for SpatialAngleModulationTransitionVoice {
             self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
             self.spatial_phase += 2.0 * std::f32::consts::PI * beat_freq * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2740,8 +2740,8 @@ impl Voice for RhythmicWaveshapingVoice {
             self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
             self.lfo_phase += 2.0 * std::f32::consts::PI * self.mod_freq * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
@@ -2759,7 +2759,7 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.elapsed;
+            let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2797,8 +2797,8 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
             self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
             self.lfo_phase += 2.0 * std::f32::consts::PI * mod_freq * dt;
 
-            self.elapsed += dt;
             self.remaining_samples -= 1;
+            self.sample_idx += 1;
         }
     }
 
