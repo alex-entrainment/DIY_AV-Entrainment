@@ -57,18 +57,28 @@ pub struct VolumeEnvelopeVoice {
     inner: Box<dyn Voice>,
     envelope: Vec<f32>,
     idx: usize,
+    temp_buf: Vec<f32>,
 }
 
 impl VolumeEnvelopeVoice {
     pub fn new(inner: Box<dyn Voice>, envelope: Vec<f32>) -> Self {
-        Self { inner, envelope, idx: 0 }
+        Self {
+            inner,
+            envelope,
+            idx: 0,
+            temp_buf: Vec::new(),
+        }
     }
 }
 
 impl Voice for VolumeEnvelopeVoice {
     fn process(&mut self, output: &mut [f32]) {
-        let mut temp = vec![0.0f32; output.len()];
-        self.inner.process(&mut temp);
+        if self.temp_buf.len() != output.len() {
+            self.temp_buf.resize(output.len(), 0.0);
+        }
+        self.temp_buf.fill(0.0);
+
+        self.inner.process(&mut self.temp_buf);
         let frames = output.len() / 2;
         for i in 0..frames {
             let env = if self.idx < self.envelope.len() {
@@ -76,8 +86,8 @@ impl Voice for VolumeEnvelopeVoice {
             } else {
                 *self.envelope.last().unwrap_or(&1.0)
             };
-            output[i * 2] += temp[i * 2] * env;
-            output[i * 2 + 1] += temp[i * 2 + 1] * env;
+            output[i * 2] += self.temp_buf[i * 2] * env;
+            output[i * 2 + 1] += self.temp_buf[i * 2 + 1] * env;
             if self.idx < self.envelope.len() {
                 self.idx += 1;
             }
