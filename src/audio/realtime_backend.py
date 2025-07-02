@@ -41,4 +41,30 @@ def stop() -> None:
     _backend.stop_stream()
 
 
-__all__ = ["play_track", "play_track_file", "stop"]
+def write_sample_wav(track_definition: Dict[str, Any] | str, output_path: str) -> None:
+    """Generate a 60s WAV sample for ``track_definition``.
+
+    Parameters
+    ----------
+    track_definition:
+        Track data as ``dict`` or JSON string.
+    output_path:
+        Destination filename for the sample.
+    """
+    if isinstance(track_definition, str):
+        try:
+            json.loads(track_definition)
+            track_json = track_definition
+        except json.JSONDecodeError as exc:
+            raise ValueError("Invalid JSON track definition") from exc
+    else:
+        track_json = json.dumps(track_definition)
+    _backend.render_sample_wav(track_json, output_path)
+
+
+__all__ = [
+    "play_track",
+    "play_track_file",
+    "stop",
+    "write_sample_wav",
+]
