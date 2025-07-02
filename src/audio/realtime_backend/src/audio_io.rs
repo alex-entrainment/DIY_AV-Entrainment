@@ -1,12 +1,16 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, StreamConfig};
-use parking_lot::Mutex;
-use std::sync::Arc;
 use crossbeam::channel::Receiver;
+use ringbuf::traits::Consumer;
+
+use crate::command::Command;
 
 use crate::scheduler::TrackScheduler;
 
-pub fn run_audio_stream(scheduler: Arc<Mutex<TrackScheduler>>, stop_rx: Receiver<()>) {
+pub fn run_audio_stream<C>(mut scheduler: TrackScheduler, mut cmd_rx: C, stop_rx: Receiver<()>)
+where
+    C: Consumer<Item = Command> + Send + 'static,
+{
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -18,7 +22,7 @@ pub fn run_audio_stream(scheduler: Arc<Mutex<TrackScheduler>>, stop_rx: Receiver
     let mut config: StreamConfig = supported_config.clone().into();
 
     // Use the scheduler's sample rate if it differs from the device default.
-    let desired_rate = scheduler.lock().sample_rate as u32;
+    let desired_rate = scheduler.sample_rate as u32;
     if desired_rate != config.sample_rate.0 {
         if let Ok(mut ranges) = device.supported_output_configs() {
             if let Some(range) = ranges.find(|r| {
@@ -41,28 +45,19 @@ pub fn run_audio_stream(scheduler: Arc<Mutex<TrackScheduler>>, stop_rx: Receiver
         }
     }
 
-    let scheduler_cb = scheduler.clone();
+    let mut sched = scheduler;
+    let mut cmds = cmd_rx;
     let audio_callback = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-        let mut sched = scheduler_cb.lock();
+        while let Some(cmd) = cmds.try_pop() {
+            sched.handle_command(cmd);
+        }
         sched.process_block(data);
     };
 
     let stream = match sample_format {
-        SampleFormat::F32 => match device.build_output_stream(&config, audio_callback, |err| eprintln!("stream error: {err}"), None) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to build stream with desired config: {e}. Falling back to default config.");
-                let fallback: StreamConfig = supported_config.into();
-                let scheduler_fb = scheduler.clone();
-                let fb_callback = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    let mut sched = scheduler_fb.lock();
-                    sched.process_block(data);
-                };
-                device
-                    .build_output_stream(&fallback, fb_callback, |err| eprintln!("stream error: {err}"), None)
-                    .expect("failed to build output stream")
-            }
-        },
+        SampleFormat::F32 => device
+            .build_output_stream(&config, audio_callback, |err| eprintln!("stream error: {err}"), None)
+            .expect("failed to build output stream"),
         _ => panic!("Unsupported sample format"),
     };
     stream.play().unwrap();
