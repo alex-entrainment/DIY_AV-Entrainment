@@ -88,3 +88,13 @@ cargo run -p realtime_backend --bin play_json -- path/to/track.json
 ```
 
 Use `Ctrl+C` to stop playback.
+
+You can also use a small Python CLI for quick testing. After building the
+`realtime_backend` extension, run:
+
+```bash
+./realtime backend --path path/to/track.json --generate
+```
+
+Omit `--generate` to stream the track in real time instead of rendering
+it to a WAV file.
