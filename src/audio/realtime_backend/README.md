@@ -51,3 +51,15 @@ wasm-pack build --target web --release
 ```
 
 The generated `pkg/` folder contains `realtime_backend.js` and `realtime_backend_bg.wasm`.  See `WASM_GUIDE.md` for integration details.
+
+## Command Line Usage
+
+A small CLI binary is included for quickly auditioning track definitions without
+Python. Build the project normally and run `play_json` with a path to a JSON
+file exported from the GUI:
+
+```bash
+cargo run --bin play_json -- path/to/track.json
+```
+
+Press `Ctrl+C` to stop playback.

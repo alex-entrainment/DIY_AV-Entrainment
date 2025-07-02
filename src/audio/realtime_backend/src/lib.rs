@@ -2,12 +2,12 @@
 #![allow(unused_imports)]
 
 #[cfg(feature = "python")]
-mod audio_io;
-mod dsp;
-mod models;
-mod scheduler;
-mod command;
-mod voices;
+pub mod audio_io;
+pub mod dsp;
+pub mod models;
+pub mod scheduler;
+pub mod command;
+pub mod voices;
 
 use models::TrackData;
 use scheduler::TrackScheduler;
