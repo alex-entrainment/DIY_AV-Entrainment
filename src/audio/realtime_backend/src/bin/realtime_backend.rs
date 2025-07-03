@@ -36,6 +36,9 @@ struct RunArgs {
     /// Enable GPU accelerated mixing (requires building with `--features gpu`)
     #[arg(long, default_value_t = false)]
     gpu: bool,
+    /// Start playback from this time in seconds
+    #[arg(long, default_value_t = 0.0)]
+    start: f64,
 }
 
 #[derive(ClapArgs)]
@@ -84,7 +87,7 @@ fn run_command(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = device.default_output_config()?;
     let stream_rate = cfg.sample_rate().0;
 
-    let mut scheduler = TrackScheduler::new(track_data, stream_rate);
+    let mut scheduler = TrackScheduler::new_with_start(track_data, stream_rate, args.start);
     scheduler.gpu_enabled = if args.gpu { true } else { CONFIG.gpu };
     let rb = HeapRb::<Command>::new(1024);
     let (mut prod, cons) = rb.split();

@@ -430,6 +430,10 @@ impl TrackScheduler {
                     self.resume();
                 }
             }
+            Command::StartFrom(time) => {
+                let samples = (time * self.sample_rate as f64) as usize;
+                self.seek_samples(samples);
+            }
         }
     }
 
