@@ -7,7 +7,7 @@ use crate::command::Command;
 
 use crate::scheduler::TrackScheduler;
 
-pub fn run_audio_stream<C>(mut scheduler: TrackScheduler, mut cmd_rx: C, stop_rx: Receiver<()>)
+pub fn run_audio_stream<C>(scheduler: TrackScheduler, cmd_rx: C, stop_rx: Receiver<()>)
 where
     C: Consumer<Item = Command> + Send + 'static,
 {
