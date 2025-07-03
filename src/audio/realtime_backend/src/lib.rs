@@ -125,6 +125,15 @@ fn resume_stream() -> PyResult<()> {
 
 #[cfg(feature = "python")]
 #[pyfunction]
+fn start_from(position: f64) -> PyResult<()> {
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::StartFrom(position));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
 fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
     use hound::{WavSpec, WavWriter, SampleFormat};
     let track_data: TrackData = serde_json::from_str(&track_json_str)
@@ -325,6 +334,14 @@ pub fn resume_stream() {
 
 #[cfg(feature = "web")]
 #[wasm_bindgen]
+pub fn start_from(position: f64) {
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::StartFrom(position));
+    }
+}
+
+#[cfg(feature = "web")]
+#[wasm_bindgen]
 pub fn stop_stream() {
     *ENGINE_STATE.lock() = None;
     WASM_SCHED.with(|s| *s.borrow_mut() = None);
@@ -337,6 +354,7 @@ fn realtime_backend(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(stop_stream, m)?)?;
     m.add_function(wrap_pyfunction!(pause_stream, m)?)?;
     m.add_function(wrap_pyfunction!(resume_stream, m)?)?;
+    m.add_function(wrap_pyfunction!(start_from, m)?)?;
     m.add_function(wrap_pyfunction!(update_track, m)?)?;
     m.add_function(wrap_pyfunction!(render_sample_wav, m)?)?;
     m.add_function(wrap_pyfunction!(render_full_wav, m)?)?;

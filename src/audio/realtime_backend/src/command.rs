@@ -7,4 +7,6 @@ pub enum Command {
     EnableGpu(bool),
     /// Pause or resume playback
     SetPaused(bool),
+    /// Seek to a new playback position in seconds
+    StartFrom(f64),
 }
