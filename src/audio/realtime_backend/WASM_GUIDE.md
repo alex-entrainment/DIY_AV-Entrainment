@@ -34,9 +34,10 @@ Import the generated module and initialize it before starting audio playback:
 ```javascript
 import init, { start_stream, stop_stream } from './realtime_backend.js';
 
-async function initAudio(trackJson) {
+async function initAudio(trackJson, sampleRate) {
   await init(); // loads realtime_backend_bg.wasm
-  await start_stream(JSON.stringify(trackJson));
+  // begin playback 10 seconds into the track
+  await start_stream(JSON.stringify(trackJson), sampleRate, 10.0);
 }
 ```
 
