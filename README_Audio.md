@@ -88,3 +88,20 @@ cargo run -p realtime_backend --bin play_json -- path/to/track.json
 ```
 
 Use `Ctrl+C` to stop playback.
+
+### Backend Configuration
+The realtime backend reads a `config.toml` file located in
+`src/audio/realtime_backend/`. This file allows setting the default output
+directory, enabling GPU mixing, and specifying global gain adjustments for
+voices, background noise and overlay clips. Example:
+
+```toml
+output_dir = "output"
+gpu = false
+voice_gain = 1.0
+noise_gain = 1.0
+clip_gain = 1.0
+```
+
+Relative path outputs in `render_*` functions or the CLI are written beneath the
+configured `output_dir`.

@@ -3,6 +3,7 @@ use realtime_backend::models::TrackData;
 use realtime_backend::scheduler::TrackScheduler;
 use realtime_backend::command::Command;
 use realtime_backend::audio_io;
+use realtime_backend::config::CONFIG;
 use ringbuf::HeapRb;
 use ringbuf::traits::Split;
 use crossbeam::channel::unbounded;
@@ -27,7 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = device.default_output_config()?;
     let stream_rate = cfg.sample_rate().0;
 
-    let scheduler = TrackScheduler::new(track_data, stream_rate);
+    let mut scheduler = TrackScheduler::new(track_data, stream_rate);
+    scheduler.gpu_enabled = CONFIG.gpu;
     let rb = HeapRb::<Command>::new(1024);
     let (_prod, cons) = rb.split();
     let (tx, rx) = unbounded();

@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
-fn default_crossfade_duration() -> f64 { 1.0 }
+fn default_crossfade_duration() -> f64 { 3.0 }
 fn default_crossfade_curve() -> String { "linear".to_string() }
 
 #[derive(Deserialize, Debug, Clone)]
