@@ -690,7 +690,12 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
     bg_cfg = track_data.get("background_noise", {})
     bg_file = None
     if isinstance(bg_cfg, dict):
-        bg_file = bg_cfg.get("file") or bg_cfg.get("params_path") or bg_cfg.get("noise_file")
+        bg_file = (
+            bg_cfg.get("file")
+            or bg_cfg.get("file_path")
+            or bg_cfg.get("params_path")
+            or bg_cfg.get("noise_file")
+        )
     if bg_file:
         try:
             params = load_noise_params(bg_file)
@@ -754,7 +759,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                     "constant",
                 )
 
-            gain = float(bg_cfg.get("gain", 1.0))
+            gain = float(bg_cfg.get("gain", bg_cfg.get("amp", 1.0)))
             start_time = float(bg_cfg.get("start_time", 0.0))
             fade_in = float(bg_cfg.get("fade_in", 0.0))
             fade_out = float(bg_cfg.get("fade_out", 0.0))
@@ -815,7 +820,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                 if end_sample > track.shape[0]:
                     track = np.pad(track, ((0, end_sample - track.shape[0]), (0, 0)), "constant")
                     final_track_samples = max(final_track_samples, end_sample)
-                gain = float(clip.get("gain", 1.0))
+                gain = float(clip.get("gain", clip.get("amp", 1.0)))
                 track[start_sample:end_sample] += clip_audio * gain
             except Exception as e:
                 print(f"Error overlaying clip {clip}: {e}")
