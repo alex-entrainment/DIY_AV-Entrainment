@@ -12,6 +12,7 @@ use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 
 use crate::dsp::{pan2, trapezoid_envelope, build_volume_envelope};
+use crate::dsp::trig::{sin_lut, cos_lut};
 use crate::scheduler::Voice;
 use crate::models::{StepData, VoiceData};
 
@@ -726,7 +727,7 @@ fn load_and_modulate(path: &str, sample_rate: u32, carrier: f32) -> Option<Vec<f
     let mut out = Vec::with_capacity(data.len());
     for (i, sample) in data.into_iter().enumerate() {
         let t = i as f32 / sample_rate as f32;
-        let m = (2.0 * std::f32::consts::PI * carrier * t).sin();
+        let m = sin_lut(2.0 * std::f32::consts::PI * carrier * t);
         out.push(sample * m);
     }
     let max_val = out.iter().fold(0.0f32, |m, v| m.max(v.abs()));
@@ -1739,11 +1740,11 @@ impl Voice for BinauralBeatVoice {
             let half_beat = self.beat_freq * 0.5;
             let mut freq_l = self.base_freq - half_beat
                 + (self.freq_osc_range_l * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t);
             let mut freq_r = self.base_freq
                 + half_beat
                 + (self.freq_osc_range_r * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t);
 
             if self.force_mono || self.beat_freq == 0.0 {
                 freq_l = self.base_freq.max(0.0);
@@ -1769,7 +1770,7 @@ impl Voice for BinauralBeatVoice {
             let mut ph_r = self.phase_r;
             if self.phase_osc_freq != 0.0 || self.phase_osc_range != 0.0 {
                 let dphi = (self.phase_osc_range * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.phase_osc_freq * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.phase_osc_freq * t);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
@@ -1779,19 +1780,17 @@ impl Voice for BinauralBeatVoice {
                 - self.amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
-                                + self.amp_osc_phase_offset_l)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
+                                + self.amp_osc_phase_offset_l)));
             let env_r = 1.0
                 - self.amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
-                                + self.amp_osc_phase_offset_r)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
+                                + self.amp_osc_phase_offset_r)));
 
-            let sample_l = ph_l.sin() * env_l * self.amp_l;
-            let sample_r = ph_r.sin() * env_r * self.amp_r;
+            let sample_l = sin_lut(ph_l) * env_l * self.amp_l;
+            let sample_r = sin_lut(ph_r) * env_r * self.amp_r;
 
             output[i * 2] += sample_l;
             output[i * 2 + 1] += sample_r;
@@ -1870,11 +1869,11 @@ impl Voice for BinauralBeatTransitionVoice {
             let half_beat = beat_freq * 0.5;
             let mut freq_l = base_freq - half_beat
                 + (freq_osc_range_l * 0.5)
-                    * (2.0 * std::f32::consts::PI * freq_osc_freq_l * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t);
             let mut freq_r = base_freq
                 + half_beat
                 + (freq_osc_range_r * 0.5)
-                    * (2.0 * std::f32::consts::PI * freq_osc_freq_r * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t);
 
             if force_mono || beat_freq == 0.0 {
                 freq_l = base_freq.max(0.0);
@@ -1896,7 +1895,7 @@ impl Voice for BinauralBeatTransitionVoice {
             let mut ph_r = self.phase_r;
             if phase_osc_freq != 0.0 || phase_osc_range != 0.0 {
                 let dphi = (phase_osc_range * 0.5)
-                    * (2.0 * std::f32::consts::PI * phase_osc_freq * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * phase_osc_freq * t);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
@@ -1905,19 +1904,17 @@ impl Voice for BinauralBeatTransitionVoice {
                 - amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * amp_osc_freq_l * t
-                                + amp_osc_phase_offset_l)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_l * t
+                                + amp_osc_phase_offset_l)));
             let env_r = 1.0
                 - amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * amp_osc_freq_r * t
-                                + amp_osc_phase_offset_r)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_r * t
+                                + amp_osc_phase_offset_r)));
 
-            let sample_l = ph_l.sin() * env_l * amp_l;
-            let sample_r = ph_r.sin() * env_r * amp_r;
+            let sample_l = sin_lut(ph_l) * env_l * amp_l;
+            let sample_r = sin_lut(ph_r) * env_r * amp_r;
 
             output[i * 2] += sample_l;
             output[i * 2 + 1] += sample_r;
@@ -1945,10 +1942,10 @@ impl Voice for IsochronicToneVoice {
 
             let mut freq_l = self.base_freq
                 + (self.freq_osc_range_l * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t);
             let mut freq_r = self.base_freq
                 + (self.freq_osc_range_r * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t);
 
             if self.force_mono {
                 freq_l = self.base_freq.max(0.0);
@@ -1977,7 +1974,7 @@ impl Voice for IsochronicToneVoice {
             let mut ph_r = self.phase_r;
             if self.phase_osc_freq != 0.0 || self.phase_osc_range != 0.0 {
                 let dphi = (self.phase_osc_range * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.phase_osc_freq * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.phase_osc_freq * t);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
@@ -1986,19 +1983,17 @@ impl Voice for IsochronicToneVoice {
                 - self.amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
-                                + self.amp_osc_phase_offset_l)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
+                                + self.amp_osc_phase_offset_l)));
             let env_r = 1.0
                 - self.amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
-                                + self.amp_osc_phase_offset_r)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
+                                + self.amp_osc_phase_offset_r)));
 
-            let mut sample_l = ph_l.sin() * env_l * self.amp_l * iso_env;
-            let mut sample_r = ph_r.sin() * env_r * self.amp_r * iso_env;
+            let mut sample_l = sin_lut(ph_l) * env_l * self.amp_l * iso_env;
+            let mut sample_r = sin_lut(ph_r) * env_r * self.amp_r * iso_env;
 
             if self.pan != 0.0 {
                 let mono = 0.5 * (sample_l + sample_r);
@@ -2081,9 +2076,9 @@ impl Voice for IsochronicToneTransitionVoice {
                 + (self.end_freq_osc_freq_r - self.start_freq_osc_freq_r) * alpha;
 
             let mut freq_l = base_freq
-                + (freq_osc_range_l * 0.5) * (2.0 * std::f32::consts::PI * freq_osc_freq_l * t).sin();
+                + (freq_osc_range_l * 0.5) * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t);
             let mut freq_r = base_freq
-                + (freq_osc_range_r * 0.5) * (2.0 * std::f32::consts::PI * freq_osc_freq_r * t).sin();
+                + (freq_osc_range_r * 0.5) * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t);
 
             if force_mono {
                 freq_l = base_freq.max(0.0);
@@ -2112,7 +2107,7 @@ impl Voice for IsochronicToneTransitionVoice {
             let mut ph_r = self.phase_r;
             if phase_osc_freq != 0.0 || phase_osc_range != 0.0 {
                 let dphi = (phase_osc_range * 0.5)
-                    * (2.0 * std::f32::consts::PI * phase_osc_freq * t).sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * phase_osc_freq * t);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
@@ -2121,19 +2116,17 @@ impl Voice for IsochronicToneTransitionVoice {
                 - amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * amp_osc_freq_l * t
-                                + amp_osc_phase_offset_l)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_l * t
+                                + amp_osc_phase_offset_l)));
             let env_r = 1.0
                 - amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + (2.0 * std::f32::consts::PI * amp_osc_freq_r * t
-                                + amp_osc_phase_offset_r)
-                                .sin()));
+                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_r * t
+                                + amp_osc_phase_offset_r)));
 
-            let mut sample_l = ph_l.sin() * env_l * amp_l * iso_env;
-            let mut sample_r = ph_r.sin() * env_r * amp_r * iso_env;
+            let mut sample_l = sin_lut(ph_l) * env_l * amp_l * iso_env;
+            let mut sample_r = sin_lut(ph_r) * env_r * amp_r * iso_env;
 
             if self.pan != 0.0 {
                 let mono = 0.5 * (sample_l + sample_r);
@@ -2170,9 +2163,9 @@ impl Voice for QamBeatVoice {
             if self.qam_am_freq_l != 0.0 && self.qam_am_depth_l != 0.0 {
                 let phase = 2.0 * std::f32::consts::PI * self.qam_am_freq_l * t + self.qam_am_phase_offset_l;
                 let mod_l1 = if self.mod_shape_l == 1.0 {
-                    phase.cos()
+                    cos_lut(phase)
                 } else {
-                    let c = phase.cos();
+                    let c = cos_lut(phase);
                     c.signum() * c.abs().powf(1.0 / self.mod_shape_l)
                 };
                 env_l *= 1.0 + self.qam_am_depth_l * mod_l1;
@@ -2182,9 +2175,9 @@ impl Voice for QamBeatVoice {
             if self.qam_am_freq_r != 0.0 && self.qam_am_depth_r != 0.0 {
                 let phase = 2.0 * std::f32::consts::PI * self.qam_am_freq_r * t + self.qam_am_phase_offset_r;
                 let mod_r1 = if self.mod_shape_r == 1.0 {
-                    phase.cos()
+                    cos_lut(phase)
                 } else {
-                    let c = phase.cos();
+                    let c = cos_lut(phase);
                     c.signum() * c.abs().powf(1.0 / self.mod_shape_r)
                 };
                 env_r *= 1.0 + self.qam_am_depth_r * mod_r1;
@@ -2193,16 +2186,14 @@ impl Voice for QamBeatVoice {
             if self.qam_am2_freq_l != 0.0 && self.qam_am2_depth_l != 0.0 {
                 env_l *= 1.0
                     + self.qam_am2_depth_l
-                        * (2.0 * std::f32::consts::PI * self.qam_am2_freq_l * t
-                            + self.qam_am2_phase_offset_l)
-                            .cos();
+                        * cos_lut(2.0 * std::f32::consts::PI * self.qam_am2_freq_l * t
+                            + self.qam_am2_phase_offset_l);
             }
             if self.qam_am2_freq_r != 0.0 && self.qam_am2_depth_r != 0.0 {
                 env_r *= 1.0
                     + self.qam_am2_depth_r
-                        * (2.0 * std::f32::consts::PI * self.qam_am2_freq_r * t
-                            + self.qam_am2_phase_offset_r)
-                            .cos();
+                        * cos_lut(2.0 * std::f32::consts::PI * self.qam_am2_freq_r * t
+                            + self.qam_am2_phase_offset_r);
             }
 
             let base_env_l = env_l;
@@ -2218,7 +2209,7 @@ impl Voice for QamBeatVoice {
             }
 
             if self.sub_harmonic_freq != 0.0 && self.sub_harmonic_depth != 0.0 {
-                let sub = (2.0 * std::f32::consts::PI * self.sub_harmonic_freq * t).cos();
+                let sub = cos_lut(2.0 * std::f32::consts::PI * self.sub_harmonic_freq * t);
                 env_l *= 1.0 + self.sub_harmonic_depth * sub;
                 env_r *= 1.0 + self.sub_harmonic_depth * sub;
             }
@@ -2231,27 +2222,26 @@ impl Voice for QamBeatVoice {
             let mut ph_r = self.phase_r;
             if self.phase_osc_freq != 0.0 || self.phase_osc_range != 0.0 {
                 let dphi = (self.phase_osc_range * 0.5)
-                    * (2.0 * std::f32::consts::PI * self.phase_osc_freq * t
-                        + self.phase_osc_phase_offset)
-                        .sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * self.phase_osc_freq * t
+                        + self.phase_osc_phase_offset);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
 
-            let mut sig_l = env_l * ph_l.cos();
-            let mut sig_r = env_r * ph_r.cos();
+            let mut sig_l = env_l * cos_lut(ph_l);
+            let mut sig_r = env_r * cos_lut(ph_r);
 
             if self.harmonic_depth != 0.0 {
-                sig_l += self.harmonic_depth * env_l * (self.harmonic_ratio * ph_l).cos();
-                sig_r += self.harmonic_depth * env_r * (self.harmonic_ratio * ph_r).cos();
+                sig_l += self.harmonic_depth * env_l * cos_lut(self.harmonic_ratio * ph_l);
+                sig_r += self.harmonic_depth * env_r * cos_lut(self.harmonic_ratio * ph_r);
             }
 
             if self.beating_sidebands && self.sideband_depth != 0.0 {
                 let side = 2.0 * std::f32::consts::PI * self.sideband_offset * t;
-                sig_l += self.sideband_depth * env_l * (ph_l - side).cos();
-                sig_r += self.sideband_depth * env_r * (ph_r - side).cos();
-                sig_l += self.sideband_depth * env_l * (ph_l + side).cos();
-                sig_r += self.sideband_depth * env_r * (ph_r + side).cos();
+                sig_l += self.sideband_depth * env_l * cos_lut(ph_l - side);
+                sig_r += self.sideband_depth * env_r * cos_lut(ph_r - side);
+                sig_l += self.sideband_depth * env_l * cos_lut(ph_l + side);
+                sig_r += self.sideband_depth * env_r * cos_lut(ph_r + side);
             }
 
             let mut env_mult = 1.0;
@@ -2350,9 +2340,9 @@ impl Voice for QamBeatTransitionVoice {
             if qam_am_freq_l != 0.0 && qam_am_depth_l != 0.0 {
                 let phase = 2.0 * std::f32::consts::PI * qam_am_freq_l * t + qam_am_phase_offset_l;
                 let mod_l1 = if mod_shape_l == 1.0 {
-                    phase.cos()
+                    cos_lut(phase)
                 } else {
-                    let c = phase.cos();
+                    let c = cos_lut(phase);
                     c.signum() * c.abs().powf(1.0 / mod_shape_l)
                 };
                 env_l *= 1.0 + qam_am_depth_l * mod_l1;
@@ -2362,9 +2352,9 @@ impl Voice for QamBeatTransitionVoice {
             if qam_am_freq_r != 0.0 && qam_am_depth_r != 0.0 {
                 let phase = 2.0 * std::f32::consts::PI * qam_am_freq_r * t + qam_am_phase_offset_r;
                 let mod_r1 = if mod_shape_r == 1.0 {
-                    phase.cos()
+                    cos_lut(phase)
                 } else {
-                    let c = phase.cos();
+                    let c = cos_lut(phase);
                     c.signum() * c.abs().powf(1.0 / mod_shape_r)
                 };
                 env_r *= 1.0 + qam_am_depth_r * mod_r1;
@@ -2373,14 +2363,12 @@ impl Voice for QamBeatTransitionVoice {
             if qam_am2_freq_l != 0.0 && qam_am2_depth_l != 0.0 {
                 env_l *= 1.0
                     + qam_am2_depth_l
-                        * (2.0 * std::f32::consts::PI * qam_am2_freq_l * t + qam_am2_phase_offset_l)
-                            .cos();
+                        * cos_lut(2.0 * std::f32::consts::PI * qam_am2_freq_l * t + qam_am2_phase_offset_l);
             }
             if qam_am2_freq_r != 0.0 && qam_am2_depth_r != 0.0 {
                 env_r *= 1.0
                     + qam_am2_depth_r
-                        * (2.0 * std::f32::consts::PI * qam_am2_freq_r * t + qam_am2_phase_offset_r)
-                            .cos();
+                        * cos_lut(2.0 * std::f32::consts::PI * qam_am2_freq_r * t + qam_am2_phase_offset_r);
             }
 
             let base_env_l = env_l;
@@ -2396,7 +2384,7 @@ impl Voice for QamBeatTransitionVoice {
             }
 
             if sub_harmonic_freq != 0.0 && sub_harmonic_depth != 0.0 {
-                let sub = (2.0 * std::f32::consts::PI * sub_harmonic_freq * t).cos();
+                let sub = cos_lut(2.0 * std::f32::consts::PI * sub_harmonic_freq * t);
                 env_l *= 1.0 + sub_harmonic_depth * sub;
                 env_r *= 1.0 + sub_harmonic_depth * sub;
             }
@@ -2409,26 +2397,25 @@ impl Voice for QamBeatTransitionVoice {
             let mut ph_r = self.phase_r;
             if phase_osc_freq != 0.0 || phase_osc_range != 0.0 {
                 let dphi = (phase_osc_range * 0.5)
-                    * (2.0 * std::f32::consts::PI * phase_osc_freq * t + self.phase_osc_phase_offset)
-                        .sin();
+                    * sin_lut(2.0 * std::f32::consts::PI * phase_osc_freq * t + self.phase_osc_phase_offset);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
 
-            let mut sig_l = env_l * ph_l.cos();
-            let mut sig_r = env_r * ph_r.cos();
+            let mut sig_l = env_l * cos_lut(ph_l);
+            let mut sig_r = env_r * cos_lut(ph_r);
 
             if harmonic_depth != 0.0 {
-                sig_l += harmonic_depth * env_l * (self.harmonic_ratio * ph_l).cos();
-                sig_r += harmonic_depth * env_r * (self.harmonic_ratio * ph_r).cos();
+                sig_l += harmonic_depth * env_l * cos_lut(self.harmonic_ratio * ph_l);
+                sig_r += harmonic_depth * env_r * cos_lut(self.harmonic_ratio * ph_r);
             }
 
             if self.beating_sidebands && self.sideband_depth != 0.0 {
                 let side = 2.0 * std::f32::consts::PI * self.sideband_offset * t;
-                sig_l += self.sideband_depth * env_l * (ph_l - side).cos();
-                sig_r += self.sideband_depth * env_r * (ph_r - side).cos();
-                sig_l += self.sideband_depth * env_l * (ph_l + side).cos();
-                sig_r += self.sideband_depth * env_r * (ph_r + side).cos();
+                sig_l += self.sideband_depth * env_l * cos_lut(ph_l - side);
+                sig_r += self.sideband_depth * env_r * cos_lut(ph_r - side);
+                sig_l += self.sideband_depth * env_l * cos_lut(ph_l + side);
+                sig_r += self.sideband_depth * env_r * cos_lut(ph_r + side);
             }
 
             let mut env_mult = 1.0;
@@ -2462,10 +2449,10 @@ impl Voice for StereoAmIndependentVoice {
             }
             let dt = 1.0 / self.sample_rate;
 
-            let carrier_l = self.phase_carrier_l.sin();
-            let carrier_r = self.phase_carrier_r.sin();
-            let lfo_l = self.phase_mod_l.sin();
-            let lfo_r = self.phase_mod_r.sin();
+            let carrier_l = sin_lut(self.phase_carrier_l);
+            let carrier_r = sin_lut(self.phase_carrier_r);
+            let lfo_l = sin_lut(self.phase_mod_l);
+            let lfo_r = sin_lut(self.phase_mod_r);
             let mod_l = 1.0 - self.mod_depth_l * (1.0 - lfo_l) * 0.5;
             let mod_r = 1.0 - self.mod_depth_r * (1.0 - lfo_r) * 0.5;
 
@@ -2531,10 +2518,10 @@ impl Voice for StereoAmIndependentTransitionVoice {
             let mod_depth_r =
                 self.start_mod_depth_r + (self.end_mod_depth_r - self.start_mod_depth_r) * alpha;
 
-            let carrier_l = self.phase_carrier_l.sin();
-            let carrier_r = self.phase_carrier_r.sin();
-            let lfo_l = self.phase_mod_l.sin();
-            let lfo_r = self.phase_mod_r.sin();
+            let carrier_l = sin_lut(self.phase_carrier_l);
+            let carrier_r = sin_lut(self.phase_carrier_r);
+            let lfo_l = sin_lut(self.phase_mod_l);
+            let lfo_r = sin_lut(self.phase_mod_r);
             let mod_l = 1.0 - mod_depth_l * (1.0 - lfo_l) * 0.5;
             let mod_r = 1.0 - mod_depth_r * (1.0 - lfo_r) * 0.5;
 
@@ -2573,15 +2560,15 @@ impl Voice for WaveShapeStereoAmVoice {
             }
             let dt = 1.0 / self.sample_rate;
 
-            let carrier = self.phase_carrier.sin();
-            let shape_lfo_wave = self.phase_shape.sin();
+            let carrier = sin_lut(self.phase_carrier);
+            let shape_lfo_wave = sin_lut(self.phase_shape);
             let shape_env = 1.0 - self.shape_mod_depth * (1.0 - shape_lfo_wave) * 0.5;
             let modulated = carrier * shape_env;
             let sa = self.shape_amount.max(1e-6);
             let shaped = (modulated * sa).tanh() / sa.tanh();
 
-            let stereo_lfo_l = self.phase_stereo_l.sin();
-            let stereo_lfo_r = self.phase_stereo_r.sin();
+            let stereo_lfo_l = sin_lut(self.phase_stereo_l);
+            let stereo_lfo_r = sin_lut(self.phase_stereo_r);
             let mod_l = 1.0 - self.stereo_mod_depth_l * (1.0 - stereo_lfo_l) * 0.5;
             let mod_r = 1.0 - self.stereo_mod_depth_r * (1.0 - stereo_lfo_r) * 0.5;
 
@@ -2647,15 +2634,15 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
             let stereo_mod_depth_r =
                 self.start_stereo_mod_depth_r + (self.end_stereo_mod_depth_r - self.start_stereo_mod_depth_r) * alpha;
 
-            let carrier = self.phase_carrier.sin();
-            let shape_lfo_wave = self.phase_shape.sin();
+            let carrier = sin_lut(self.phase_carrier);
+            let shape_lfo_wave = sin_lut(self.phase_shape);
             let shape_env = 1.0 - shape_mod_depth * (1.0 - shape_lfo_wave) * 0.5;
             let modulated = carrier * shape_env;
             let sa = shape_amount.max(1e-6);
             let shaped = (modulated * sa).tanh() / sa.tanh();
 
-            let stereo_lfo_l = self.phase_stereo_l.sin();
-            let stereo_lfo_r = self.phase_stereo_r.sin();
+            let stereo_lfo_l = sin_lut(self.phase_stereo_l);
+            let stereo_lfo_r = sin_lut(self.phase_stereo_r);
             let mod_l = 1.0 - stereo_mod_depth_l * (1.0 - stereo_lfo_l) * 0.5;
             let mod_r = 1.0 - stereo_mod_depth_r * (1.0 - stereo_lfo_r) * 0.5;
 
@@ -2691,8 +2678,8 @@ impl Voice for SpatialAngleModulationVoice {
             }
             let dt = 1.0 / self.sample_rate;
 
-            let sample = (self.carrier_phase).sin() * self.amp;
-            let pan = (self.spatial_phase).sin() * self.path_radius;
+            let sample = sin_lut(self.carrier_phase) * self.amp;
+            let pan = sin_lut(self.spatial_phase) * self.path_radius;
             let (l, r) = pan2(sample, pan);
             output[i * 2] += l;
             output[i * 2 + 1] += r;
@@ -2743,8 +2730,8 @@ impl Voice for SpatialAngleModulationTransitionVoice {
             let path_radius =
                 self.start_path_radius + (self.end_path_radius - self.start_path_radius) * alpha;
 
-            let sample = (self.carrier_phase).sin() * self.amp;
-            let pan = (self.spatial_phase).sin() * path_radius;
+            let sample = sin_lut(self.carrier_phase) * self.amp;
+            let pan = sin_lut(self.spatial_phase) * path_radius;
             let (l, r) = pan2(sample, pan);
             output[i * 2] += l;
             output[i * 2 + 1] += r;
@@ -2774,8 +2761,8 @@ impl Voice for RhythmicWaveshapingVoice {
             }
             let dt = 1.0 / self.sample_rate;
 
-            let carrier = self.carrier_phase.sin();
-            let lfo = self.lfo_phase.sin();
+            let carrier = sin_lut(self.carrier_phase);
+            let lfo = sin_lut(self.lfo_phase);
             let shape_lfo = 1.0 - self.mod_depth * (1.0 - lfo) * 0.5;
             let mod_input = carrier * shape_lfo;
             let amt = self.shape_amount.max(1e-6);
@@ -2833,8 +2820,8 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
             let shape_amount =
                 self.start_shape_amount + (self.end_shape_amount - self.start_shape_amount) * alpha;
 
-            let carrier = self.carrier_phase.sin();
-            let lfo = self.lfo_phase.sin();
+            let carrier = sin_lut(self.carrier_phase);
+            let lfo = sin_lut(self.lfo_phase);
             let shape_lfo = 1.0 - mod_depth * (1.0 - lfo) * 0.5;
             let mod_input = carrier * shape_lfo;
             let amt = shape_amount.max(1e-6);
