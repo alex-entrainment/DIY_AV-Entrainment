@@ -359,7 +359,7 @@ impl TrackScheduler {
                     Some(BackgroundNoise {
                         samples: stereo,
                         position: pos,
-                        gain: noise_cfg.amp,
+                        gain: noise_cfg.amp * self.noise_gain,
                     })
                 } else {
                     None
@@ -367,13 +367,6 @@ impl TrackScheduler {
             } else {
                 None
             }
-
-            let pos = (abs_samples * 2).min(stereo.len());
-            Some(BackgroundNoise {
-                samples: stereo,
-                position: pos,
-                gain: noise_cfg.amp * self.noise_gain,
-            })
         } else {
             None
         };
