@@ -46,7 +46,8 @@ realtime_backend.render_sample_wav(track_json, "sample.wav")
 realtime_backend.render_full_wav(track_json, "full_output.wav")
 ```
 Call `realtime_backend.pause_stream()` to temporarily silence playback,
-`resume_stream()` to continue, and `stop_stream()` to halt playback entirely.
+`resume_stream()` to continue, `start_from(seconds)` to seek during
+playback, and `stop_stream()` to halt playback entirely.
 
 ## WebAssembly Build
 
@@ -67,13 +68,13 @@ binary. Pass the path to a track JSON file and optionally enable full
 rendering:
 
 ```bash
-cargo run --bin realtime_backend -- --path path/to/track.json --generate false
+cargo run --bin realtime_backend -- --path path/to/track.json --start 10.0 --generate false
 ```
 
 Use the `--gpu` flag to enable GPU acceleration (build with `--features gpu`):
 
 ```bash
-cargo run --bin realtime_backend --features gpu -- --path path/to/track.json --gpu true
+cargo run --bin realtime_backend --features gpu -- --path path/to/track.json --start 10.0 --gpu true
 ```
 
 If `--generate true` is supplied, the entire track is written to the
@@ -108,12 +109,13 @@ Each command also has its own help output.
 `run` accepts the path to a track JSON file and optional flags:
 
 ```text
-Usage: realtime_backend run --path <PATH> [--generate <BOOL>] [--gpu <BOOL>]
+Usage: realtime_backend run --path <PATH> [--generate <BOOL>] [--gpu <BOOL>] [--start <SECONDS>]
 
 Options:
   --path <PATH>          Path to the track JSON file
   --generate <BOOL>      Generate the full track to the output file instead of streaming [default: false]
   --gpu <BOOL>           Enable GPU accelerated mixing (requires building with `--features gpu`) [default: false]
+  --start <SECONDS>      Start playback at the given time in seconds [default: 0]
   -h, --help             Print help
 ```
 
