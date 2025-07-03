@@ -26,6 +26,9 @@ Track definition files now use a nested structure:
 }
 ```
 
+Background noise is only mixed when `background_noise.file_path` references a
+`.noise` preset. If the field is empty or omitted, no noise will be added.
+
 Noise generator settings can be stored separately using `.noise` files:
 
 ```

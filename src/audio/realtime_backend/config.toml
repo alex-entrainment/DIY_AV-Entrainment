@@ -1,0 +1,5 @@
+output_dir = "output"
+gpu = false
+voice_gain = 1.0
+noise_gain = 1.0
+clip_gain = 1.0

@@ -3,6 +3,7 @@ use realtime_backend::models::TrackData;
 use realtime_backend::scheduler::TrackScheduler;
 use realtime_backend::command::Command;
 use realtime_backend::audio_io;
+use realtime_backend::config::CONFIG;
 use ringbuf::HeapRb;
 use ringbuf::traits::Split;
 use crossbeam::channel::unbounded;
@@ -29,13 +30,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let track_data: TrackData = serde_json::from_str(&json_str)?;
 
     if args.generate {
-        let out_path = track_data
+        let out_name = track_data
             .global_settings
             .output_filename
             .clone()
             .ok_or("outputFilename missing in global settings")?;
-        render_full_wav(track_data, &out_path, args.gpu)?;
-        println!("Generated full track at {}", out_path);
+        let out_path = if std::path::Path::new(&out_name).is_absolute() {
+            std::path::PathBuf::from(&out_name)
+        } else {
+            CONFIG.output_dir.join(&out_name)
+        };
+        render_full_wav(track_data, out_path.to_str().unwrap(), args.gpu)?;
+        println!("Generated full track at {}", out_path.display());
         return Ok(());
     }
 
@@ -47,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stream_rate = cfg.sample_rate().0;
 
     let mut scheduler = TrackScheduler::new(track_data, stream_rate);
-    scheduler.gpu_enabled = args.gpu;
+    scheduler.gpu_enabled = if args.gpu { true } else { CONFIG.gpu };
     let rb = HeapRb::<Command>::new(1024);
     let (_prod, cons) = rb.split();
     let (tx, rx) = unbounded();
@@ -74,7 +80,7 @@ fn render_full_wav(
     use hound::{WavSpec, WavWriter, SampleFormat};
     let sample_rate = track_data.global_settings.sample_rate;
     let mut scheduler = TrackScheduler::new(track_data.clone(), sample_rate);
-    scheduler.gpu_enabled = gpu;
+    scheduler.gpu_enabled = if gpu { true } else { CONFIG.gpu };
     let target_frames: usize = track_data
         .steps
         .iter()
@@ -88,7 +94,13 @@ fn render_full_wav(
         sample_format: SampleFormat::Int,
     };
 
-    let mut writer = WavWriter::create(out_path, spec)?;
+    let output_path = if std::path::Path::new(out_path).is_absolute() {
+        std::path::PathBuf::from(out_path)
+    } else {
+        CONFIG.output_dir.join(out_path)
+    };
+
+    let mut writer = WavWriter::create(&output_path, spec)?;
     let start_time = std::time::Instant::now();
     let mut remaining = target_frames;
     let mut buffer = vec![0.0f32; 512 * 2];
