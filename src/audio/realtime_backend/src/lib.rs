@@ -8,6 +8,7 @@ pub mod models;
 pub mod scheduler;
 pub mod command;
 pub mod voices;
+pub mod gpu;
 
 use models::TrackData;
 use scheduler::TrackScheduler;
