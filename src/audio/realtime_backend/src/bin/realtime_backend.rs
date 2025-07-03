@@ -87,8 +87,11 @@ fn run_command(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = device.default_output_config()?;
     let stream_rate = cfg.sample_rate().0;
 
-    let mut scheduler = TrackScheduler::new_with_start(track_data, stream_rate, args.start);
-    scheduler.gpu_enabled = if args.gpu { true } else { CONFIG.gpu };
+
+    let mut scheduler = TrackScheduler::new(track_data, stream_rate);
+    // GPU acceleration is reserved for file generation. Disable it during
+    // realtime streaming to avoid extra overhead.
+    scheduler.gpu_enabled = false;
     let rb = HeapRb::<Command>::new(1024);
     let (mut prod, cons) = rb.split();
     let (tx, rx) = unbounded();
@@ -149,7 +152,9 @@ fn render_full_wav(
     use hound::{WavSpec, WavWriter, SampleFormat};
     let sample_rate = track_data.global_settings.sample_rate;
     let mut scheduler = TrackScheduler::new(track_data.clone(), sample_rate);
-    scheduler.gpu_enabled = if gpu { true } else { CONFIG.gpu };
+    // Use the GPU when rendering if requested by the caller. Streaming never
+    // enables GPU acceleration.
+    scheduler.gpu_enabled = gpu;
     let target_frames: usize = track_data
         .steps
         .iter()

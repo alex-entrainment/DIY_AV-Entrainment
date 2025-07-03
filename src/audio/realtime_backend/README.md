@@ -71,16 +71,18 @@ rendering:
 cargo run --bin realtime_backend -- --path path/to/track.json --start 10.0 --generate false
 ```
 
-Use the `--gpu` flag to enable GPU acceleration (build with `--features gpu`):
+Use the `--gpu` flag to enable GPU acceleration when rendering to a file
+(build with `--features gpu`):
 
 ```bash
 cargo run --bin realtime_backend --features gpu -- --path path/to/track.json --start 10.0 --gpu true
 ```
 
-If `--generate true` is supplied, the entire track is written to the
-`outputFilename` specified in the JSON. Otherwise it streams the audio directly
-to the default output device. While running you can press `p` to toggle
-pause/resume, `q` to quit, or hit `Ctrl+C`.
+GPU acceleration is applied only when `--generate true` is used. Streaming
+playback always runs on the CPU. If `--generate true` is supplied, the entire
+track is written to the `outputFilename` specified in the JSON. Otherwise it
+streams the audio directly to the default output device. While running you can
+press `p` to toggle pause/resume, `q` to quit, or hit `Ctrl+C`.
 
 To create a default `config.toml` in the current directory run:
 
@@ -133,7 +135,7 @@ Options:
 
 The backend includes an experimental GPU mixing path behind the `gpu` Cargo
 feature. When enabled, a compute shader is used to sum the active voice buffers
-for each processed block.
+for each processed block during file generation only.
 
 Build the library with GPU support using:
 

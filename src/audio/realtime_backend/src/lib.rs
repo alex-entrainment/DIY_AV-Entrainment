@@ -59,7 +59,9 @@ fn start_stream(track_json_str: String, start_time: Option<f64>) -> PyResult<()>
 
     let start_secs = start_time.unwrap_or(0.0);
     let mut scheduler = TrackScheduler::new_with_start(track_data, stream_rate, start_secs);
-    scheduler.gpu_enabled = CONFIG.gpu;
+    // Disable GPU usage for realtime playback. GPU acceleration is reserved
+    // for offline rendering to avoid unnecessary overhead during streaming.
+    scheduler.gpu_enabled = false;
     let rb = HeapRb::<Command>::new(1024);
     let (prod, cons) = rb.split();
     *ENGINE_STATE.lock() = Some(prod);
@@ -139,6 +141,9 @@ fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
 
     let sample_rate = track_data.global_settings.sample_rate;
     let mut scheduler = TrackScheduler::new(track_data.clone(), sample_rate);
+    // Use GPU acceleration when rendering to a file if available.
+    // Streaming paths keep GPU disabled.
+    scheduler.gpu_enabled = true;
     let track_frames: usize = track_data
         .steps
         .iter()
@@ -193,6 +198,8 @@ fn render_full_wav(track_json_str: String, out_path: String) -> PyResult<()> {
 
     let sample_rate = track_data.global_settings.sample_rate;
     let mut scheduler = TrackScheduler::new(track_data.clone(), sample_rate);
+    // Enable GPU acceleration during full track rendering if available.
+    scheduler.gpu_enabled = true;
     let target_frames: usize = track_data
         .steps
         .iter()
