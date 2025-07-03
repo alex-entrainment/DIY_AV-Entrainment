@@ -1810,12 +1810,13 @@ impl Voice for BinauralBeatTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -1917,12 +1918,13 @@ impl Voice for BinauralBeatTransitionVoice {
             let sample_l = sin_lut(ph_l) * env_l * amp_l;
             let sample_r = sin_lut(ph_r) * env_r * amp_r;
 
-            output[i * 2] += sample_l;
-            output[i * 2 + 1] += sample_r;
+            frame[0] += sample_l;
+            frame[1] += sample_r;
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -1934,12 +1936,13 @@ impl Voice for IsochronicToneVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
 
             let mut freq_l = self.base_freq
                 + (self.freq_osc_range_l * 0.5)
@@ -2003,12 +2006,13 @@ impl Voice for IsochronicToneVoice {
                 sample_r = pr;
             }
 
-            output[i * 2] += sample_l;
-            output[i * 2 + 1] += sample_r;
+            frame[0] += sample_l;
+            frame[1] += sample_r;
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2020,12 +2024,13 @@ impl Voice for IsochronicToneTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2136,12 +2141,13 @@ impl Voice for IsochronicToneTransitionVoice {
                 sample_r = pr;
             }
 
-            output[i * 2] += sample_l;
-            output[i * 2 + 1] += sample_r;
+            frame[0] += sample_l;
+            frame[1] += sample_r;
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2153,12 +2159,13 @@ impl Voice for QamBeatVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
 
             let mut env_l = 1.0;
             if self.qam_am_freq_l != 0.0 && self.qam_am_depth_l != 0.0 {
@@ -2253,12 +2260,13 @@ impl Voice for QamBeatVoice {
                 env_mult *= (self.duration - t) / self.release_time;
             }
 
-            output[i * 2] += sig_l * self.amp_l * env_mult;
-            output[i * 2 + 1] += sig_r * self.amp_r * env_mult;
+            frame[0] += sig_l * self.amp_l * env_mult;
+            frame[1] += sig_r * self.amp_r * env_mult;
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2270,12 +2278,13 @@ impl Voice for QamBeatTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2427,12 +2436,13 @@ impl Voice for QamBeatTransitionVoice {
                 env_mult *= (self.duration - t) / self.release_time;
             }
 
-            output[i * 2] += sig_l * amp_l * env_mult;
-            output[i * 2 + 1] += sig_r * amp_r * env_mult;
+            frame[0] += sig_l * amp_l * env_mult;
+            frame[1] += sig_r * amp_r * env_mult;
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2444,7 +2454,8 @@ impl Voice for QamBeatTransitionVoice {
 impl Voice for StereoAmIndependentVoice {
     fn process(&mut self, output: &mut [f32]) {
         let frames = output.len() / 2;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(2).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
@@ -2457,8 +2468,8 @@ impl Voice for StereoAmIndependentVoice {
             let mod_l = 1.0 - self.mod_depth_l * (1.0 - lfo_l) * 0.5;
             let mod_r = 1.0 - self.mod_depth_r * (1.0 - lfo_r) * 0.5;
 
-            output[i * 2] += carrier_l * mod_l * self.amp;
-            output[i * 2 + 1] += carrier_r * mod_r * self.amp;
+            frame[0] += carrier_l * mod_l * self.amp;
+            frame[1] += carrier_r * mod_r * self.amp;
 
             let freq_l = self.carrier_freq - self.stereo_width_hz * 0.5;
             let freq_r = self.carrier_freq + self.stereo_width_hz * 0.5;
@@ -2474,8 +2485,9 @@ impl Voice for StereoAmIndependentVoice {
             self.phase_mod_r = self.phase_mod_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2486,12 +2498,13 @@ impl Voice for StereoAmIndependentVoice {
 impl Voice for StereoAmIndependentTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let frames = output.len() / 2;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(2).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let mut alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2526,8 +2539,8 @@ impl Voice for StereoAmIndependentTransitionVoice {
             let mod_l = 1.0 - mod_depth_l * (1.0 - lfo_l) * 0.5;
             let mod_r = 1.0 - mod_depth_r * (1.0 - lfo_r) * 0.5;
 
-            output[i * 2] += carrier_l * mod_l * self.amp;
-            output[i * 2 + 1] += carrier_r * mod_r * self.amp;
+            frame[0] += carrier_l * mod_l * self.amp;
+            frame[1] += carrier_r * mod_r * self.amp;
 
             let freq_l = carrier_freq - stereo_width_hz * 0.5;
             let freq_r = carrier_freq + stereo_width_hz * 0.5;
@@ -2543,8 +2556,9 @@ impl Voice for StereoAmIndependentTransitionVoice {
             self.phase_mod_r = self.phase_mod_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2555,7 +2569,8 @@ impl Voice for StereoAmIndependentTransitionVoice {
 impl Voice for WaveShapeStereoAmVoice {
     fn process(&mut self, output: &mut [f32]) {
         let frames = output.len() / 2;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(2).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
@@ -2573,8 +2588,8 @@ impl Voice for WaveShapeStereoAmVoice {
             let mod_l = 1.0 - self.stereo_mod_depth_l * (1.0 - stereo_lfo_l) * 0.5;
             let mod_r = 1.0 - self.stereo_mod_depth_r * (1.0 - stereo_lfo_r) * 0.5;
 
-            output[i * 2] += shaped * mod_l * self.amp;
-            output[i * 2 + 1] += shaped * mod_r * self.amp;
+            frame[0] += shaped * mod_l * self.amp;
+            frame[1] += shaped * mod_r * self.amp;
 
             self.phase_carrier += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
             self.phase_carrier = self.phase_carrier.rem_euclid(2.0 * std::f32::consts::PI);
@@ -2586,8 +2601,9 @@ impl Voice for WaveShapeStereoAmVoice {
             self.phase_stereo_r = self.phase_stereo_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2598,12 +2614,13 @@ impl Voice for WaveShapeStereoAmVoice {
 impl Voice for WaveShapeStereoAmTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let frames = output.len() / 2;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(2).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let mut alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2647,8 +2664,8 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
             let mod_l = 1.0 - stereo_mod_depth_l * (1.0 - stereo_lfo_l) * 0.5;
             let mod_r = 1.0 - stereo_mod_depth_r * (1.0 - stereo_lfo_r) * 0.5;
 
-            output[i * 2] += shaped * mod_l * self.amp;
-            output[i * 2 + 1] += shaped * mod_r * self.amp;
+            frame[0] += shaped * mod_l * self.amp;
+            frame[1] += shaped * mod_r * self.amp;
 
             self.phase_carrier += 2.0 * std::f32::consts::PI * carrier_freq * dt;
             self.phase_carrier = self.phase_carrier.rem_euclid(2.0 * std::f32::consts::PI);
@@ -2660,8 +2677,9 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
             self.phase_stereo_r = self.phase_stereo_r.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2673,7 +2691,8 @@ impl Voice for SpatialAngleModulationVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
@@ -2682,8 +2701,8 @@ impl Voice for SpatialAngleModulationVoice {
             let sample = sin_lut(self.carrier_phase) * self.amp;
             let pan = sin_lut(self.spatial_phase) * self.path_radius;
             let (l, r) = pan2(sample, pan);
-            output[i * 2] += l;
-            output[i * 2 + 1] += r;
+            frame[0] += l;
+            frame[1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
             self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
@@ -2691,8 +2710,9 @@ impl Voice for SpatialAngleModulationVoice {
             self.spatial_phase = self.spatial_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2704,12 +2724,13 @@ impl Voice for SpatialAngleModulationTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2734,8 +2755,8 @@ impl Voice for SpatialAngleModulationTransitionVoice {
             let sample = sin_lut(self.carrier_phase) * self.amp;
             let pan = sin_lut(self.spatial_phase) * path_radius;
             let (l, r) = pan2(sample, pan);
-            output[i * 2] += l;
-            output[i * 2 + 1] += r;
+            frame[0] += l;
+            frame[1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
             self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
@@ -2743,8 +2764,9 @@ impl Voice for SpatialAngleModulationTransitionVoice {
             self.spatial_phase = self.spatial_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2756,7 +2778,8 @@ impl Voice for RhythmicWaveshapingVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
@@ -2770,8 +2793,8 @@ impl Voice for RhythmicWaveshapingVoice {
             let shaped = (mod_input * amt).tanh() / amt.tanh();
             let mono = shaped * self.amp;
             let (l, r) = pan2(mono, self.pan);
-            output[i * 2] += l;
-            output[i * 2 + 1] += r;
+            frame[0] += l;
+            frame[1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * self.carrier_freq * dt;
             self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
@@ -2779,8 +2802,9 @@ impl Voice for RhythmicWaveshapingVoice {
             self.lfo_phase = self.lfo_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2792,12 +2816,13 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(channels).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
             } else if t > self.duration - self.post_offset {
@@ -2829,8 +2854,8 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
             let shaped = (mod_input * amt).tanh() / amt.tanh();
             let mono = shaped * self.amp;
             let (l, r) = pan2(mono, self.pan);
-            output[i * 2] += l;
-            output[i * 2 + 1] += r;
+            frame[0] += l;
+            frame[1] += r;
 
             self.carrier_phase += 2.0 * std::f32::consts::PI * carrier_freq * dt;
             self.carrier_phase = self.carrier_phase.rem_euclid(2.0 * std::f32::consts::PI);
@@ -2838,8 +2863,9 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
             self.lfo_phase = self.lfo_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {
@@ -2851,16 +2877,22 @@ impl Voice for SubliminalEncodeVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        let sample_iter = self.samples[self.position..].chunks_exact(2);
+        for (frame, samp) in output
+            .chunks_exact_mut(channels)
+            .zip(sample_iter)
+            .take(frames)
+        {
             if self.remaining_samples == 0 {
                 break;
             }
-            let sample = self.samples[self.position];
-            output[i * 2] += sample;
-            output[i * 2 + 1] += self.samples[self.position + 1];
-            self.position += 2;
+            frame[0] += samp[0];
+            frame[1] += samp[1];
+            processed += 1;
             self.remaining_samples -= 1;
         }
+        self.position += processed * 2;
     }
 
     fn is_finished(&self) -> bool {
