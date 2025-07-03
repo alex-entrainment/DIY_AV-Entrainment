@@ -32,7 +32,14 @@ This document explains how to compile the Rust based realtime DSP backend into a
 Import the generated module and initialize it before starting audio playback:
 
 ```javascript
-import init, { start_stream, stop_stream } from './realtime_backend.js';
+import init, {
+  start_stream,
+  stop_stream,
+  pause_stream,
+  resume_stream,
+  current_step,
+  elapsed_samples
+} from './realtime_backend.js';
 
 async function initAudio(trackJson) {
   await init(); // loads realtime_backend_bg.wasm
@@ -41,6 +48,7 @@ async function initAudio(trackJson) {
 ```
 
 The exported functions mirror the Python bindings. `start_stream` begins playback using the Web Audio API under the hood, while `stop_stream` halts it.
+`pause_stream` temporarily silences output without losing playback position and `resume_stream` continues from where it left off. You can poll progress using `current_step()` and `elapsed_samples()`.
 
 ### Performance Notes
 

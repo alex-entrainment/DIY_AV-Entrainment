@@ -248,6 +248,50 @@ pub fn process_block(frame_count: usize) -> js_sys::Float32Array {
 
 #[cfg(feature = "web")]
 #[wasm_bindgen]
+pub fn current_step() -> usize {
+    let mut step = 0usize;
+    WASM_SCHED.with(|s| {
+        if let Some((sched, _)) = &*s.borrow() {
+            step = sched.current_step_index();
+        }
+    });
+    step
+}
+
+#[cfg(feature = "web")]
+#[wasm_bindgen]
+pub fn elapsed_samples() -> u64 {
+    let mut samples = 0u64;
+    WASM_SCHED.with(|s| {
+        if let Some((sched, _)) = &*s.borrow() {
+            samples = sched.elapsed_samples();
+        }
+    });
+    samples
+}
+
+#[cfg(feature = "web")]
+#[wasm_bindgen]
+pub fn pause_stream() {
+    WASM_SCHED.with(|s| {
+        if let Some((sched, _)) = &mut *s.borrow_mut() {
+            sched.pause();
+        }
+    });
+}
+
+#[cfg(feature = "web")]
+#[wasm_bindgen]
+pub fn resume_stream() {
+    WASM_SCHED.with(|s| {
+        if let Some((sched, _)) = &mut *s.borrow_mut() {
+            sched.resume();
+        }
+    });
+}
+
+#[cfg(feature = "web")]
+#[wasm_bindgen]
 pub fn stop_stream() {
     *ENGINE_STATE.lock() = None;
     WASM_SCHED.with(|s| *s.borrow_mut() = None);
