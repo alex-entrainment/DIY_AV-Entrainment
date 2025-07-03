@@ -71,6 +71,8 @@ pub struct TrackScheduler {
     pub next_step_sample: usize,
     pub crossfade_active: bool,
     pub absolute_sample: u64,
+    /// Whether playback is paused
+    pub paused: bool,
     pub clips: Vec<LoadedClip>,
     pub background_noise: Option<BackgroundNoise>,
     pub scratch: Vec<f32>,
@@ -275,6 +277,7 @@ impl TrackScheduler {
             next_step_sample: 0,
             crossfade_active: false,
             absolute_sample: 0,
+            paused: false,
             clips,
             background_noise,
             scratch: Vec::new(),
@@ -423,9 +426,33 @@ impl TrackScheduler {
         }
     }
 
+    pub fn pause(&mut self) {
+        self.paused = true;
+    }
+
+    pub fn resume(&mut self) {
+        self.paused = false;
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    pub fn current_step_index(&self) -> usize {
+        self.current_step
+    }
+
+    pub fn elapsed_samples(&self) -> u64 {
+        self.absolute_sample
+    }
+
     pub fn process_block(&mut self, buffer: &mut [f32]) {
         let frame_count = buffer.len() / 2;
         buffer.fill(0.0);
+
+        if self.paused {
+            return;
+        }
 
         if self.current_step >= self.track.steps.len() {
             return;
