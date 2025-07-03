@@ -222,13 +222,41 @@ impl TrackScheduler {
                             params
                                 .sweeps
                                 .iter()
-                                .map(|sw| (sw.start_min.max(1.0), sw.start_max.max(sw.start_min + 1.0)))
+                                .map(|sw| {
+                                    let min = if sw.start_min > 0.0 {
+                                        sw.start_min
+                                    } else {
+                                        1000.0
+                                    };
+                                    let max = if sw.start_max > 0.0 {
+                                        sw.start_max.max(min + 1.0)
+                                    } else {
+                                        (min + 1.0).max(min)
+                                    };
+                                    (min, max)
+                                })
                                 .collect()
                         } else {
                             vec![(1000.0, 10000.0)]
                         };
-                        let qs = vec![25.0; sweeps.len()];
-                        let casc = vec![10usize; sweeps.len()];
+                        let qs: Vec<f32> = if !params.sweeps.is_empty() {
+                            params
+                                .sweeps
+                                .iter()
+                                .map(|sw| if sw.start_q > 0.0 { sw.start_q } else { 25.0 })
+                                .collect()
+                        } else {
+                            vec![25.0; sweeps.len()]
+                        };
+                        let casc: Vec<usize> = if !params.sweeps.is_empty() {
+                            params
+                                .sweeps
+                                .iter()
+                                .map(|sw| if sw.start_casc > 0 { sw.start_casc } else { 10 })
+                                .collect()
+                        } else {
+                            vec![10usize; sweeps.len()]
+                        };
                         generate_swept_notch_noise(
                             total_duration as f32,
                             device_rate,
@@ -370,13 +398,33 @@ impl TrackScheduler {
                             params
                                 .sweeps
                                 .iter()
-                                .map(|sw| (sw.start_min.max(1.0), sw.start_max.max(sw.start_min + 1.0)))
+                                .map(|sw| {
+                                    let min = if sw.start_min > 0.0 { sw.start_min } else { 1000.0 };
+                                    let max = if sw.start_max > 0.0 { sw.start_max.max(min + 1.0) } else { (min + 1.0).max(min) };
+                                    (min, max)
+                                })
                                 .collect()
                         } else {
                             vec![(1000.0, 10000.0)]
                         };
-                        let qs = vec![25.0; sweeps.len()];
-                        let casc = vec![10usize; sweeps.len()];
+                        let qs: Vec<f32> = if !params.sweeps.is_empty() {
+                            params
+                                .sweeps
+                                .iter()
+                                .map(|sw| if sw.start_q > 0.0 { sw.start_q } else { 25.0 })
+                                .collect()
+                        } else {
+                            vec![25.0; sweeps.len()]
+                        };
+                        let casc: Vec<usize> = if !params.sweeps.is_empty() {
+                            params
+                                .sweeps
+                                .iter()
+                                .map(|sw| if sw.start_casc > 0 { sw.start_casc } else { 10 })
+                                .collect()
+                        } else {
+                            vec![10usize; sweeps.len()]
+                        };
                         generate_swept_notch_noise(
                             total_duration as f32,
                             self.sample_rate as u32,
