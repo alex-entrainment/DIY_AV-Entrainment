@@ -68,6 +68,8 @@ pub struct TrackScheduler {
     pub current_crossfade_samples: usize,
     pub crossfade_curve: CrossfadeCurve,
     pub crossfade_envelope: Vec<f32>,
+    crossfade_prev: Vec<f32>,
+    crossfade_next: Vec<f32>,
     pub next_step_sample: usize,
     pub crossfade_active: bool,
     pub absolute_sample: u64,
@@ -301,6 +303,8 @@ impl TrackScheduler {
             current_crossfade_samples: 0,
             crossfade_curve,
             crossfade_envelope: Vec::new(),
+            crossfade_prev: Vec::new(),
+            crossfade_next: Vec::new(),
             next_step_sample: 0,
             crossfade_active: false,
             absolute_sample: 0,
@@ -354,6 +358,8 @@ impl TrackScheduler {
         self.crossfade_active = false;
         self.current_crossfade_samples = 0;
         self.next_step_sample = 0;
+        self.crossfade_prev.clear();
+        self.crossfade_next.clear();
     }
 
     /// Replace the current track data while preserving playback progress.
@@ -456,6 +462,8 @@ impl TrackScheduler {
         };
 
         self.seek_samples(abs_samples);
+        self.crossfade_prev.clear();
+        self.crossfade_next.clear();
         #[cfg(feature = "gpu")]
         {
             self.gpu = GpuMixer::new();
@@ -550,14 +558,22 @@ impl TrackScheduler {
         if self.crossfade_active {
             let len = buffer.len();
             let frames = len / 2;
-            let mut prev_buf = vec![0.0f32; len];
-            let mut next_buf = vec![0.0f32; len];
+            if self.crossfade_prev.len() != len {
+                self.crossfade_prev.resize(len, 0.0);
+            }
+            if self.crossfade_next.len() != len {
+                self.crossfade_next.resize(len, 0.0);
+            }
+            let prev_buf = &mut self.crossfade_prev;
+            let next_buf = &mut self.crossfade_next;
+            prev_buf.fill(0.0);
+            next_buf.fill(0.0);
 
             for v in &mut self.active_voices {
-                v.process(&mut prev_buf);
+                v.process(prev_buf);
             }
             for v in &mut self.next_voices {
-                v.process(&mut next_buf);
+                v.process(next_buf);
             }
 
             let out_gain = if self.active_voices.is_empty() {
