@@ -34,14 +34,14 @@ except Exception as e:  # noqa: PIE786 - broad for missing backends
 
 import numpy as np
 
-from synth_functions.noise_flanger import (
+from audio.synth_functions.noise_flanger import (
     generate_swept_notch_pink_sound,
     generate_swept_notch_pink_sound_transition,
     _generate_swept_notch_arrays,
     _generate_swept_notch_arrays_transition,
 )
 
-from utils.noise_file import (
+from audio.utils.noise_file import (
     NoiseParams,
     save_noise_params,
     load_noise_params,

@@ -5,7 +5,7 @@
 __pycache__/
 *.pyc
 node_modules/
-src/audio/web_ui/dist/
-src/audio/realtime_backend/Cargo.lock
-src/audio/realtime_backend/target/
+audio/src/web_ui/dist/
+audio/src/realtime_backend/Cargo.lock
+audio/src/realtime_backend/target/
 

@@ -8,7 +8,7 @@ TODO 1.1: Initialize Rust Crate
 
 Task: Create the Rust library crate.
 
-Location: src/audio/realtime_backend/
+Location: audio/src/realtime_backend/
 
 Command: cargo new --lib .
 
@@ -59,7 +59,7 @@ TODO 2.1: Define Core Data Structures in Rust
 
 Task: Create Rust structs that mirror the JSON track format and voice presets. Use serde for deserialization. Reference sound_creator.py's track_data structure and voice_file.py's VoicePreset.
 
-File: src/audio/realtime_backend/src/models.rs
+File: audio/src/realtime_backend/src/models.rs
 
 Implementation:
 
@@ -110,7 +110,7 @@ TODO 2.2: Port Fundamental Synthesis Functions
 
 Task: Re-implement the core DSP utilities from common.py and the optimized noise generators from noise_flanger.py.
 
-File: src/audio/realtime_backend/src/dsp/ (create a module for these).
+File: audio/src/realtime_backend/src/dsp/ (create a module for these).
 
 Functions to Port:
 
@@ -132,7 +132,7 @@ TODO 2.3: Implement the Real-time Scheduler and Mixer
 
 Task: Create the main engine that manages the track's lifecycle, replicating the logic of assemble_track_from_data from sound_creator.py in a real-time, block-based manner.
 
-File: src/audio/realtime_backend/src/scheduler.rs
+File: audio/src/realtime_backend/src/scheduler.rs
 
 Implementation Steps:
 
@@ -177,7 +177,7 @@ TODO 3.1: Implement CPAL Audio Callback
 
 Task: Set up the CPAL audio stream and connect it to the TrackScheduler. The state (scheduler, stream) must be managed in a thread-safe manner.
 
-File: src/audio/realtime_backend/src/audio_io.rs
+File: audio/src/realtime_backend/src/audio_io.rs
 
 Implementation:
 
@@ -219,7 +219,7 @@ TODO 3.2: Expose FFI Bindings with PyO3
 
 Task: Create the Python module interface, managing the TrackScheduler and audio stream in a separate thread.
 
-File: src/audio/realtime_backend/src/lib.rs
+File: audio/src/realtime_backend/src/lib.rs
 
 Implementation:
 

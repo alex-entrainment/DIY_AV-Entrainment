@@ -8,15 +8,15 @@ import copy
 import inspect # Needed to inspect function parameters for GUI
 import os # Needed for path checks in main example
 import traceback # For detailed error printing
-from utils.noise_file import load_noise_params
-from synth_functions.noise_flanger import (
+from audio.utils.noise_file import load_noise_params
+from audio.synth_functions.noise_flanger import (
     _generate_swept_notch_arrays,
     _generate_swept_notch_arrays_transition,
 )
 
 
 # Import all synth functions from the synth_functions package
-from synth_functions import *
+from audio.synth_functions import *
 
 # Placeholder for the missing audio_engine module
 # If you have the 'audio_engine.py' file, place it in the same directory.
@@ -247,11 +247,11 @@ SYNTH_FUNCTIONS = {
 }
 try:
     # Import the synth_functions package
-    import synth_functions
+    import audio.synth_functions as synth_functions
     for name, obj in inspect.getmembers(synth_functions):
         if inspect.isfunction(obj) and name not in _EXCLUDED_FUNCTION_NAMES and not name.startswith('_'):
              # Check if the function is defined in the synth_functions package or its submodules
-            if obj.__module__.startswith('synth_functions'):
+            if obj.__module__.startswith('audio.synth_functions'):
                 SYNTH_FUNCTIONS[name] = obj
 except Exception as e:
     print(f"Error inspecting functions: {e}")

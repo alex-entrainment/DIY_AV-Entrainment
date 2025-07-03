@@ -1,6 +1,6 @@
 import sys
 import json
-from synth_functions import sound_creator  # Updated import path
+from audio.synth_functions import sound_creator
 import soundfile as sf
 import os
 import copy  # For deep copying voice data
@@ -169,13 +169,13 @@ SUPPORTED_ENVELOPE_TYPES = [ENVELOPE_TYPE_NONE, ENVELOPE_TYPE_LINEAR] # From pre
 
 # Updated import path for sound_creator
 try:
-    from synth_functions.sound_creator import generate_single_step_audio_segment  # Used for test preview
+    from audio.synth_functions.sound_creator import generate_single_step_audio_segment  # Used for test preview
     AUDIO_GENERATION_AVAILABLE = True # For test preview specifically
 except ImportError as e:
     generate_single_step_audio_segment = None
     AUDIO_GENERATION_AVAILABLE = False
     print(
-        f"Warning: Could not import 'generate_single_step_audio_segment' from 'synth_functions.sound_creator': {e}. "
+        f"Warning: Could not import 'generate_single_step_audio_segment' from 'audio.synth_functions.sound_creator': {e}. "
         "Test step audio generation will be non-functional."
     )
 
@@ -1686,7 +1686,7 @@ class TrackEditorApp(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Audio Engine Error",
-                "The 'generate_audio' function is missing from 'synth_functions.sound_creator'. Cannot generate the final track."
+                "The 'generate_audio' function is missing from 'audio.synth_functions.sound_creator'. Cannot generate the final track."
             )
             return
         reply = QMessageBox.question(self, 'Confirm Generation', f"This will generate the audio file: {os.path.basename(output_filepath)}\nBased on the current track configuration.\n\nProceed?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
