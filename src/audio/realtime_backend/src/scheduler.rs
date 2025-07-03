@@ -270,13 +270,12 @@ impl TrackScheduler {
                             &params.lfo_waveform,
                         )
                     };
-                    let mut stereo = Vec::with_capacity(samples.len() * 2);
-                    for s in samples {
-                        stereo.push(s);
-                        stereo.push(s);
-                    }
+                    // `generate_swept_notch_noise` already returns a stereo
+                    // buffer with interleaved left/right samples. Avoid
+                    // duplicating the data which previously quadrupled the
+                    // buffer size and produced invalid output.
                     Some(BackgroundNoise {
-                        samples: stereo,
+                        samples,
                         position: 0,
                         gain: noise_cfg.amp,
                     })
@@ -438,13 +437,11 @@ impl TrackScheduler {
                             &params.lfo_waveform,
                         )
                     };
-                    let mut stereo = Vec::with_capacity(samples.len() * 2);
-                    for s in samples {
-                        stereo.push(s);
-                        stereo.push(s);
-                    }
+                    // `generate_swept_notch_noise` already returns interleaved
+                    // stereo samples. Using the buffer directly avoids
+                    // unnecessary duplication and memory overhead.
                     Some(BackgroundNoise {
-                        samples: stereo,
+                        samples,
                         position: 0,
                         gain: noise_cfg.amp * self.noise_gain,
                     })
