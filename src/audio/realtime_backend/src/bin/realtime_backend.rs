@@ -18,6 +18,9 @@ struct Args {
     /// Generate the full track to the output file instead of streaming
     #[arg(long, default_value_t = false)]
     generate: bool,
+    /// Enable GPU accelerated mixing (requires building with `--features gpu`)
+    #[arg(long, default_value_t = false)]
+    gpu: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .output_filename
             .clone()
             .ok_or("outputFilename missing in global settings")?;
-        render_full_wav(track_data, &out_path)?;
+        render_full_wav(track_data, &out_path, args.gpu)?;
         println!("Generated full track at {}", out_path);
         return Ok(());
     }
@@ -43,7 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = device.default_output_config()?;
     let stream_rate = cfg.sample_rate().0;
 
-    let scheduler = TrackScheduler::new(track_data, stream_rate);
+    let mut scheduler = TrackScheduler::new(track_data, stream_rate);
+    scheduler.gpu_enabled = args.gpu;
     let rb = HeapRb::<Command>::new(1024);
     let (_prod, cons) = rb.split();
     let (tx, rx) = unbounded();
@@ -65,10 +69,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn render_full_wav(
     track_data: TrackData,
     out_path: &str,
+    gpu: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use hound::{WavSpec, WavWriter, SampleFormat};
     let sample_rate = track_data.global_settings.sample_rate;
     let mut scheduler = TrackScheduler::new(track_data.clone(), sample_rate);
+    scheduler.gpu_enabled = gpu;
     let target_frames: usize = track_data
         .steps
         .iter()

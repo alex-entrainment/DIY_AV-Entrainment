@@ -73,6 +73,8 @@ pub struct TrackScheduler {
     pub clips: Vec<LoadedClip>,
     pub background_noise: Option<BackgroundNoise>,
     pub scratch: Vec<f32>,
+    /// Whether GPU accelerated mixing should be used when available
+    pub gpu_enabled: bool,
     #[cfg(feature = "gpu")]
     pub gpu: GpuMixer,
 }
@@ -243,6 +245,7 @@ impl TrackScheduler {
             clips,
             background_noise,
             scratch: Vec::new(),
+            gpu_enabled: false,
             #[cfg(feature = "gpu")]
             gpu: GpuMixer::new(),
         }
@@ -340,6 +343,9 @@ impl TrackScheduler {
     pub fn handle_command(&mut self, cmd: Command) {
         match cmd {
             Command::UpdateTrack(t) => self.update_track(t),
+            Command::EnableGpu(enable) => {
+                self.gpu_enabled = enable;
+            }
         }
     }
 
@@ -449,19 +455,31 @@ impl TrackScheduler {
                 if self.scratch.len() != buffer.len() {
                     self.scratch.resize(buffer.len(), 0.0);
                 }
-                #[cfg(feature = "gpu")]
-                {
-                    let mut voice_bufs: Vec<Vec<f32>> = Vec::with_capacity(num_voices);
-                    for voice in &mut self.active_voices {
-                        let mut local = vec![0.0f32; buffer.len()];
-                        voice.process(&mut local);
-                        voice_bufs.push(local);
+                if self.gpu_enabled {
+                    #[cfg(feature = "gpu")]
+                    {
+                        let mut voice_bufs: Vec<Vec<f32>> = Vec::with_capacity(num_voices);
+                        for voice in &mut self.active_voices {
+                            let mut local = vec![0.0f32; buffer.len()];
+                            voice.process(&mut local);
+                            voice_bufs.push(local);
+                        }
+                        let refs: Vec<&[f32]> = voice_bufs.iter().map(|b| b.as_slice()).collect();
+                        self.gpu.mix(&refs, buffer);
                     }
-                    let refs: Vec<&[f32]> = voice_bufs.iter().map(|b| b.as_slice()).collect();
-                    self.gpu.mix(&refs, buffer);
-                }
-                #[cfg(not(feature = "gpu"))]
-                {
+                    #[cfg(not(feature = "gpu"))]
+                    {
+                        // fallback to CPU mixing when GPU support is unavailable
+                        let gain = 1.0 / num_voices as f32;
+                        for voice in &mut self.active_voices {
+                            self.scratch.fill(0.0);
+                            voice.process(&mut self.scratch);
+                            for i in 0..buffer.len() {
+                                buffer[i] += self.scratch[i] * gain;
+                            }
+                        }
+                    }
+                } else {
                     let gain = 1.0 / num_voices as f32;
                     for voice in &mut self.active_voices {
                         self.scratch.fill(0.0);
