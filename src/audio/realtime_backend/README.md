@@ -80,6 +80,14 @@ If `--generate true` is supplied, the entire track is written to the
 `outputFilename` specified in the JSON. Otherwise it streams the audio directly
 to the default output device. Press `Ctrl+C` to stop streaming.
 
+To create a default `config.toml` in the current directory run:
+
+```bash
+cargo run --bin realtime_backend -- generate-config --out config.toml
+```
+
+This writes the default configuration values so they can be modified as needed.
+
 ## Optional GPU Acceleration
 
 The backend includes an experimental GPU mixing path behind the `gpu` Cargo

@@ -1,9 +1,9 @@
-use clap::Parser;
+use clap::{Parser, Subcommand, Args as ClapArgs};
 use realtime_backend::models::TrackData;
 use realtime_backend::scheduler::TrackScheduler;
 use realtime_backend::command::Command;
 use realtime_backend::audio_io;
-use realtime_backend::config::CONFIG;
+use realtime_backend::config::{CONFIG, BackendConfig};
 use ringbuf::HeapRb;
 use ringbuf::traits::Split;
 use crossbeam::channel::unbounded;
@@ -12,7 +12,21 @@ use cpal::traits::{DeviceTrait, HostTrait};
 /// CLI for streaming or rendering a track using the realtime backend
 #[derive(Parser)]
 #[command(author, version, about)]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Stream or render a track JSON file
+    Run(RunArgs),
+    /// Generate a default config file and exit
+    GenerateConfig(ConfigArgs),
+}
+
+#[derive(ClapArgs)]
+struct RunArgs {
     /// Path to the track JSON file
     #[arg(long)]
     path: String,
@@ -24,8 +38,26 @@ struct Args {
     gpu: bool,
 }
 
+#[derive(ClapArgs)]
+struct ConfigArgs {
+    /// Output path for the generated configuration
+    #[arg(long, default_value = "config.toml")]
+    out: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Run(args) => run_command(args)?,
+        Commands::GenerateConfig(cfg) => {
+            BackendConfig::generate_default(&cfg.out)?;
+            println!("Generated default config at {}", cfg.out);
+        }
+    }
+    Ok(())
+}
+
+fn run_command(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let json_str = std::fs::read_to_string(&args.path)?;
     let track_data: TrackData = serde_json::from_str(&json_str)?;
 
