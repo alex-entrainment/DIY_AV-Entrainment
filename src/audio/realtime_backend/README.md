@@ -69,6 +69,12 @@ rendering:
 cargo run --bin realtime_backend -- --path path/to/track.json --generate false
 ```
 
+Use the `--gpu` flag to enable GPU acceleration (build with `--features gpu`):
+
+```bash
+cargo run --bin realtime_backend --features gpu -- --path path/to/track.json --gpu true
+```
+
 If `--generate true` is supplied, the entire track is written to the
 `outputFilename` specified in the JSON. Otherwise it streams the audio directly
 to the default output device. Press `Ctrl+C` to stop streaming.

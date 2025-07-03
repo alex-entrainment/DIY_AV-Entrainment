@@ -89,6 +89,15 @@ fn update_track(track_json_str: String) -> PyResult<()> {
 
 #[cfg(feature = "python")]
 #[pyfunction]
+fn enable_gpu(enable: bool) -> PyResult<()> {
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::EnableGpu(enable));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
 fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
     use hound::{WavSpec, WavWriter, SampleFormat};
     let track_data: TrackData = serde_json::from_str(&track_json_str)
@@ -196,6 +205,14 @@ pub fn update_track(track_json_str: &str) {
 
 #[cfg(feature = "web")]
 #[wasm_bindgen]
+pub fn enable_gpu(enable: bool) {
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::EnableGpu(enable));
+    }
+}
+
+#[cfg(feature = "web")]
+#[wasm_bindgen]
 pub fn process_block(frame_count: usize) -> js_sys::Float32Array {
     let mut buf = vec![0.0f32; frame_count];
     WASM_SCHED.with(|s| {
@@ -224,5 +241,6 @@ fn realtime_backend(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(update_track, m)?)?;
     m.add_function(wrap_pyfunction!(render_sample_wav, m)?)?;
     m.add_function(wrap_pyfunction!(render_full_wav, m)?)?;
+    m.add_function(wrap_pyfunction!(enable_gpu, m)?)?;
     Ok(())
 }
