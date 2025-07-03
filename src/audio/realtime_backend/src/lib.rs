@@ -9,6 +9,9 @@ pub mod scheduler;
 pub mod command;
 pub mod voices;
 pub mod gpu;
+pub mod config;
+
+use config::CONFIG;
 
 use models::TrackData;
 use scheduler::TrackScheduler;
@@ -52,7 +55,8 @@ fn start_stream(track_json_str: String) -> PyResult<()> {
     let cfg = device.default_output_config().map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
     let stream_rate = cfg.sample_rate().0;
 
-    let scheduler = TrackScheduler::new(track_data, stream_rate);
+    let mut scheduler = TrackScheduler::new(track_data, stream_rate);
+    scheduler.gpu_enabled = CONFIG.gpu;
     let rb = HeapRb::<Command>::new(1024);
     let (prod, cons) = rb.split();
     *ENGINE_STATE.lock() = Some(prod);
@@ -119,7 +123,13 @@ fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
         sample_format: SampleFormat::Int,
     };
 
-    let mut writer = WavWriter::create(&out_path, spec)
+    let output_path = if std::path::Path::new(&out_path).is_absolute() {
+        std::path::PathBuf::from(&out_path)
+    } else {
+        CONFIG.output_dir.join(&out_path)
+    };
+
+    let mut writer = WavWriter::create(&output_path, spec)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
 
     let mut remaining = target_frames;
@@ -161,7 +171,13 @@ fn render_full_wav(track_json_str: String, out_path: String) -> PyResult<()> {
         sample_format: SampleFormat::Int,
     };
 
-    let mut writer = WavWriter::create(&out_path, spec)
+    let output_path = if std::path::Path::new(&out_path).is_absolute() {
+        std::path::PathBuf::from(&out_path)
+    } else {
+        CONFIG.output_dir.join(&out_path)
+    };
+
+    let mut writer = WavWriter::create(&output_path, spec)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
     let start_time = std::time::Instant::now();
 
