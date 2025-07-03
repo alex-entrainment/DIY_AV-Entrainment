@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BackendConfig {
     #[serde(default = "default_output_dir")]
     pub output_dir: PathBuf,
@@ -33,6 +33,19 @@ impl Default for BackendConfig {
             noise_gain: 1.0,
             clip_gain: 1.0,
         }
+    }
+}
+
+impl BackendConfig {
+    /// Write the configuration as TOML to the provided path
+    pub fn write_to_file<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+        let toml_str = toml::to_string_pretty(self).expect("serialize config");
+        std::fs::write(path, toml_str)
+    }
+
+    /// Generate a default configuration file at the given path
+    pub fn generate_default<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<()> {
+        Self::default().write_to_file(path)
     }
 }
 
