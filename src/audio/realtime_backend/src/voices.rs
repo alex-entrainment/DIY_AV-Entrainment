@@ -80,18 +80,17 @@ impl Voice for VolumeEnvelopeVoice {
 
         self.inner.process(&mut self.temp_buf);
         let frames = output.len() / 2;
-        for i in 0..frames {
-            let env = if self.idx < self.envelope.len() {
-                self.envelope[self.idx]
-            } else {
-                *self.envelope.last().unwrap_or(&1.0)
-            };
-            output[i * 2] += self.temp_buf[i * 2] * env;
-            output[i * 2 + 1] += self.temp_buf[i * 2 + 1] * env;
-            if self.idx < self.envelope.len() {
-                self.idx += 1;
-            }
+        let env_iter = self.envelope[self.idx..]
+            .iter()
+            .copied()
+            .chain(std::iter::repeat(*self.envelope.last().unwrap_or(&1.0)));
+
+        for (i, (frame, env)) in output.chunks_exact_mut(2).zip(env_iter).enumerate() {
+            frame[0] += self.temp_buf[i * 2] * env;
+            frame[1] += self.temp_buf[i * 2 + 1] * env;
         }
+
+        self.idx = (self.idx + frames).min(self.envelope.len());
     }
 
     fn is_finished(&self) -> bool {
@@ -1729,11 +1728,12 @@ impl Voice for BinauralBeatVoice {
     fn process(&mut self, output: &mut [f32]) {
         let channels = 2;
         let frames = output.len() / channels;
-        for i in 0..frames {
+        let mut processed = 0;
+        for (i, frame) in output.chunks_exact_mut(2).enumerate().take(frames) {
             if self.remaining_samples == 0 {
                 break;
             }
-            let t = self.sample_idx as f32 / self.sample_rate;
+            let t = (self.sample_idx + i) as f32 / self.sample_rate;
 
             // Instantaneous frequency with vibrato
             let half_beat = self.beat_freq * 0.5;
@@ -1793,12 +1793,13 @@ impl Voice for BinauralBeatVoice {
             let sample_l = ph_l.sin() * env_l * self.amp_l;
             let sample_r = ph_r.sin() * env_r * self.amp_r;
 
-            output[i * 2] += sample_l;
-            output[i * 2 + 1] += sample_r;
+            frame[0] += sample_l;
+            frame[1] += sample_r;
 
             self.remaining_samples -= 1;
-            self.sample_idx += 1;
+            processed += 1;
         }
+        self.sample_idx += processed;
     }
 
     fn is_finished(&self) -> bool {

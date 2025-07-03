@@ -11,8 +11,8 @@ pub fn generate_pink_noise_samples(n_samples: usize) -> Vec<f32> {
     let mut b3 = 0.0f32;
     let mut b4 = 0.0f32;
     let mut b5 = 0.0f32;
-    let mut out = Vec::with_capacity(n_samples);
-    for _ in 0..n_samples {
+    let mut out = vec![0.0f32; n_samples];
+    for val in &mut out {
         let w = rng.gen::<f32>();
         b0 = 0.99886 * b0 + w * 0.0555179;
         b1 = 0.99332 * b1 + w * 0.0750759;
@@ -20,7 +20,7 @@ pub fn generate_pink_noise_samples(n_samples: usize) -> Vec<f32> {
         b3 = 0.86650 * b3 + w * 0.3104856;
         b4 = 0.55000 * b4 + w * 0.5329522;
         b5 = -0.7616 * b5 - w * 0.0168980;
-        out.push((b0 + b1 + b2 + b3 + b4 + b5) * 0.11);
+        *val = (b0 + b1 + b2 + b3 + b4 + b5) * 0.11;
     }
     out
 }
@@ -28,10 +28,10 @@ pub fn generate_pink_noise_samples(n_samples: usize) -> Vec<f32> {
 pub fn generate_brown_noise_samples(n_samples: usize) -> Vec<f32> {
     let mut rng = rand::thread_rng();
     let mut cumulative = 0.0f32;
-    let mut out = Vec::with_capacity(n_samples);
-    for _ in 0..n_samples {
+    let mut out = vec![0.0f32; n_samples];
+    for val in &mut out {
         cumulative += rng.gen::<f32>() - 0.5;
-        out.push(cumulative);
+        *val = cumulative;
     }
     let max_abs = out.iter().cloned().fold(0.0f32, |a, b| a.max(b.abs()));
     if max_abs > 0.0 {
