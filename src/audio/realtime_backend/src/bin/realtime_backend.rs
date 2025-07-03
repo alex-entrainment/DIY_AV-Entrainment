@@ -5,7 +5,7 @@ use realtime_backend::command::Command;
 use realtime_backend::audio_io;
 use realtime_backend::config::{CONFIG, BackendConfig};
 use ringbuf::HeapRb;
-use ringbuf::traits::Split;
+use ringbuf::traits::{Split, Producer};
 use crossbeam::channel::unbounded;
 use cpal::traits::{DeviceTrait, HostTrait};
 
@@ -89,9 +89,10 @@ fn run_command(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let rb = HeapRb::<Command>::new(1024);
     let (mut prod, cons) = rb.split();
     let (tx, rx) = unbounded();
+    let rx_thread = rx.clone();
 
     std::thread::spawn(move || {
-        audio_io::run_audio_stream(scheduler, cons, rx);
+        audio_io::run_audio_stream(scheduler, cons, rx_thread);
     });
 
     println!("Streaming {}...", args.path);
@@ -114,7 +115,7 @@ fn run_command(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             match buf.trim() {
                 "p" => {
                     paused = !paused;
-                    let _ = prod.push(Command::SetPaused(paused));
+                    let _ = prod.try_push(Command::SetPaused(paused));
                     if paused {
                         println!("Paused");
                     } else {
