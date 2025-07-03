@@ -202,6 +202,11 @@ pub struct IsochronicToneVoice {
     phase_l: f32,
     phase_r: f32,
     beat_phase: f32,
+    freq_osc_phase_l: f32,
+    freq_osc_phase_r: f32,
+    amp_osc_phase_l: f32,
+    amp_osc_phase_r: f32,
+    phase_mod_phase: f32,
     sample_rate: f32,
     remaining_samples: usize,
     sample_idx: usize,
@@ -257,6 +262,11 @@ pub struct IsochronicToneTransitionVoice {
     phase_l: f32,
     phase_r: f32,
     beat_phase: f32,
+    freq_osc_phase_l: f32,
+    freq_osc_phase_r: f32,
+    amp_osc_phase_l: f32,
+    amp_osc_phase_r: f32,
+    phase_mod_phase: f32,
     sample_idx: usize,
     duration: f32,
 }
@@ -1016,6 +1026,11 @@ impl IsochronicToneVoice {
             phase_l: start_phase_l,
             phase_r: start_phase_r,
             beat_phase: 0.0,
+            freq_osc_phase_l: 0.0,
+            freq_osc_phase_r: 0.0,
+            amp_osc_phase_l: 0.0,
+            amp_osc_phase_r: 0.0,
+            phase_mod_phase: 0.0,
             sample_rate,
             remaining_samples: total_samples,
             sample_idx: 0,
@@ -1128,6 +1143,11 @@ impl IsochronicToneTransitionVoice {
             phase_l: start_start_phase_l,
             phase_r: start_start_phase_r,
             beat_phase: 0.0,
+            freq_osc_phase_l: 0.0,
+            freq_osc_phase_r: 0.0,
+            amp_osc_phase_l: 0.0,
+            amp_osc_phase_r: 0.0,
+            phase_mod_phase: 0.0,
             sample_idx: 0,
             duration,
         }
@@ -1942,14 +1962,11 @@ impl Voice for IsochronicToneVoice {
                 break;
             }
             let dt = 1.0 / self.sample_rate;
-            let t = (self.sample_idx + i) as f32 / self.sample_rate;
 
             let mut freq_l = self.base_freq
-                + (self.freq_osc_range_l * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t);
+                + (self.freq_osc_range_l * 0.5) * sin_lut(self.freq_osc_phase_l);
             let mut freq_r = self.base_freq
-                + (self.freq_osc_range_r * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t);
+                + (self.freq_osc_range_r * 0.5) * sin_lut(self.freq_osc_phase_r);
 
             if self.force_mono {
                 freq_l = self.base_freq.max(0.0);
@@ -1973,12 +1990,21 @@ impl Voice for IsochronicToneVoice {
             self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
             self.beat_phase += self.beat_freq * dt;
             self.beat_phase = self.beat_phase.rem_euclid(1.0);
+            self.freq_osc_phase_l += 2.0 * std::f32::consts::PI * self.freq_osc_freq_l * dt;
+            self.freq_osc_phase_l = self.freq_osc_phase_l.rem_euclid(2.0 * std::f32::consts::PI);
+            self.freq_osc_phase_r += 2.0 * std::f32::consts::PI * self.freq_osc_freq_r * dt;
+            self.freq_osc_phase_r = self.freq_osc_phase_r.rem_euclid(2.0 * std::f32::consts::PI);
+            self.amp_osc_phase_l += 2.0 * std::f32::consts::PI * self.amp_osc_freq_l * dt;
+            self.amp_osc_phase_l = self.amp_osc_phase_l.rem_euclid(2.0 * std::f32::consts::PI);
+            self.amp_osc_phase_r += 2.0 * std::f32::consts::PI * self.amp_osc_freq_r * dt;
+            self.amp_osc_phase_r = self.amp_osc_phase_r.rem_euclid(2.0 * std::f32::consts::PI);
+            self.phase_mod_phase += 2.0 * std::f32::consts::PI * self.phase_osc_freq * dt;
+            self.phase_mod_phase = self.phase_mod_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
             if self.phase_osc_freq != 0.0 || self.phase_osc_range != 0.0 {
-                let dphi = (self.phase_osc_range * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.phase_osc_freq * t);
+                let dphi = (self.phase_osc_range * 0.5) * sin_lut(self.phase_mod_phase);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
@@ -1987,14 +2013,12 @@ impl Voice for IsochronicToneVoice {
                 - self.amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
-                                + self.amp_osc_phase_offset_l)));
+                            + sin_lut(self.amp_osc_phase_l + self.amp_osc_phase_offset_l)));
             let env_r = 1.0
                 - self.amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
-                                + self.amp_osc_phase_offset_r)));
+                            + sin_lut(self.amp_osc_phase_r + self.amp_osc_phase_offset_r)));
 
             let mut sample_l = sin_lut(ph_l) * env_l * self.amp_l * iso_env;
             let mut sample_r = sin_lut(ph_r) * env_r * self.amp_r * iso_env;
@@ -2082,9 +2106,9 @@ impl Voice for IsochronicToneTransitionVoice {
                 + (self.end_freq_osc_freq_r - self.start_freq_osc_freq_r) * alpha;
 
             let mut freq_l = base_freq
-                + (freq_osc_range_l * 0.5) * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t);
+                + (freq_osc_range_l * 0.5) * sin_lut(self.freq_osc_phase_l);
             let mut freq_r = base_freq
-                + (freq_osc_range_r * 0.5) * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t);
+                + (freq_osc_range_r * 0.5) * sin_lut(self.freq_osc_phase_r);
 
             if force_mono {
                 freq_l = base_freq.max(0.0);
@@ -2108,12 +2132,21 @@ impl Voice for IsochronicToneTransitionVoice {
             self.phase_r = self.phase_r.rem_euclid(2.0 * std::f32::consts::PI);
             self.beat_phase += beat_freq * dt;
             self.beat_phase = self.beat_phase.rem_euclid(1.0);
+            self.freq_osc_phase_l += 2.0 * std::f32::consts::PI * freq_osc_freq_l * dt;
+            self.freq_osc_phase_l = self.freq_osc_phase_l.rem_euclid(2.0 * std::f32::consts::PI);
+            self.freq_osc_phase_r += 2.0 * std::f32::consts::PI * freq_osc_freq_r * dt;
+            self.freq_osc_phase_r = self.freq_osc_phase_r.rem_euclid(2.0 * std::f32::consts::PI);
+            self.amp_osc_phase_l += 2.0 * std::f32::consts::PI * amp_osc_freq_l * dt;
+            self.amp_osc_phase_l = self.amp_osc_phase_l.rem_euclid(2.0 * std::f32::consts::PI);
+            self.amp_osc_phase_r += 2.0 * std::f32::consts::PI * amp_osc_freq_r * dt;
+            self.amp_osc_phase_r = self.amp_osc_phase_r.rem_euclid(2.0 * std::f32::consts::PI);
+            self.phase_mod_phase += 2.0 * std::f32::consts::PI * phase_osc_freq * dt;
+            self.phase_mod_phase = self.phase_mod_phase.rem_euclid(2.0 * std::f32::consts::PI);
 
             let mut ph_l = self.phase_l;
             let mut ph_r = self.phase_r;
             if phase_osc_freq != 0.0 || phase_osc_range != 0.0 {
-                let dphi = (phase_osc_range * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * phase_osc_freq * t);
+                let dphi = (phase_osc_range * 0.5) * sin_lut(self.phase_mod_phase);
                 ph_l -= dphi;
                 ph_r += dphi;
             }
@@ -2122,14 +2155,12 @@ impl Voice for IsochronicToneTransitionVoice {
                 - amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_l * t
-                                + amp_osc_phase_offset_l)));
+                            + sin_lut(self.amp_osc_phase_l + amp_osc_phase_offset_l)));
             let env_r = 1.0
                 - amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_r * t
-                                + amp_osc_phase_offset_r)));
+                            + sin_lut(self.amp_osc_phase_r + amp_osc_phase_offset_r)));
 
             let mut sample_l = sin_lut(ph_l) * env_l * amp_l * iso_env;
             let mut sample_r = sin_lut(ph_r) * env_r * amp_r * iso_env;
