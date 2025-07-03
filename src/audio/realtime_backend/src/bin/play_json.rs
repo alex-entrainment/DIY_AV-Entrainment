@@ -31,19 +31,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut scheduler = TrackScheduler::new(track_data, stream_rate);
     scheduler.gpu_enabled = CONFIG.gpu;
     let rb = HeapRb::<Command>::new(1024);
-    let (_prod, cons) = rb.split();
+    let (mut prod, cons) = rb.split();
     let (tx, rx) = unbounded();
 
     std::thread::spawn(move || {
         audio_io::run_audio_stream(scheduler, cons, rx);
     });
-
-    println!("Playing {}... press Ctrl+C to stop", args.track_file);
-    ctrlc::set_handler(move || {
-        let _ = tx.send(());
+    println!("Playing {}...", args.track_file);
+    println!("Controls: p = toggle pause/resume, q = quit");
+    ctrlc::set_handler({
+        let tx = tx.clone();
+        move || {
+            let _ = tx.send(());
+        }
     })?;
 
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
+    let input_thread = std::thread::spawn(move || {
+        let stdin = std::io::stdin();
+        let mut paused = false;
+        loop {
+            let mut buf = String::new();
+            if stdin.read_line(&mut buf).is_err() {
+                continue;
+            }
+            match buf.trim() {
+                "p" => {
+                    paused = !paused;
+                    let _ = prod.push(Command::SetPaused(paused));
+                    if paused {
+                        println!("Paused");
+                    } else {
+                        println!("Resumed");
+                    }
+                }
+                "q" => {
+                    let _ = tx.send(());
+                    break;
+                }
+                _ => {
+                    println!("p = pause/resume, q = quit");
+                }
+            }
+        }
+    });
+
+    let _ = rx.recv();
+    let _ = input_thread.join();
+    Ok(())
 }

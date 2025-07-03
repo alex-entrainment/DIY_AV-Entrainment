@@ -45,8 +45,8 @@ realtime_backend.render_sample_wav(track_json, "sample.wav")
 # Render the entire track to a wav file
 realtime_backend.render_full_wav(track_json, "full_output.wav")
 ```
-
-Call `realtime_backend.stop_stream()` to halt playback.
+Call `realtime_backend.pause_stream()` to temporarily silence playback,
+`resume_stream()` to continue, and `stop_stream()` to halt playback entirely.
 
 ## WebAssembly Build
 
@@ -78,7 +78,8 @@ cargo run --bin realtime_backend --features gpu -- --path path/to/track.json --g
 
 If `--generate true` is supplied, the entire track is written to the
 `outputFilename` specified in the JSON. Otherwise it streams the audio directly
-to the default output device. Press `Ctrl+C` to stop streaming.
+to the default output device. While running you can press `p` to toggle
+pause/resume, `q` to quit, or hit `Ctrl+C`.
 
 To create a default `config.toml` in the current directory run:
 

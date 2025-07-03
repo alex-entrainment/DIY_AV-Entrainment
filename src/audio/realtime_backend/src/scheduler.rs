@@ -423,6 +423,13 @@ impl TrackScheduler {
             Command::EnableGpu(enable) => {
                 self.gpu_enabled = enable;
             }
+            Command::SetPaused(p) => {
+                if p {
+                    self.pause();
+                } else {
+                    self.resume();
+                }
+            }
         }
     }
 

@@ -105,6 +105,24 @@ fn enable_gpu(enable: bool) -> PyResult<()> {
 
 #[cfg(feature = "python")]
 #[pyfunction]
+fn pause_stream() -> PyResult<()> {
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::SetPaused(true));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+fn resume_stream() -> PyResult<()> {
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::SetPaused(false));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
 fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
     use hound::{WavSpec, WavWriter, SampleFormat};
     let track_data: TrackData = serde_json::from_str(&track_json_str)
@@ -275,21 +293,17 @@ pub fn elapsed_samples() -> u64 {
 #[cfg(feature = "web")]
 #[wasm_bindgen]
 pub fn pause_stream() {
-    WASM_SCHED.with(|s| {
-        if let Some((sched, _)) = &mut *s.borrow_mut() {
-            sched.pause();
-        }
-    });
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::SetPaused(true));
+    }
 }
 
 #[cfg(feature = "web")]
 #[wasm_bindgen]
 pub fn resume_stream() {
-    WASM_SCHED.with(|s| {
-        if let Some((sched, _)) = &mut *s.borrow_mut() {
-            sched.resume();
-        }
-    });
+    if let Some(prod) = &mut *ENGINE_STATE.lock() {
+        let _ = prod.try_push(Command::SetPaused(false));
+    }
 }
 
 #[cfg(feature = "web")]
@@ -304,6 +318,8 @@ pub fn stop_stream() {
 fn realtime_backend(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_stream, m)?)?;
     m.add_function(wrap_pyfunction!(stop_stream, m)?)?;
+    m.add_function(wrap_pyfunction!(pause_stream, m)?)?;
+    m.add_function(wrap_pyfunction!(resume_stream, m)?)?;
     m.add_function(wrap_pyfunction!(update_track, m)?)?;
     m.add_function(wrap_pyfunction!(render_sample_wav, m)?)?;
     m.add_function(wrap_pyfunction!(render_full_wav, m)?)?;
