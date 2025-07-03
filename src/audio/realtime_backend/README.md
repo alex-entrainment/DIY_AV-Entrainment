@@ -89,6 +89,44 @@ cargo run --bin realtime_backend -- generate-config --out config.toml
 
 This writes the default configuration values so they can be modified as needed.
 
+### CLI `--help` Reference
+
+Running the binary with `--help` lists the available commands and options:
+
+```text
+CLI for streaming or rendering a track using the realtime backend
+Usage: realtime_backend <COMMAND>
+
+Commands:
+  run              Stream or render a track JSON file
+  generate-config  Generate a default config file and exit
+  help             Print this message or the help of the given subcommand(s)
+```
+
+Each command also has its own help output.
+
+`run` accepts the path to a track JSON file and optional flags:
+
+```text
+Usage: realtime_backend run --path <PATH> [--generate <BOOL>] [--gpu <BOOL>]
+
+Options:
+  --path <PATH>          Path to the track JSON file
+  --generate <BOOL>      Generate the full track to the output file instead of streaming [default: false]
+  --gpu <BOOL>           Enable GPU accelerated mixing (requires building with `--features gpu`) [default: false]
+  -h, --help             Print help
+```
+
+`generate-config` produces a default configuration file:
+
+```text
+Usage: realtime_backend generate-config [--out <OUT>]
+
+Options:
+  --out <OUT>    Output path for the generated configuration [default: config.toml]
+  -h, --help     Print help
+```
+
 ## Optional GPU Acceleration
 
 The backend includes an experimental GPU mixing path behind the `gpu` Cargo
