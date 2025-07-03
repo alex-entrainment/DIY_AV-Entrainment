@@ -1,4 +1,15 @@
-import init, { start_stream, process_block, stop_stream } from '/pkg/realtime_backend.js';
+import init, {
+  start_stream,
+  process_block,
+  stop_stream,
+  pause_stream,
+  resume_stream,
+  start_from,
+  update_track,
+  enable_gpu,
+  current_step,
+  elapsed_samples,
+} from '/pkg/realtime_backend.js';
 import SharedRingBuffer from './ringbuffer.js';
 
 let audioCtx = null;
@@ -6,6 +17,7 @@ let workletNode = null;
 let ringBuffer = null;
 let fillTimer = null;
 let wasmLoaded = false;
+let statusTimer = null;
 
 async function ensureWasmLoaded() {
   if (!wasmLoaded) {
@@ -45,6 +57,7 @@ function setupAudio(sampleRate) {
 export async function start() {
   await ensureWasmLoaded();
   const trackJson = document.getElementById('track-json').value;
+  const startTime = parseFloat(document.getElementById('start-time').value) || 0;
   let sampleRate = 44100;
   try {
     const trackObj = JSON.parse(trackJson);
@@ -58,12 +71,14 @@ export async function start() {
   } catch (e) {
     console.warn('Unable to parse track JSON for sample rate:', e);
   }
-  start_stream(trackJson, sampleRate);
+  start_stream(trackJson, sampleRate, startTime);
   await setupAudio(sampleRate);
+  startStatusUpdates();
 }
 
 export function stop() {
   stop_stream();
+  stopStatusUpdates();
   if (workletNode) {
     workletNode.disconnect();
     workletNode = null;
@@ -79,8 +94,53 @@ export function stop() {
   ringBuffer = null;
 }
 
+export function pause() {
+  pause_stream();
+}
+
+export function resume() {
+  resume_stream();
+}
+
+export function seek() {
+  const pos = parseFloat(document.getElementById('seek-time').value);
+  if (!isNaN(pos)) {
+    start_from(pos);
+  }
+}
+
+export function sendUpdate() {
+  const trackJson = document.getElementById('track-json').value;
+  update_track(trackJson);
+}
+
+export function toggleGpu(event) {
+  enable_gpu(event.target.checked);
+}
+
+function startStatusUpdates() {
+  statusTimer = setInterval(() => {
+    if (workletNode) {
+      document.getElementById('current-step').textContent = current_step();
+      document.getElementById('elapsed-samples').textContent = elapsed_samples();
+    }
+  }, 500);
+}
+
+function stopStatusUpdates() {
+  if (statusTimer) {
+    clearInterval(statusTimer);
+    statusTimer = null;
+  }
+}
+
 document.getElementById('start').addEventListener('click', start);
 document.getElementById('stop').addEventListener('click', stop);
+document.getElementById('pause').addEventListener('click', pause);
+document.getElementById('resume').addEventListener('click', resume);
+document.getElementById('seek-button').addEventListener('click', seek);
+document.getElementById('update-track').addEventListener('click', sendUpdate);
+document.getElementById('gpu-enable').addEventListener('change', toggleGpu);
 
 document.getElementById('json-upload').addEventListener('change', (event) => {
   const file = event.target.files[0];

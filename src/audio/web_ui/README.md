@@ -26,7 +26,10 @@ npm run dev
 
 Vite will serve the application at the printed URL. You can either paste a track
 JSON object into the text box or use the **Upload** field to load a `.json`
-file. Click **Start** to begin playback and **Stop** to halt the engine.
+file. Use the **Start** button to begin playback and **Stop** to halt the engine.
+Additional controls allow pausing/resuming playback, seeking to a specific
+position, updating the track JSON while running, and toggling GPU mixing. The
+current step index and elapsed sample count are displayed below the controls.
 
 The JavaScript code now creates the `AudioContext` using the `sample_rate`
 specified in the track JSON (falling back to `44100` if not provided). This

@@ -8,8 +8,17 @@
   <h1>Realtime Backend Web Demo</h1>
   <input type="file" id="json-upload" accept=".json"><br>
   <textarea id="track-json" rows="10" cols="80">{\n  \"global\": {\"sample_rate\": 44100},\n  \"progression\": [],\n  \"background_noise\": {},\n  \"overlay_clips\": []\n}</textarea><br>
+  <label>Start time (s): <input id="start-time" type="number" step="0.1" value="0"></label><br>
+  <label><input type="checkbox" id="gpu-enable"> Enable GPU</label><br>
   <button id="start">Start</button>
-  <button id="stop">Stop</button>
+  <button id="pause">Pause</button>
+  <button id="resume">Resume</button>
+  <button id="stop">Stop</button><br>
+  <label>Seek to (s): <input id="seek-time" type="number" step="0.1" value="0"></label>
+  <button id="seek-button">Seek</button>
+  <button id="update-track">Update Track</button>
+  <div>Current step: <span id="current-step">0</span></div>
+  <div>Elapsed samples: <span id="elapsed-samples">0</span></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
