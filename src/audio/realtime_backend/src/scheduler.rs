@@ -31,7 +31,7 @@ impl CrossfadeCurve {
             CrossfadeCurve::Linear => (1.0 - ratio, ratio),
             CrossfadeCurve::EqualPower => {
                 let theta = ratio * std::f32::consts::FRAC_PI_2;
-                (theta.cos(), theta.sin())
+                (crate::dsp::trig::cos_lut(theta), crate::dsp::trig::sin_lut(theta))
             }
         }
     }
@@ -732,7 +732,10 @@ mod tests {
                     CrossfadeCurve::Linear => (1.0 - ratio, ratio),
                     CrossfadeCurve::EqualPower => {
                         let theta = ratio * std::f32::consts::FRAC_PI_2;
-                        (theta.cos(), theta.sin())
+                        (
+                            crate::dsp::trig::cos_lut(theta),
+                            crate::dsp::trig::sin_lut(theta),
+                        )
                     }
                 };
                 assert!((g_out - exp_out).abs() < 1e-6);

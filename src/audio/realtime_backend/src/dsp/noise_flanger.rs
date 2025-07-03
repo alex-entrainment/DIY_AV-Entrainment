@@ -40,8 +40,8 @@ struct Coeffs {
 
 fn notch_coeffs(freq: f32, q: f32, sample_rate: f32) -> Coeffs {
     let w0 = 2.0 * PI * freq / sample_rate;
-    let cos_w0 = w0.cos();
-    let alpha = w0.sin() / (2.0 * q.max(0.001));
+    let cos_w0 = crate::dsp::trig::cos_lut(w0);
+    let alpha = crate::dsp::trig::sin_lut(w0) / (2.0 * q.max(0.001));
     let b0 = 1.0;
     let b1 = -2.0 * cos_w0;
     let b2 = 1.0;
@@ -86,7 +86,7 @@ fn apply_deep_swept_notches_single_phase(
         let lfo = if lfo_waveform.eq_ignore_ascii_case("triangle") {
             triangle_wave(phase)
         } else {
-            (phase).cos()
+            crate::dsp::trig::cos_lut(phase)
         };
 
         let mut val = *sample;

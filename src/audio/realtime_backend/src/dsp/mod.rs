@@ -1,6 +1,7 @@
 use rand::Rng;
 
 pub mod noise_flanger;
+pub mod trig;
 
 pub fn generate_pink_noise_samples(n_samples: usize) -> Vec<f32> {
     // Simple approximation of pink noise using Voss-McCartney algorithm
@@ -43,7 +44,7 @@ pub fn generate_brown_noise_samples(n_samples: usize) -> Vec<f32> {
 }
 
 pub fn sine_wave(freq: f32, t: f32, phase: f32) -> f32 {
-    (2.0 * std::f32::consts::PI * freq * t + phase).sin()
+    crate::dsp::trig::sin_lut(2.0 * std::f32::consts::PI * freq * t + phase)
 }
 
 pub fn adsr_envelope(t: &[f32], attack: f32, decay: f32, sustain_level: f32, release: f32) -> Vec<f32> {
@@ -79,8 +80,8 @@ pub fn adsr_envelope(t: &[f32], attack: f32, decay: f32, sustain_level: f32, rel
 pub fn pan2(signal: f32, pan: f32) -> (f32, f32) {
     let pan = pan.clamp(-1.0, 1.0);
     let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
-    let left = angle.cos() * signal;
-    let right = angle.sin() * signal;
+    let left = crate::dsp::trig::cos_lut(angle) * signal;
+    let right = crate::dsp::trig::sin_lut(angle) * signal;
     (left, right)
 }
 
