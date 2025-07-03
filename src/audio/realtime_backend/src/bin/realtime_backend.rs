@@ -166,6 +166,10 @@ fn render_full_wav(
         CONFIG.output_dir.join(out_path)
     };
 
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     let mut writer = WavWriter::create(&output_path, spec)?;
     let start_time = std::time::Instant::now();
     let mut remaining = target_frames;
