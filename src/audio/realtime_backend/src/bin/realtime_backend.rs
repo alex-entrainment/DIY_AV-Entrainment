@@ -89,6 +89,7 @@ fn render_full_wav(
     };
 
     let mut writer = WavWriter::create(out_path, spec)?;
+    let start_time = std::time::Instant::now();
     let mut remaining = target_frames;
     let mut buffer = vec![0.0f32; 512 * 2];
     while remaining > 0 {
@@ -103,5 +104,7 @@ fn render_full_wav(
     }
 
     writer.finalize()?;
+    let elapsed = start_time.elapsed().as_secs_f32();
+    println!("Total generation time: {:.2}s", elapsed);
     Ok(())
 }

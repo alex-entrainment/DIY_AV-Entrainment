@@ -163,6 +163,7 @@ fn render_full_wav(track_json_str: String, out_path: String) -> PyResult<()> {
 
     let mut writer = WavWriter::create(&out_path, spec)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    let start_time = std::time::Instant::now();
 
     let mut remaining = target_frames;
     let mut buffer = vec![0.0f32; 512 * 2];
@@ -178,6 +179,8 @@ fn render_full_wav(track_json_str: String, out_path: String) -> PyResult<()> {
     }
 
     writer.finalize().map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    let elapsed = start_time.elapsed().as_secs_f32();
+    println!("Total generation time: {:.2}s", elapsed);
     Ok(())
 }
 
