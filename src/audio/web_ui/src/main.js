@@ -1,7 +1,10 @@
 import init, { start_stream, process_block, stop_stream } from '/pkg/realtime_backend.js';
+import SharedRingBuffer from './ringbuffer.js';
 
 let audioCtx = null;
-let scriptNode = null;
+let workletNode = null;
+let ringBuffer = null;
+let fillTimer = null;
 let wasmLoaded = false;
 
 async function ensureWasmLoaded() {
@@ -12,22 +15,31 @@ async function ensureWasmLoaded() {
 }
 
 function setupAudio(sampleRate) {
-  const bufferSize = 1024;
+  const bufferFrames = 16384;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({
     sampleRate,
   });
-  scriptNode = audioCtx.createScriptProcessor(bufferSize, 0, 2);
-  scriptNode.onaudioprocess = (e) => {
-    const frames = e.outputBuffer.length;
-    const data = process_block(frames * 2);
-    const left = e.outputBuffer.getChannelData(0);
-    const right = e.outputBuffer.getChannelData(1);
-    for (let i = 0; i < frames; i++) {
-      left[i] = data[i * 2];
-      right[i] = data[i * 2 + 1];
-    }
-  };
-  scriptNode.connect(audioCtx.destination);
+  const sabBuf = new SharedArrayBuffer(bufferFrames * Float32Array.BYTES_PER_ELEMENT);
+  const sabIdx = new SharedArrayBuffer(8);
+  ringBuffer = new SharedRingBuffer(sabIdx, sabBuf);
+
+  return audioCtx.audioWorklet.addModule('/src/wasm-worklet.js').then(() => {
+    workletNode = new AudioWorkletNode(audioCtx, 'wasm-worklet', {
+      processorOptions: { indices: sabIdx, buffer: sabBuf },
+    });
+    workletNode.connect(audioCtx.destination);
+
+    const fillBlock = 512;
+    const fill = () => {
+      if (!workletNode) return;
+      while (ringBuffer.availableWrite() >= fillBlock * 2) {
+        const data = process_block(fillBlock * 2);
+        ringBuffer.push(data);
+      }
+      fillTimer = setTimeout(fill, 10);
+    };
+    fill();
+  });
 }
 
 export async function start() {
@@ -46,20 +58,25 @@ export async function start() {
   } catch (e) {
     console.warn('Unable to parse track JSON for sample rate:', e);
   }
-  start_stream(trackJson);
-  setupAudio(sampleRate);
+  start_stream(trackJson, sampleRate);
+  await setupAudio(sampleRate);
 }
 
 export function stop() {
   stop_stream();
-  if (scriptNode) {
-    scriptNode.disconnect();
-    scriptNode = null;
+  if (workletNode) {
+    workletNode.disconnect();
+    workletNode = null;
   }
   if (audioCtx) {
     audioCtx.close();
     audioCtx = null;
   }
+  if (fillTimer) {
+    clearTimeout(fillTimer);
+    fillTimer = null;
+  }
+  ringBuffer = null;
 }
 
 document.getElementById('start').addEventListener('click', start);

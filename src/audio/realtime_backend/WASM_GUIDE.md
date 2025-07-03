@@ -36,7 +36,7 @@ import init, { start_stream, stop_stream } from './realtime_backend.js';
 
 async function initAudio(trackJson) {
   await init(); // loads realtime_backend_bg.wasm
-  await start_stream(JSON.stringify(trackJson));
+  await start_stream(JSON.stringify(trackJson), trackJson.global.sample_rate);
 }
 ```
 
@@ -44,7 +44,7 @@ The exported functions mirror the Python bindings. `start_stream` begins playbac
 
 ### Performance Notes
 
-WebAssembly allows the DSP routines to run at near-native speed in the browser. For best results, ensure the audio worklet thread is not blocked by heavy JavaScript processing. The module currently outputs stereo samples at the browser's sample rate and writes them into a `ScriptProcessor` or `AudioWorklet` node.
+WebAssembly allows the DSP routines to run at near-native speed in the browser. For best results, ensure the audio worklet thread is not blocked by heavy JavaScript processing. The recommended setup uses an `AudioWorklet` that reads from a shared ring buffer filled by the WASM engine. This avoids repeated `Float32Array` allocations and lowers latency compared to a `ScriptProcessor` based approach.
 
 ### Limitations
 
