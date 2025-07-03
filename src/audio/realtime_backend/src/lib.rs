@@ -47,7 +47,8 @@ thread_local! {
 
 #[cfg(feature = "python")]
 #[pyfunction]
-fn start_stream(track_json_str: String) -> PyResult<()> {
+#[pyo3(signature = (track_json_str, start_time=None))]
+fn start_stream(track_json_str: String, start_time: Option<f64>) -> PyResult<()> {
     let track_data: TrackData = serde_json::from_str(&track_json_str)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
@@ -56,7 +57,8 @@ fn start_stream(track_json_str: String) -> PyResult<()> {
     let cfg = device.default_output_config().map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
     let stream_rate = cfg.sample_rate().0;
 
-    let mut scheduler = TrackScheduler::new(track_data, stream_rate);
+    let start_secs = start_time.unwrap_or(0.0);
+    let mut scheduler = TrackScheduler::new_with_start(track_data, stream_rate, start_secs);
     scheduler.gpu_enabled = CONFIG.gpu;
     let rb = HeapRb::<Command>::new(1024);
     let (prod, cons) = rb.split();
@@ -203,9 +205,9 @@ fn render_full_wav(track_json_str: String, out_path: String) -> PyResult<()> {
 
 #[cfg(feature = "web")]
 #[wasm_bindgen]
-pub fn start_stream(track_json_str: &str, sample_rate: u32) {
+pub fn start_stream(track_json_str: &str, sample_rate: u32, start_time: f64) {
     let track_data: TrackData = serde_json::from_str(track_json_str).unwrap();
-    let scheduler = TrackScheduler::new(track_data, sample_rate);
+    let scheduler = TrackScheduler::new_with_start(track_data, sample_rate, start_time);
     let rb = HeapRb::<Command>::new(1024);
     let (prod, cons) = rb.split();
     *ENGINE_STATE.lock() = Some(prod);

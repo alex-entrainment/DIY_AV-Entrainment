@@ -180,6 +180,10 @@ fn resample_linear_stereo(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f3
 
 impl TrackScheduler {
     pub fn new(track: TrackData, device_rate: u32) -> Self {
+        Self::new_with_start(track, device_rate, 0.0)
+    }
+
+    pub fn new_with_start(track: TrackData, device_rate: u32, start_time: f64) -> Self {
         let sample_rate = device_rate as f32;
         let crossfade_samples =
             (track.global_settings.crossfade_duration * sample_rate as f64) as usize;
@@ -257,7 +261,7 @@ impl TrackScheduler {
             None
         };
 
-        Self {
+        let mut sched = Self {
             track,
             current_sample: 0,
             current_step: 0,
@@ -280,7 +284,46 @@ impl TrackScheduler {
             clip_gain: cfg.clip_gain,
             #[cfg(feature = "gpu")]
             gpu: GpuMixer::new(),
+        };
+
+        let start_samples = (start_time * sample_rate as f64) as usize;
+        sched.seek_samples(start_samples);
+        sched
+    }
+
+    fn seek_samples(&mut self, abs_samples: usize) {
+        self.absolute_sample = abs_samples as u64;
+
+        for clip in &mut self.clips {
+            clip.position = if abs_samples > clip.start_sample {
+                (abs_samples - clip.start_sample) * 2
+            } else {
+                0
+            };
         }
+
+        if let Some(noise) = &mut self.background_noise {
+            noise.position = (abs_samples * 2).min(noise.samples.len());
+        }
+
+        let mut remaining = abs_samples;
+        self.current_step = 0;
+        self.current_sample = 0;
+        for (idx, step) in self.track.steps.iter().enumerate() {
+            let step_samples = (step.duration * self.sample_rate as f64) as usize;
+            if remaining < step_samples {
+                self.current_step = idx;
+                self.current_sample = remaining;
+                break;
+            }
+            remaining = remaining.saturating_sub(step_samples);
+        }
+
+        self.active_voices.clear();
+        self.next_voices.clear();
+        self.crossfade_active = false;
+        self.current_crossfade_samples = 0;
+        self.next_step_sample = 0;
     }
 
     /// Replace the current track data while preserving playback progress.
@@ -299,16 +342,10 @@ impl TrackScheduler {
         self.clips.clear();
         for c in &track.clips {
             if let Ok(samples) = load_clip_file(&c.file_path, self.sample_rate as u32) {
-                let start_sample = (c.start * self.sample_rate as f64) as usize;
-                let position = if abs_samples > start_sample {
-                    (abs_samples - start_sample) * 2
-                } else {
-                    0
-                };
                 self.clips.push(LoadedClip {
                     samples,
-                    start_sample,
-                    position,
+                    start_sample: (c.start * self.sample_rate as f64) as usize,
+                    position: 0,
                     gain: c.amp * self.clip_gain,
                 });
             }
@@ -355,10 +392,9 @@ impl TrackScheduler {
                         stereo.push(s);
                         stereo.push(s);
                     }
-                    let pos = (abs_samples * 2).min(stereo.len());
                     Some(BackgroundNoise {
                         samples: stereo,
-                        position: pos,
+                        position: 0,
                         gain: noise_cfg.amp * self.noise_gain,
                     })
                 } else {
@@ -371,24 +407,7 @@ impl TrackScheduler {
             None
         };
 
-        let mut remaining = abs_samples;
-        self.current_step = 0;
-        self.current_sample = 0;
-        for (idx, step) in track.steps.iter().enumerate() {
-            let step_samples = (step.duration * self.sample_rate as f64) as usize;
-            if remaining < step_samples {
-                self.current_step = idx;
-                self.current_sample = remaining;
-                break;
-            }
-            remaining = remaining.saturating_sub(step_samples);
-        }
-
-        self.active_voices.clear();
-        self.next_voices.clear();
-        self.crossfade_active = false;
-        self.current_crossfade_samples = 0;
-        self.next_step_sample = 0;
+        self.seek_samples(abs_samples);
         #[cfg(feature = "gpu")]
         {
             self.gpu = GpuMixer::new();
