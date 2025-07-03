@@ -150,6 +150,11 @@ fn render_sample_wav(track_json_str: String, out_path: String) -> PyResult<()> {
         CONFIG.output_dir.join(&out_path)
     };
 
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    }
+
     let mut writer = WavWriter::create(&output_path, spec)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
 
@@ -197,6 +202,11 @@ fn render_full_wav(track_json_str: String, out_path: String) -> PyResult<()> {
     } else {
         CONFIG.output_dir.join(&out_path)
     };
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    }
 
     let mut writer = WavWriter::create(&output_path, spec)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
