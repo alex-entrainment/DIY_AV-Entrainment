@@ -201,78 +201,58 @@ impl TrackScheduler {
         }
 
         let background_noise = if let Some(noise_cfg) = &track.background_noise {
-            let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-            let total_samples = (total_duration * sample_rate as f64) as usize;
-            let samples = if !noise_cfg.file_path.is_empty()
-                && noise_cfg.file_path.ends_with(".noise")
-            {
+            if !noise_cfg.file_path.is_empty() && noise_cfg.file_path.ends_with(".noise") {
                 if let Ok(params) = crate::noise_params::load_noise_params(&noise_cfg.file_path) {
-                    let lfo_freq = if params.transition {
-                        params.start_lfo_freq
-                    } else {
-                        if params.lfo_freq != 0.0 {
+                    let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
+                    let samples = {
+                        let lfo_freq = if params.transition {
+                            params.start_lfo_freq
+                        } else if params.lfo_freq != 0.0 {
                             params.lfo_freq
                         } else {
                             1.0 / 12.0
-                        }
+                        };
+                        let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
+                            params
+                                .sweeps
+                                .iter()
+                                .map(|sw| (sw.start_min.max(1.0), sw.start_max.max(sw.start_min + 1.0)))
+                                .collect()
+                        } else {
+                            vec![(1000.0, 10000.0)]
+                        };
+                        let qs = vec![25.0; sweeps.len()];
+                        let casc = vec![10usize; sweeps.len()];
+                        generate_swept_notch_noise(
+                            total_duration as f32,
+                            device_rate,
+                            lfo_freq,
+                            &sweeps,
+                            &qs,
+                            &casc,
+                            params.start_lfo_phase_offset_deg,
+                            params.start_intra_phase_offset_deg,
+                            &params.noise_type,
+                            &params.lfo_waveform,
+                        )
                     };
-                    let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
-                        params
-                            .sweeps
-                            .iter()
-                            .map(|sw| (sw.start_min.max(1.0), sw.start_max.max(sw.start_min + 1.0)))
-                            .collect()
-                    } else {
-                        vec![(1000.0, 10000.0)]
-                    };
-                    let qs = vec![25.0; sweeps.len()];
-                    let casc = vec![10usize; sweeps.len()];
-                    generate_swept_notch_noise(
-                        total_duration as f32,
-                        device_rate,
-                        lfo_freq,
-                        &sweeps,
-                        &qs,
-                        &casc,
-                        params.start_lfo_phase_offset_deg,
-                        params.start_intra_phase_offset_deg,
-                        &params.noise_type,
-                        &params.lfo_waveform,
-                    )
-                } else {
-                    match noise_cfg.noise_type.to_lowercase().as_str() {
-                        "brown" => generate_brown_noise_samples(total_samples),
-                        _ => generate_pink_noise_samples(total_samples),
+                    let mut stereo = Vec::with_capacity(samples.len() * 2);
+                    for s in samples {
+                        stereo.push(s);
+                        stereo.push(s);
                     }
+                    Some(BackgroundNoise {
+                        samples: stereo,
+                        position: 0,
+                        gain: noise_cfg.amp,
+                    })
+                } else {
+                    None
                 }
             } else {
-                match noise_cfg.noise_type.to_lowercase().as_str() {
-                    "brown" => generate_brown_noise_samples(total_samples),
-                    "swept_notch" => generate_swept_notch_noise(
-                        total_duration as f32,
-                        device_rate,
-                        1.0 / 12.0,
-                        &[(1000.0, 10000.0)],
-                        &[25.0],
-                        &[10],
-                        90.0,
-                        0.0,
-                        "pink",
-                        "sine",
-                    ),
-                    _ => generate_pink_noise_samples(total_samples),
-                }
-            };
-            let mut stereo = Vec::with_capacity(samples.len() * 2);
-            for s in samples {
-                stereo.push(s);
-                stereo.push(s);
+                None
             }
-            Some(BackgroundNoise {
-                samples: stereo,
-                position: 0,
-                gain: noise_cfg.amp * cfg.noise_gain,
-            })
+
         } else {
             None
         };
@@ -335,65 +315,59 @@ impl TrackScheduler {
         }
 
         self.background_noise = if let Some(noise_cfg) = &track.background_noise {
-            let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-            let total_samples = (total_duration * self.sample_rate as f64) as usize;
-            let samples = if !noise_cfg.file_path.is_empty()
-                && noise_cfg.file_path.ends_with(".noise")
-            {
+            if !noise_cfg.file_path.is_empty() && noise_cfg.file_path.ends_with(".noise") {
                 if let Ok(params) = crate::noise_params::load_noise_params(&noise_cfg.file_path) {
-                    let lfo_freq = if params.transition { params.start_lfo_freq } else { if params.lfo_freq != 0.0 { params.lfo_freq } else { 1.0 / 12.0 } };
-                    let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
-                        params
-                            .sweeps
-                            .iter()
-                            .map(|sw| (sw.start_min.max(1.0), sw.start_max.max(sw.start_min + 1.0)))
-                            .collect()
-                    } else {
-                        vec![(1000.0, 10000.0)]
+                    let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
+                    let samples = {
+                        let lfo_freq = if params.transition {
+                            params.start_lfo_freq
+                        } else if params.lfo_freq != 0.0 {
+                            params.lfo_freq
+                        } else {
+                            1.0 / 12.0
+                        };
+                        let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
+                            params
+                                .sweeps
+                                .iter()
+                                .map(|sw| (sw.start_min.max(1.0), sw.start_max.max(sw.start_min + 1.0)))
+                                .collect()
+                        } else {
+                            vec![(1000.0, 10000.0)]
+                        };
+                        let qs = vec![25.0; sweeps.len()];
+                        let casc = vec![10usize; sweeps.len()];
+                        generate_swept_notch_noise(
+                            total_duration as f32,
+                            self.sample_rate as u32,
+                            lfo_freq,
+                            &sweeps,
+                            &qs,
+                            &casc,
+                            params.start_lfo_phase_offset_deg,
+                            params.start_intra_phase_offset_deg,
+                            &params.noise_type,
+                            &params.lfo_waveform,
+                        )
                     };
-                    let qs = vec![25.0; sweeps.len()];
-                    let casc = vec![10usize; sweeps.len()];
-                    generate_swept_notch_noise(
-                        total_duration as f32,
-                        self.sample_rate as u32,
-                        lfo_freq,
-                        &sweeps,
-                        &qs,
-                        &casc,
-                        params.start_lfo_phase_offset_deg,
-                        params.start_intra_phase_offset_deg,
-                        &params.noise_type,
-                        &params.lfo_waveform,
-                    )
-                } else {
-                    match noise_cfg.noise_type.to_lowercase().as_str() {
-                        "brown" => generate_brown_noise_samples(total_samples),
-                        _ => generate_pink_noise_samples(total_samples),
+                    let mut stereo = Vec::with_capacity(samples.len() * 2);
+                    for s in samples {
+                        stereo.push(s);
+                        stereo.push(s);
                     }
+                    let pos = (abs_samples * 2).min(stereo.len());
+                    Some(BackgroundNoise {
+                        samples: stereo,
+                        position: pos,
+                        gain: noise_cfg.amp,
+                    })
+                } else {
+                    None
                 }
             } else {
-                match noise_cfg.noise_type.to_lowercase().as_str() {
-                    "brown" => generate_brown_noise_samples(total_samples),
-                    "swept_notch" => generate_swept_notch_noise(
-                        total_duration as f32,
-                        self.sample_rate as u32,
-                        1.0 / 12.0,
-                        &[(1000.0, 10000.0)],
-                        &[25.0],
-                        &[10],
-                        90.0,
-                        0.0,
-                        "pink",
-                        "sine",
-                    ),
-                    _ => generate_pink_noise_samples(total_samples),
-                }
-            };
-            let mut stereo = Vec::with_capacity(samples.len() * 2);
-            for s in samples {
-                stereo.push(s);
-                stereo.push(s);
+                None
             }
+
             let pos = (abs_samples * 2).min(stereo.len());
             Some(BackgroundNoise {
                 samples: stereo,
