@@ -86,8 +86,7 @@ JSON file:
 ```bash
 cargo run -p realtime_backend --bin play_json -- path/to/track.json
 ```
-
-Use `Ctrl+C` to stop playback.
+During playback you can press `p` to toggle pause/resume or `q` to quit. `Ctrl+C` also stops the stream.
 
 ### Backend Configuration
 The realtime backend reads a `config.toml` file located in
