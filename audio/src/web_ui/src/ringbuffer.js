@@ -28,7 +28,10 @@ class SharedRingBuffer {
     let w = Atomics.load(this.indices, 1);
     for (let i = 0; i < data.length; i++) {
       const next = (w + 1) % this.size;
-      if (next === r) break; // full
+      if (next === r) {
+        console.debug('RingBuffer full, dropping samples');
+        break; // full
+      }
       this.buffer[w] = data[i];
       w = next;
     }
@@ -44,6 +47,9 @@ class SharedRingBuffer {
       r = (r + 1) % this.size;
     }
     Atomics.store(this.indices, 0, r);
+    if (count < target.length) {
+      console.debug('RingBuffer underflow: requested', target.length, 'got', count);
+    }
     return count;
   }
 }

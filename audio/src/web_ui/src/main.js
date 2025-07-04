@@ -9,7 +9,7 @@ import init, {
   enable_gpu,
   current_step,
   elapsed_samples,
-} from '/pkg/realtime_backend.js?import';
+} from '/src/pkg/realtime_backend.js?import';
 import SharedRingBuffer from './ringbuffer.js';
 
 let audioCtx = null;
@@ -17,12 +17,15 @@ let workletNode = null;
 let ringBuffer = null;
 let fillTimer = null;
 let wasmLoaded = false;
+console.debug('Web UI script loaded');
 let statusTimer = null;
 
 async function ensureWasmLoaded() {
   if (!wasmLoaded) {
+    console.debug('Loading WASM module');
     await init();
     wasmLoaded = true;
+    console.debug('WASM module initialized');
   }
 }
 
@@ -31,15 +34,18 @@ function setupAudio(sampleRate) {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({
     sampleRate,
   });
+  console.debug('AudioContext created with sampleRate', sampleRate);
   const sabBuf = new SharedArrayBuffer(bufferFrames * Float32Array.BYTES_PER_ELEMENT);
   const sabIdx = new SharedArrayBuffer(8);
   ringBuffer = new SharedRingBuffer(sabIdx, sabBuf);
+  console.debug('SharedRingBuffer initialized with', bufferFrames, 'frames');
 
   return audioCtx.audioWorklet.addModule('/src/wasm-worklet.js').then(() => {
     workletNode = new AudioWorkletNode(audioCtx, 'wasm-worklet', {
       processorOptions: { indices: sabIdx, buffer: sabBuf },
     });
     workletNode.connect(audioCtx.destination);
+    console.debug('AudioWorkletNode added and connected');
 
     const fillBlock = 512;
     const fill = () => {
@@ -51,6 +57,7 @@ function setupAudio(sampleRate) {
       fillTimer = setTimeout(fill, 10);
     };
     fill();
+    console.debug('Started ring buffer fill loop');
   });
 }
 
@@ -71,12 +78,16 @@ export async function start() {
   } catch (e) {
     console.warn('Unable to parse track JSON for sample rate:', e);
   }
+  console.debug('Starting stream with sampleRate', sampleRate, 'startTime', startTime);
   start_stream(trackJson, sampleRate, startTime);
+  console.debug('Stream started');
   await setupAudio(sampleRate);
+  console.debug('Audio setup complete');
   startStatusUpdates();
 }
 
 export function stop() {
+  console.debug('Stopping stream');
   stop_stream();
   stopStatusUpdates();
   if (workletNode) {
@@ -95,30 +106,36 @@ export function stop() {
 }
 
 export function pause() {
+  console.debug('Pausing stream');
   pause_stream();
 }
 
 export function resume() {
+  console.debug('Resuming stream');
   resume_stream();
 }
 
 export function seek() {
   const pos = parseFloat(document.getElementById('seek-time').value);
   if (!isNaN(pos)) {
+    console.debug('Seeking to', pos, 'seconds');
     start_from(pos);
   }
 }
 
 export function sendUpdate() {
   const trackJson = document.getElementById('track-json').value;
+  console.debug('Sending track update');
   update_track(trackJson);
 }
 
 export function toggleGpu(event) {
+  console.debug('GPU toggle', event.target.checked);
   enable_gpu(event.target.checked);
 }
 
 function startStatusUpdates() {
+  console.debug('Starting status updates');
   statusTimer = setInterval(() => {
     if (workletNode) {
       document.getElementById('current-step').textContent = current_step();
@@ -131,6 +148,7 @@ function stopStatusUpdates() {
   if (statusTimer) {
     clearInterval(statusTimer);
     statusTimer = null;
+    console.debug('Stopped status updates');
   }
 }
 
