@@ -512,11 +512,43 @@ impl TrackScheduler {
             prev_buf.fill(0.0);
             next_buf.fill(0.0);
 
-            for v in &mut self.active_voices {
-                v.process(prev_buf);
-            }
-            for v in &mut self.next_voices {
-                v.process(next_buf);
+            if self.gpu_enabled {
+                #[cfg(feature = "gpu")]
+                {
+                    let mut prev_locals: Vec<Vec<f32>> = Vec::with_capacity(self.active_voices.len());
+                    for voice in &mut self.active_voices {
+                        let mut local = vec![0.0f32; buffer.len()];
+                        voice.process(&mut local);
+                        prev_locals.push(local);
+                    }
+                    let prev_refs: Vec<&[f32]> = prev_locals.iter().map(|b| b.as_slice()).collect();
+                    self.gpu.mix(&prev_refs, prev_buf);
+
+                    let mut next_locals: Vec<Vec<f32>> = Vec::with_capacity(self.next_voices.len());
+                    for voice in &mut self.next_voices {
+                        let mut local = vec![0.0f32; buffer.len()];
+                        voice.process(&mut local);
+                        next_locals.push(local);
+                    }
+                    let next_refs: Vec<&[f32]> = next_locals.iter().map(|b| b.as_slice()).collect();
+                    self.gpu.mix(&next_refs, next_buf);
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    for v in &mut self.active_voices {
+                        v.process(prev_buf);
+                    }
+                    for v in &mut self.next_voices {
+                        v.process(next_buf);
+                    }
+                }
+            } else {
+                for v in &mut self.active_voices {
+                    v.process(prev_buf);
+                }
+                for v in &mut self.next_voices {
+                    v.process(next_buf);
+                }
             }
 
             let out_gain = if self.active_voices.is_empty() {
