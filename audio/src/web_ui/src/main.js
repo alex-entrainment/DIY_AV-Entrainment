@@ -39,7 +39,6 @@ function setupAudio(sampleRate) {
   const sabIdx = new SharedArrayBuffer(8);
   ringBuffer = new SharedRingBuffer(sabIdx, sabBuf);
   console.debug('SharedRingBuffer initialized with', bufferFrames, 'frames');
-
   return audioCtx.audioWorklet.addModule('/src/wasm-worklet.js').then(() => {
     workletNode = new AudioWorkletNode(audioCtx, 'wasm-worklet', {
       processorOptions: { indices: sabIdx, buffer: sabBuf },
@@ -82,6 +81,11 @@ export async function start() {
   start_stream(trackJson, sampleRate, startTime);
   console.debug('Stream started');
   await setupAudio(sampleRate);
+
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+
   console.debug('Audio setup complete');
   startStatusUpdates();
 }
