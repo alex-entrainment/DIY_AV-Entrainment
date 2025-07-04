@@ -104,3 +104,63 @@ clip_gain = 1.0
 
 Relative path outputs in `render_*` functions or the CLI are written beneath the
 configured `output_dir`.
+
+## Editor Features
+
+The **Track Editor** under `audio/src/main.py` exposes a full GUI for arranging
+multi-step audio tracks. The main window contains three panels – Steps, Voices
+and Overlay Clips – plus a test preview section and several helper tools.
+
+### Steps Panel
+
+- **Add Step** – create a new step at the end of the list.
+- **Load External Step** – import a step definition from another JSON file.
+- **Duplicate Step** – copy the selected step including all voices.
+- **Create End State Step** – insert a new step using the last values of the
+  selected one.
+- **Remove Step(s)** – delete any highlighted steps.
+- **Edit Duration** and **Edit Description** – change the length or description
+  of the selected step.
+- **Move Up/Move Down** – reorder the step within the sequence.
+
+### Voices Panel
+
+- **Add Voice** – open the Voice Editor dialog to configure a new voice.
+- **Edit Voice** – modify parameters of the highlighted voice.
+- **Remove Voice(s)** – delete selected voices from the step.
+- **Move Up/Move Down** – change a voice's order (affects mixing priority).
+
+### Overlay Clips
+
+- **Add Clip** – choose an audio file to layer on top of the generated voices.
+- **Edit Clip** – adjust start time, amplitude, pan and fades.
+- **Remove Clip(s)** – delete selected overlay entries.
+- **Start Clip/Stop Clip** – preview a clip without rendering the full track.
+
+### Test Step Preview
+
+The bottom of the Steps panel features a preview player:
+
+- **Play/Pause** – load the currently selected step (up to 60&nbsp;s for long
+  steps) and start/stop playback.
+- **Stop** – halt playback without clearing the loaded audio.
+- **Reset Tester** – unload the preview and reset the position slider.
+- **Time Slider** – scrub through the generated audio while previewing.
+
+### Tool Buttons
+
+The Controls area exposes additional dialogs:
+
+- **Open Noise Generator** – create swept-notch noise presets or export noise
+  files via `NoiseGeneratorDialog`.
+- **Frequency Tester** – audition up to ten binaural beat pairs in real time.
+- **Add Subliminal Voice** – encode external audio as an ultrasonic subliminal
+  and insert it into the selected step.
+- **View Timeline** – render an interactive Plotly timeline showing all steps,
+  voices and overlay clips.
+
+Preferences (available from the File menu) store font settings, sample rate,
+target output amplitude, amplitude display mode (absolute or dB) and more.
+You can also configure default voice parameters that are used when creating new
+voices.
+
