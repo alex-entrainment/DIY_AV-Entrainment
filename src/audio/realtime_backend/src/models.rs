@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::Path;
 
 fn default_crossfade_duration() -> f64 { 3.0 }
 fn default_crossfade_curve() -> String { "linear".to_string() }
@@ -76,4 +77,27 @@ pub struct BackgroundNoiseData {
     pub noise_type: String,
     #[serde(default, alias = "gain", alias = "amp")]
     pub amp: f32,
+}
+
+impl TrackData {
+    /// Resolve clip and noise file paths relative to the provided base directory.
+    pub fn resolve_relative_paths<P: AsRef<Path>>(&mut self, base: P) {
+        let base = base.as_ref();
+        if let Some(noise) = &mut self.background_noise {
+            if !noise.file_path.is_empty() {
+                let p = Path::new(&noise.file_path);
+                if p.is_relative() {
+                    noise.file_path = base.join(p).to_string_lossy().into_owned();
+                }
+            }
+        }
+        for clip in &mut self.clips {
+            if !clip.file_path.is_empty() {
+                let p = Path::new(&clip.file_path);
+                if p.is_relative() {
+                    clip.file_path = base.join(p).to_string_lossy().into_owned();
+                }
+            }
+        }
+    }
 }

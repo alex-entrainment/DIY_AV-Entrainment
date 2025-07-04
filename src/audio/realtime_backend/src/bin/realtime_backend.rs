@@ -62,7 +62,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_command(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let json_str = std::fs::read_to_string(&args.path)?;
-    let track_data: TrackData = serde_json::from_str(&json_str)?;
+    let mut track_data: TrackData = serde_json::from_str(&json_str)?;
+    if let Some(dir) = std::path::Path::new(&args.path).parent() {
+        track_data.resolve_relative_paths(dir);
+    }
 
     if args.generate {
         let out_name = track_data

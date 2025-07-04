@@ -19,7 +19,10 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let json_str = std::fs::read_to_string(&args.track_file)?;
-    let track_data: TrackData = serde_json::from_str(&json_str)?;
+    let mut track_data: TrackData = serde_json::from_str(&json_str)?;
+    if let Some(dir) = std::path::Path::new(&args.track_file).parent() {
+        track_data.resolve_relative_paths(dir);
+    }
 
     let host = cpal::default_host();
     let device = host
