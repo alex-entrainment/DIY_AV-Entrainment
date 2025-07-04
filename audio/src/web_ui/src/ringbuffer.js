@@ -1,24 +1,27 @@
-
-// ringbuffer.js
-
-export default class SharedRingBuffer {
-  /**
-   * @param {SharedArrayBuffer} indicesSab  Two-element Int32Array SAB storing [readIndex, writeIndex]
-   * @param {SharedArrayBuffer} dataSab     Float32Array SAB for sample storage
-   */
+class SharedRingBuffer {
   constructor(indicesSab, dataSab) {
-    // indicesSab: Int32Array([readPtr, writePtr])
     this.indices = new Int32Array(indicesSab);
-    // buffer: Float32Array of size N
     this.buffer = new Float32Array(dataSab);
     this.size = this.buffer.length;
   }
 
-  /**
-   * How many floats can we write without overwriting unread data?
-   * Always leaves one slot empty to distinguish full vs empty.
-   * @returns {number}
-   */
+  reset() {
+    Atomics.store(this.indices, 0, 0);
+    Atomics.store(this.indices, 1, 0);
+  }
+
+  isEmpty() {
+    return Atomics.load(this.indices, 0) === Atomics.load(this.indices, 1);
+  }
+
+  isFull() {
+    return this.availableWrite() === 0;
+  }
+
+  clear() {
+    this.reset();
+  }
+
   availableWrite() {
     const r = Atomics.load(this.indices, 0);
     const w = Atomics.load(this.indices, 1);
@@ -28,10 +31,6 @@ export default class SharedRingBuffer {
     return r - w - 1;
   }
 
-  /**
-   * How many floats are available to read?
-   * @returns {number}
-   */
   availableRead() {
     const r = Atomics.load(this.indices, 0);
     const w = Atomics.load(this.indices, 1);
@@ -41,31 +40,24 @@ export default class SharedRingBuffer {
     return this.size - (r - w);
   }
 
-  /**
-   * Push new data into the ring buffer.
-   * Any excess beyond capacity is dropped.
-   * @param {Float32Array} data
-   */
   push(data) {
     let r = Atomics.load(this.indices, 0);
     let w = Atomics.load(this.indices, 1);
+    let pushed = 0;
     for (let i = 0; i < data.length; i++) {
       const next = (w + 1) % this.size;
       if (next === r) {
         console.debug('RingBuffer full, dropping samples');
-        break;
+        break; // full
       }
       this.buffer[w] = data[i];
       w = next;
+      pushed++;
     }
     Atomics.store(this.indices, 1, w);
+    return pushed;
   }
 
-  /**
-   * Pop up to target.length floats into the provided array.
-   * @param {Float32Array} target
-   * @returns {number}  The actual number of floats written into target.
-   */
   pop(target) {
     let r = Atomics.load(this.indices, 0);
     const w = Atomics.load(this.indices, 1);
@@ -76,12 +68,10 @@ export default class SharedRingBuffer {
     }
     Atomics.store(this.indices, 0, r);
     if (count < target.length) {
-      console.debug(
-        'RingBuffer underflow: requested', target.length,
-        'got', count
-      );
+      console.debug('RingBuffer underflow: requested', target.length, 'got', count);
     }
     return count;
   }
 }
 
+export default SharedRingBuffer;
