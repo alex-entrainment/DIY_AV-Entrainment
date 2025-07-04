@@ -76,7 +76,7 @@ This behaviour ensures that very long steps do not delay the preview yet short
 steps can still be heard in full.
 
 ### WebAssembly DSP Backend
-For browser-based projects you can compile the Rust realtime backend to WebAssembly. See [src/audio/realtime_backend/WASM_GUIDE.md](src/audio/realtime_backend/WASM_GUIDE.md) for build and usage steps.
+For browser-based projects you can compile the Rust realtime backend to WebAssembly. See [audio/src/realtime_backend/WASM_GUIDE.md](audio/src/realtime_backend/WASM_GUIDE.md) for build and usage steps.
 
 ### CLI Playback
 In addition to the Python bindings, the realtime backend provides a small command
@@ -90,7 +90,7 @@ During playback you can press `p` to toggle pause/resume or `q` to quit. `Ctrl+C
 
 ### Backend Configuration
 The realtime backend reads a `config.toml` file located in
-`src/audio/realtime_backend/`. This file allows setting the default output
+`audio/src/realtime_backend/`. This file allows setting the default output
 directory, enabling GPU mixing, and specifying global gain adjustments for
 voices, background noise and overlay clips. Example:
 
