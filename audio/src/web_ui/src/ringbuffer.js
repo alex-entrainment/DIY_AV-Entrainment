@@ -1,5 +1,3 @@
-// Copyright (c) DIY Audio-Visual Entrainment
-// SPDX-License-Identifier: MIT
 
 /**
  * Shared ring buffer for passing Float32 samples between threads.
