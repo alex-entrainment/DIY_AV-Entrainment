@@ -8,6 +8,10 @@ edition = "2021"
 name = "realtime_backend"
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "realtime_backend_cli"
+path = "src/bin/realtime_backend_cli.rs"
+
 [features]
 default = ["python"]
 python = ["pyo3", "crossbeam"]
