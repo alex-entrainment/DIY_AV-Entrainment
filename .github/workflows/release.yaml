@@ -1,0 +1,49 @@
+name: Build and Release Rust WASM
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - uses: actions/checkout@v4
+
+      # Install Rust and wasm-pack
+      - name: Install Rust and wasm-pack
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          source $HOME/.cargo/env
+          cargo install wasm-pack
+
+      # Build the WASM package
+      - name: Build WASM package
+        run: wasm-pack build --release
+
+      # Upload the WASM package as an artifact
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-package
+          path: pkg/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # Download the WASM artifact
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-package
+
+      # Create a release with the WASM package
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: pkg/*
+          token: ${{ secrets.GITHUB_TOKEN }}
