@@ -4,6 +4,8 @@ This crate provides the initial structure for a Rust-based audio generation engi
 It mirrors the JSON track format used by the Python implementation and exposes a
 minimal PyO3 interface for starting and stopping playback.
 
+Also can be used as a standalone CLI executable or as a WASM component for backend use in-browser. 
+
 Implemented components:
 
 - **Project setup** with Cargo, PyO3, CPAL and DSP-related dependencies.
