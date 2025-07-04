@@ -173,3 +173,30 @@ document.getElementById('json-upload').addEventListener('change', (event) => {
   };
   reader.readAsText(file);
 });
+
+document.getElementById('noise-upload').addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const params = JSON.parse(e.target.result);
+      const textarea = document.getElementById('track-json');
+      let track;
+      try {
+        track = JSON.parse(textarea.value);
+      } catch (err) {
+        console.warn('Invalid track JSON, resetting');
+        track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
+      }
+      if (!track.background_noise) {
+        track.background_noise = {};
+      }
+      track.background_noise.params = params;
+      textarea.value = JSON.stringify(track, null, 2);
+    } catch (err) {
+      console.error('Failed to parse .noise file', err);
+    }
+  };
+  reader.readAsText(file);
+});

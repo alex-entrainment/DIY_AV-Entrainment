@@ -36,7 +36,9 @@ npm run dev
 
 Vite will serve the application at the printed URL. You can either paste a track
 JSON object into the text box or use the **Upload** field to load a `.json`
-file. Use the **Start** button to begin playback and **Stop** to halt the engine.
+file. A second upload field accepts `.noise` files and inserts the parsed
+parameters into the `background_noise` section of the track JSON.
+Use the **Start** button to begin playback and **Stop** to halt the engine.
 Additional controls allow pausing/resuming playback, seeking to a specific
 position, updating the track JSON while running, and toggling GPU mixing. The
 current step index and elapsed sample count are displayed below the controls.
