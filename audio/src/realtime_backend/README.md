@@ -138,8 +138,10 @@ Options:
 ## Optional GPU Acceleration
 
 The backend includes an experimental GPU mixing path behind the `gpu` Cargo
-feature. When enabled, a compute shader is used to sum the active voice buffers
-for each processed block during file generation only.
+feature. When enabled, compute shaders are used to sum the active voice buffers
+for each processed block. Crossfade transitions also leverage the GPU so that
+large sessions with many voices can be rendered faster than the Numba powered
+Python implementation.
 
 Build the library with GPU support using:
 
