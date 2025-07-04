@@ -15,6 +15,12 @@ from a web page.
 3. Run `npm run sync-wasm` (or any of the dev/build scripts) to copy the
    generated `pkg` folder into `public/` so Vite can serve
    `realtime_backend.js` and `realtime_backend_bg.wasm`.
+   When importing the module in JavaScript, append `?import` to the path
+   so Vite treats it as an ES module:
+
+   ```javascript
+   import init from '/pkg/realtime_backend.js?import';
+   ```
 
 ## Running the Demo
 

@@ -9,7 +9,7 @@ import init, {
   enable_gpu,
   current_step,
   elapsed_samples,
-} from '/pkg/realtime_backend.js';
+} from '/pkg/realtime_backend.js?import';
 import SharedRingBuffer from './ringbuffer.js';
 
 let audioCtx = null;
