@@ -77,6 +77,8 @@ pub struct BackgroundNoiseData {
     pub noise_type: String,
     #[serde(default, alias = "gain", alias = "amp")]
     pub amp: f32,
+    #[serde(default)]
+    pub params: Option<crate::noise_params::NoiseParams>,
 }
 
 impl TrackData {

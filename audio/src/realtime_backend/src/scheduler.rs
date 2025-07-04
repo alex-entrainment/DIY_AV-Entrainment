@@ -37,6 +37,67 @@ impl CrossfadeCurve {
     }
 }
 
+fn noise_from_params(
+    params: &crate::noise_params::NoiseParams,
+    duration: f64,
+    sample_rate: u32,
+) -> Vec<f32> {
+    let lfo_freq = if params.transition {
+        params.start_lfo_freq
+    } else if params.lfo_freq != 0.0 {
+        params.lfo_freq
+    } else {
+        1.0 / 12.0
+    };
+    let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
+        params
+            .sweeps
+            .iter()
+            .map(|sw| {
+                let min = if sw.start_min > 0.0 { sw.start_min } else { 1000.0 };
+                let max = if sw.start_max > 0.0 {
+                    sw.start_max.max(min + 1.0)
+                } else {
+                    (min + 1.0).max(min)
+                };
+                (min, max)
+            })
+            .collect()
+    } else {
+        vec![(1000.0, 10000.0)]
+    };
+    let qs: Vec<f32> = if !params.sweeps.is_empty() {
+        params
+            .sweeps
+            .iter()
+            .map(|sw| if sw.start_q > 0.0 { sw.start_q } else { 25.0 })
+            .collect()
+    } else {
+        vec![25.0; sweeps.len()]
+    };
+    let casc: Vec<usize> = if !params.sweeps.is_empty() {
+        params
+            .sweeps
+            .iter()
+            .map(|sw| if sw.start_casc > 0 { sw.start_casc } else { 10 })
+            .collect()
+    } else {
+        vec![10usize; sweeps.len()]
+    };
+    generate_swept_notch_noise(
+        duration as f32,
+        sample_rate,
+        lfo_freq,
+        &sweeps,
+        &qs,
+        &casc,
+        params.start_lfo_phase_offset_deg,
+        params.start_intra_phase_offset_deg,
+        &params.noise_type,
+        &params.lfo_waveform,
+    )
+}
+
 fn steps_have_continuous_voices(a: &StepData, b: &StepData) -> bool {
     if a.voices.len() != b.voices.len() {
         return false;
@@ -212,82 +273,18 @@ impl TrackScheduler {
             if !noise_cfg.file_path.is_empty() && noise_cfg.file_path.ends_with(".noise") {
                 if let Ok(params) = crate::noise_params::load_noise_params(&noise_cfg.file_path) {
                     let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-                    let samples = {
-                        let lfo_freq = if params.transition {
-                            params.start_lfo_freq
-                        } else if params.lfo_freq != 0.0 {
-                            params.lfo_freq
-                        } else {
-                            1.0 / 12.0
-                        };
-                        let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
-                            params
-                                .sweeps
-                                .iter()
-                                .map(|sw| {
-                                    let min = if sw.start_min > 0.0 {
-                                        sw.start_min
-                                    } else {
-                                        1000.0
-                                    };
-                                    let max = if sw.start_max > 0.0 {
-                                        sw.start_max.max(min + 1.0)
-                                    } else {
-                                        (min + 1.0).max(min)
-                                    };
-                                    (min, max)
-                                })
-                                .collect()
-                        } else {
-                            vec![(1000.0, 10000.0)]
-                        };
-                        let qs: Vec<f32> = if !params.sweeps.is_empty() {
-                            params
-                                .sweeps
-                                .iter()
-                                .map(|sw| if sw.start_q > 0.0 { sw.start_q } else { 25.0 })
-                                .collect()
-                        } else {
-                            vec![25.0; sweeps.len()]
-                        };
-                        let casc: Vec<usize> = if !params.sweeps.is_empty() {
-                            params
-                                .sweeps
-                                .iter()
-                                .map(|sw| if sw.start_casc > 0 { sw.start_casc } else { 10 })
-                                .collect()
-                        } else {
-                            vec![10usize; sweeps.len()]
-                        };
-                        generate_swept_notch_noise(
-                            total_duration as f32,
-                            device_rate,
-                            lfo_freq,
-                            &sweeps,
-                            &qs,
-                            &casc,
-                            params.start_lfo_phase_offset_deg,
-                            params.start_intra_phase_offset_deg,
-                            &params.noise_type,
-                            &params.lfo_waveform,
-                        )
-                    };
-                    // `generate_swept_notch_noise` already returns a stereo
-                    // buffer with interleaved left/right samples. Avoid
-                    // duplicating the data which previously quadrupled the
-                    // buffer size and produced invalid output.
-                    Some(BackgroundNoise {
-                        samples,
-                        position: 0,
-                        gain: noise_cfg.amp,
-                    })
+                    let samples = noise_from_params(&params, total_duration, device_rate);
+                    Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp })
                 } else {
                     None
                 }
+            } else if let Some(params) = &noise_cfg.params {
+                let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
+                let samples = noise_from_params(params, total_duration, device_rate);
+                Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp })
             } else {
                 None
             }
-
         } else {
             None
         };
@@ -391,69 +388,15 @@ impl TrackScheduler {
             if !noise_cfg.file_path.is_empty() && noise_cfg.file_path.ends_with(".noise") {
                 if let Ok(params) = crate::noise_params::load_noise_params(&noise_cfg.file_path) {
                     let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-                    let samples = {
-                        let lfo_freq = if params.transition {
-                            params.start_lfo_freq
-                        } else if params.lfo_freq != 0.0 {
-                            params.lfo_freq
-                        } else {
-                            1.0 / 12.0
-                        };
-                        let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
-                            params
-                                .sweeps
-                                .iter()
-                                .map(|sw| {
-                                    let min = if sw.start_min > 0.0 { sw.start_min } else { 1000.0 };
-                                    let max = if sw.start_max > 0.0 { sw.start_max.max(min + 1.0) } else { (min + 1.0).max(min) };
-                                    (min, max)
-                                })
-                                .collect()
-                        } else {
-                            vec![(1000.0, 10000.0)]
-                        };
-                        let qs: Vec<f32> = if !params.sweeps.is_empty() {
-                            params
-                                .sweeps
-                                .iter()
-                                .map(|sw| if sw.start_q > 0.0 { sw.start_q } else { 25.0 })
-                                .collect()
-                        } else {
-                            vec![25.0; sweeps.len()]
-                        };
-                        let casc: Vec<usize> = if !params.sweeps.is_empty() {
-                            params
-                                .sweeps
-                                .iter()
-                                .map(|sw| if sw.start_casc > 0 { sw.start_casc } else { 10 })
-                                .collect()
-                        } else {
-                            vec![10usize; sweeps.len()]
-                        };
-                        generate_swept_notch_noise(
-                            total_duration as f32,
-                            self.sample_rate as u32,
-                            lfo_freq,
-                            &sweeps,
-                            &qs,
-                            &casc,
-                            params.start_lfo_phase_offset_deg,
-                            params.start_intra_phase_offset_deg,
-                            &params.noise_type,
-                            &params.lfo_waveform,
-                        )
-                    };
-                    // `generate_swept_notch_noise` already returns interleaved
-                    // stereo samples. Using the buffer directly avoids
-                    // unnecessary duplication and memory overhead.
-                    Some(BackgroundNoise {
-                        samples,
-                        position: 0,
-                        gain: noise_cfg.amp * self.noise_gain,
-                    })
+                    let samples = noise_from_params(&params, total_duration, self.sample_rate as u32);
+                    Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp * self.noise_gain })
                 } else {
                     None
                 }
+            } else if let Some(params) = &noise_cfg.params {
+                let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
+                let samples = noise_from_params(params, total_duration, self.sample_rate as u32);
+                Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp * self.noise_gain })
             } else {
                 None
             }

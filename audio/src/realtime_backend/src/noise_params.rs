@@ -61,3 +61,7 @@ pub fn load_noise_params(path: &str) -> Result<NoiseParams, Box<dyn std::error::
     let params: NoiseParams = serde_json::from_reader(file)?;
     Ok(params)
 }
+
+pub fn load_noise_params_from_str(data: &str) -> Result<NoiseParams, serde_json::Error> {
+    serde_json::from_str(data)
+}
