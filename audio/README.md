@@ -159,6 +159,22 @@ The Controls area exposes additional dialogs:
 - **View Timeline** – render an interactive Plotly timeline showing all steps,
   voices and overlay clips.
 
+### Noise Generator Panel
+
+The Noise Generator dialog creates swept-notch noise clips for use as
+background audio or as standalone files.  Set the desired **Duration** and
+**Sample Rate**, then choose a noise colour (pink or brown).  You can optionally
+enable the **Transition** mode to sweep notch parameters over time.
+
+The **LFO Waveform** and **LFO Freq** fields control how quickly the notches
+move.  Up to three independent sweeps may be configured, each with start/end
+ranges for the notches, filter **Q** and cascade count.  Phase offsets and start
+/end offsets let you fine‑tune the timing of the modulation.
+
+Noise settings can be saved or loaded via the **Save** and **Load** buttons.
+Press **Test** to preview a short 30&nbsp;s excerpt, or **Generate** to export a
+`.wav` file using the current parameters.
+
 Preferences (available from the File menu) store font settings, sample rate,
 target output amplitude, amplitude display mode (absolute or dB) and more.
 You can also configure default voice parameters that are used when creating new
