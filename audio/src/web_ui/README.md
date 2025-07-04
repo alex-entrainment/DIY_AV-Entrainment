@@ -13,13 +13,13 @@ from a web page.
    wasm-pack build --target web --release --no-default-features --features web
    ```
 3. Run `npm run sync-wasm` (or any of the dev/build scripts) to copy the
-   generated `pkg` folder into `public/` so Vite can serve
+   generated `pkg` folder into `src/pkg` so Vite can bundle
    `realtime_backend.js` and `realtime_backend_bg.wasm`.
    When importing the module in JavaScript, append `?import` to the path
    so Vite treats it as an ES module:
 
    ```javascript
-   import init from '/pkg/realtime_backend.js?import';
+   import init from '/src/pkg/realtime_backend.js?import';
    ```
 
 ## Running the Demo
@@ -32,7 +32,7 @@ npm run dev
 ```
 
 `npm run dev` will automatically copy the latest WASM build from
-`../realtime_backend/pkg` into the `public/pkg` directory before starting Vite.
+`../realtime_backend/pkg` into the `src/pkg` directory before starting Vite.
 
 Vite will serve the application at the printed URL. You can either paste a track
 JSON object into the text box or use the **Upload** field to load a `.json`

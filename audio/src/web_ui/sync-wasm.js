@@ -4,7 +4,7 @@ import { cpSync, rmSync, existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(__dirname, '../realtime_backend/pkg');
-const destDir = resolve(__dirname, 'public/pkg');
+const destDir = resolve(__dirname, 'src/pkg');
 
 if (!existsSync(srcDir)) {
   console.error(`WASM package not found at ${srcDir}. Build it with wasm-pack first.`);

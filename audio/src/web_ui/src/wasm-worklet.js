@@ -6,6 +6,7 @@ class WasmWorklet extends AudioWorkletProcessor {
     const { indices, buffer } = options.processorOptions;
     this.ring = new SharedRingBuffer(indices, buffer);
     this.temp = new Float32Array(128 * 2);
+    console.debug('WasmWorklet initialized');
   }
 
   process(inputs, outputs) {
@@ -19,6 +20,9 @@ class WasmWorklet extends AudioWorkletProcessor {
     }
     const available = this.ring.pop(this.temp.subarray(0, needed));
     const readFrames = available / 2;
+    if (readFrames < frames) {
+      console.debug('AudioWorklet underflow: expected', frames, 'got', readFrames);
+    }
     for (let i = 0; i < frames; i++) {
       if (i < readFrames) {
         left[i] = this.temp[i * 2];
