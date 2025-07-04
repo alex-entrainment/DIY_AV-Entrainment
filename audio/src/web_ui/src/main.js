@@ -29,39 +29,62 @@ async function ensureWasmLoaded() {
   }
 }
 
-function setupAudio(sampleRate) {
-  const bufferFrames = 16384;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-    sampleRate,
-  });
-  console.debug('AudioContext created with sampleRate', sampleRate);
-  const sabBuf = new SharedArrayBuffer(bufferFrames * Float32Array.BYTES_PER_ELEMENT);
-  const sabIdx = new SharedArrayBuffer(8);
+async function setupAudio(sampleRate) {
+  await init();
+
+  // 1️⃣ Number of channels in the worklet:
+  const channels = 2;
+
+  // 2️⃣ How many frames of look-ahead buffering you want:
+  const bufferFrames = 16384;  // e.g. ~0.37s at 44.1 kHz
+
+  // 3️⃣ Allocate the SharedArrayBuffer for ALL floats (frames × channels):
+  const sabBuf = new SharedArrayBuffer(
+    bufferFrames * channels * Float32Array.BYTES_PER_ELEMENT
+  );
+  const sabIdx = new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT);
   ringBuffer = new SharedRingBuffer(sabIdx, sabBuf);
-  console.debug('SharedRingBuffer initialized with', bufferFrames, 'frames');
-  return audioCtx.audioWorklet.addModule('/src/wasm-worklet.js').then(() => {
-    workletNode = new AudioWorkletNode(audioCtx, 'wasm-worklet', {
-      processorOptions: { indices: sabIdx, buffer: sabBuf },
-    });
-    workletNode.connect(audioCtx.destination);
-    console.debug('AudioWorkletNode added and connected');
 
-    const fillBlock = 512;
-    const fill = () => {
-      if (!workletNode) return;
-      while (ringBuffer.availableWrite() >= fillBlock * 2) {
-        const data = process_block(fillBlock * 2);
-        ringBuffer.push(data);
-      }
-      fillTimer = setTimeout(fill, 10);
-    };
-    fill();
-    console.debug('Started ring buffer fill loop');
+  // 4️⃣ Create the AudioContext & worklet:
+  audioCtx = new AudioContext({ sampleRate });
+  await audioCtx.audioWorklet.addModule(
+    new URL('./wasm-worklet.js', import.meta.url)
+  );
+  workletNode = new AudioWorkletNode(audioCtx, 'wasm-worklet', {
+    outputChannelCount: [2],       // force stereo
+    channelCount: 2,
+    channelCountMode: 'explicit',
+    processorOptions: { indices: sabIdx, buffer: sabBuf },
   });
-}
+  workletNode.connect(audioCtx.destination);
 
+  // 5️⃣ Decide on your “chunk” size in **frames**:
+  const fillFrames = 512;                // how many frames per fill
+  const samplesPerFill = fillFrames * channels; // floats per fill
+
+  // 6️⃣ INITIAL FILL — fill the buffer completely once before starting:
+  while (ringBuffer.availableWrite() >= samplesPerFill) {
+    const data = process_block(fillFrames);  // returns exactly fillFrames×channels floats
+    ringBuffer.push(data);
+  }
+
+  // 7️⃣ REFILL LOOP — keeps you topped up in small slices:
+  // Use setInterval at ~5 ms so you stay ahead of the 128-frame (~2.9 ms) worklet callbacks.
+  fillInterval = setInterval(() => {
+    let free = ringBuffer.availableWrite();
+    // Write as many small, correctly‐sized chunks as will fit right now:
+    while (free >= samplesPerFill) {
+      const data = process_block(fillFrames);
+      ringBuffer.push(data);
+      free -= samplesPerFill;
+    }
+  }, 5);
+
+  console.log('🎧 Audio setup complete — buffer primed and refill running.');
+}
 export async function start() {
   await ensureWasmLoaded();
+  setupAudio(44100); // Default sample rate, will be updated below
   const trackJson = document.getElementById('track-json').value;
   const startTime = parseFloat(document.getElementById('start-time').value) || 0;
   let sampleRate = 44100;
