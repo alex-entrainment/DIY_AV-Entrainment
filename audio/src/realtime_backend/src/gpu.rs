@@ -103,7 +103,12 @@ impl GpuMixer {
             encoder.copy_buffer_to_buffer(output_buf, 0, readback, 0, (frames as u64) * 4);
             self.queue.submit(Some(encoder.finish()));
 
-            let buffer_slice = readback.slice(..);
+            // Only map the portion of the readback buffer that was written to
+            // for this mix call. Using the entire buffer can result in a
+            // mismatch between the GPU output size and the destination slice
+            // when the internal buffers are larger than the requested number
+            // of frames.
+            let buffer_slice = readback.slice(..(frames as u64 * 4));
             let (tx, rx) = std::sync::mpsc::channel();
             buffer_slice.map_async(wgpu::MapMode::Read, move |res| {
                 tx.send(res).ok();
