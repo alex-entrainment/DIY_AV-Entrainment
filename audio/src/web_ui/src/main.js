@@ -223,3 +223,24 @@ document.getElementById('noise-upload').addEventListener('change', (event) => {
   };
   reader.readAsText(file);
 });
+
+document.getElementById('clip-upload').addEventListener('change', (event) => {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  const textarea = document.getElementById('track-json');
+  let track;
+  try {
+    track = JSON.parse(textarea.value);
+  } catch (err) {
+    console.warn('Invalid track JSON, resetting');
+    track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
+  }
+  if (!Array.isArray(track.overlay_clips)) {
+    track.overlay_clips = [];
+  }
+  for (const file of files) {
+    const url = URL.createObjectURL(file);
+    track.overlay_clips.push({ file_path: url, start: 0, amp: 1.0 });
+  }
+  textarea.value = JSON.stringify(track, null, 2);
+});
