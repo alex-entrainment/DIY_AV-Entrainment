@@ -1,7 +1,7 @@
 use crate::dsp::noise_flanger::generate_swept_notch_noise;
 use crate::dsp::{generate_brown_noise_samples, generate_pink_noise_samples};
 use crate::models::{StepData, TrackData};
-use crate::voices::voices_for_step;
+use crate::voices::{voices_for_step, VoiceKind};
 use crate::gpu::GpuMixer;
 use crate::config::CONFIG;
 use std::fs::File;
@@ -122,8 +122,8 @@ pub struct TrackScheduler {
     pub track: TrackData,
     pub current_sample: usize,
     pub current_step: usize,
-    pub active_voices: Vec<Box<dyn Voice>>,
-    pub next_voices: Vec<Box<dyn Voice>>,
+    pub active_voices: Vec<VoiceKind>,
+    pub next_voices: Vec<VoiceKind>,
     pub sample_rate: f32,
     pub crossfade_samples: usize,
     pub current_crossfade_samples: usize,

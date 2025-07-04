@@ -16,6 +16,26 @@ use crate::dsp::trig::{sin_lut, cos_lut};
 use crate::scheduler::Voice;
 use crate::models::{StepData, VoiceData};
 
+/// Strongly typed wrapper for all available voice implementations.
+pub enum VoiceKind {
+    BinauralBeat(BinauralBeatVoice),
+    BinauralBeatTransition(BinauralBeatTransitionVoice),
+    IsochronicTone(IsochronicToneVoice),
+    IsochronicToneTransition(IsochronicToneTransitionVoice),
+    QamBeat(QamBeatVoice),
+    QamBeatTransition(QamBeatTransitionVoice),
+    StereoAmIndependent(StereoAmIndependentVoice),
+    StereoAmIndependentTransition(StereoAmIndependentTransitionVoice),
+    WaveShapeStereoAm(WaveShapeStereoAmVoice),
+    WaveShapeStereoAmTransition(WaveShapeStereoAmTransitionVoice),
+    SpatialAngleModulation(SpatialAngleModulationVoice),
+    SpatialAngleModulationTransition(SpatialAngleModulationTransitionVoice),
+    RhythmicWaveshaping(RhythmicWaveshapingVoice),
+    RhythmicWaveshapingTransition(RhythmicWaveshapingTransitionVoice),
+    SubliminalEncode(SubliminalEncodeVoice),
+    VolumeEnvelope(Box<VolumeEnvelopeVoice>),
+}
+
 fn get_f32(params: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
     params
         .get(key)
@@ -55,14 +75,14 @@ impl TransitionCurve {
 
 /// Wrapper voice that applies a precomputed volume envelope to another voice.
 pub struct VolumeEnvelopeVoice {
-    inner: Box<dyn Voice>,
+    inner: Box<VoiceKind>,
     envelope: Vec<f32>,
     idx: usize,
     temp_buf: Vec<f32>,
 }
 
 impl VolumeEnvelopeVoice {
-    pub fn new(inner: Box<dyn Voice>, envelope: Vec<f32>) -> Self {
+    pub fn new(inner: Box<VoiceKind>, envelope: Vec<f32>) -> Self {
         Self {
             inner,
             envelope,
@@ -2867,9 +2887,53 @@ impl Voice for SubliminalEncodeVoice {
     }
 }
 
+impl Voice for VoiceKind {
+    fn process(&mut self, output: &mut [f32]) {
+        match self {
+            VoiceKind::BinauralBeat(v) => v.process(output),
+            VoiceKind::BinauralBeatTransition(v) => v.process(output),
+            VoiceKind::IsochronicTone(v) => v.process(output),
+            VoiceKind::IsochronicToneTransition(v) => v.process(output),
+            VoiceKind::QamBeat(v) => v.process(output),
+            VoiceKind::QamBeatTransition(v) => v.process(output),
+            VoiceKind::StereoAmIndependent(v) => v.process(output),
+            VoiceKind::StereoAmIndependentTransition(v) => v.process(output),
+            VoiceKind::WaveShapeStereoAm(v) => v.process(output),
+            VoiceKind::WaveShapeStereoAmTransition(v) => v.process(output),
+            VoiceKind::SpatialAngleModulation(v) => v.process(output),
+            VoiceKind::SpatialAngleModulationTransition(v) => v.process(output),
+            VoiceKind::RhythmicWaveshaping(v) => v.process(output),
+            VoiceKind::RhythmicWaveshapingTransition(v) => v.process(output),
+            VoiceKind::SubliminalEncode(v) => v.process(output),
+            VoiceKind::VolumeEnvelope(v) => v.process(output),
+        }
+    }
 
-pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<Box<dyn Voice>> {
-    let mut out: Vec<Box<dyn Voice>> = Vec::new();
+    fn is_finished(&self) -> bool {
+        match self {
+            VoiceKind::BinauralBeat(v) => v.is_finished(),
+            VoiceKind::BinauralBeatTransition(v) => v.is_finished(),
+            VoiceKind::IsochronicTone(v) => v.is_finished(),
+            VoiceKind::IsochronicToneTransition(v) => v.is_finished(),
+            VoiceKind::QamBeat(v) => v.is_finished(),
+            VoiceKind::QamBeatTransition(v) => v.is_finished(),
+            VoiceKind::StereoAmIndependent(v) => v.is_finished(),
+            VoiceKind::StereoAmIndependentTransition(v) => v.is_finished(),
+            VoiceKind::WaveShapeStereoAm(v) => v.is_finished(),
+            VoiceKind::WaveShapeStereoAmTransition(v) => v.is_finished(),
+            VoiceKind::SpatialAngleModulation(v) => v.is_finished(),
+            VoiceKind::SpatialAngleModulationTransition(v) => v.is_finished(),
+            VoiceKind::RhythmicWaveshaping(v) => v.is_finished(),
+            VoiceKind::RhythmicWaveshapingTransition(v) => v.is_finished(),
+            VoiceKind::SubliminalEncode(v) => v.is_finished(),
+            VoiceKind::VolumeEnvelope(v) => v.is_finished(),
+        }
+    }
+}
+
+
+pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<VoiceKind> {
+    let mut out: Vec<VoiceKind> = Vec::new();
     for voice in &step.voices {
         if let Some(v) = create_voice(voice, step.duration as f32, sample_rate) {
             out.push(v);
@@ -2878,79 +2942,79 @@ pub fn voices_for_step(step: &StepData, sample_rate: f32) -> Vec<Box<dyn Voice>>
     out
 }
 
-fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box<dyn Voice>> {
-    let base: Box<dyn Voice> = match data.synth_function_name.as_str() {
-        "binaural_beat" => Box::new(BinauralBeatVoice::new(
+fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<VoiceKind> {
+    let mut voice = match data.synth_function_name.as_str() {
+        "binaural_beat" => VoiceKind::BinauralBeat(BinauralBeatVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "binaural_beat_transition" => Box::new(BinauralBeatTransitionVoice::new(
+        "binaural_beat_transition" => VoiceKind::BinauralBeatTransition(BinauralBeatTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "isochronic_tone" => Box::new(IsochronicToneVoice::new(
+        "isochronic_tone" => VoiceKind::IsochronicTone(IsochronicToneVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "isochronic_tone_transition" => Box::new(IsochronicToneTransitionVoice::new(
+        "isochronic_tone_transition" => VoiceKind::IsochronicToneTransition(IsochronicToneTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "qam_beat" => Box::new(QamBeatVoice::new(
+        "qam_beat" => VoiceKind::QamBeat(QamBeatVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "qam_beat_transition" => Box::new(QamBeatTransitionVoice::new(
+        "qam_beat_transition" => VoiceKind::QamBeatTransition(QamBeatTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "rhythmic_waveshaping" => Box::new(RhythmicWaveshapingVoice::new(
+        "rhythmic_waveshaping" => VoiceKind::RhythmicWaveshaping(RhythmicWaveshapingVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "rhythmic_waveshaping_transition" => Box::new(RhythmicWaveshapingTransitionVoice::new(
+        "rhythmic_waveshaping_transition" => VoiceKind::RhythmicWaveshapingTransition(RhythmicWaveshapingTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "stereo_am_independent" => Box::new(StereoAmIndependentVoice::new(
+        "stereo_am_independent" => VoiceKind::StereoAmIndependent(StereoAmIndependentVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "stereo_am_independent_transition" => Box::new(StereoAmIndependentTransitionVoice::new(
+        "stereo_am_independent_transition" => VoiceKind::StereoAmIndependentTransition(StereoAmIndependentTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "wave_shape_stereo_am" => Box::new(WaveShapeStereoAmVoice::new(
+        "wave_shape_stereo_am" => VoiceKind::WaveShapeStereoAm(WaveShapeStereoAmVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "wave_shape_stereo_am_transition" => Box::new(WaveShapeStereoAmTransitionVoice::new(
+        "wave_shape_stereo_am_transition" => VoiceKind::WaveShapeStereoAmTransition(WaveShapeStereoAmTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "spatial_angle_modulation" => Box::new(SpatialAngleModulationVoice::new(
+        "spatial_angle_modulation" => VoiceKind::SpatialAngleModulation(SpatialAngleModulationVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "spatial_angle_modulation_transition" => Box::new(SpatialAngleModulationTransitionVoice::new(
+        "spatial_angle_modulation_transition" => VoiceKind::SpatialAngleModulationTransition(SpatialAngleModulationTransitionVoice::new(
             &data.params,
             duration,
             sample_rate,
         )),
-        "subliminal_encode" => Box::new(SubliminalEncodeVoice::new(
+        "subliminal_encode" => VoiceKind::SubliminalEncode(SubliminalEncodeVoice::new(
             &data.params,
             duration,
             sample_rate,
@@ -2960,8 +3024,7 @@ fn create_voice(data: &VoiceData, duration: f32, sample_rate: f32) -> Option<Box
 
     if let Some(env) = &data.volume_envelope {
         let env_vec = build_volume_envelope(env, duration, sample_rate as u32);
-        Some(Box::new(VolumeEnvelopeVoice::new(base, env_vec)))
-    } else {
-        Some(base)
+        voice = VoiceKind::VolumeEnvelope(Box::new(VolumeEnvelopeVoice::new(Box::new(voice), env_vec)));
     }
+    Some(voice)
 }
