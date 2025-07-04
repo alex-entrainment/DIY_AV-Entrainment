@@ -1,5 +1,5 @@
 import copy
-from sequence_model import Step, Oscillator, StrobeSet, Waveform, PatternMode
+from common.sequence_model import Step, Oscillator, StrobeSet, Waveform, PatternMode
 
 class StepController:
     def __init__(self):

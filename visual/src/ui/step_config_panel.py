@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QFormLayout,
                              QDoubleSpinBox, QLineEdit, QComboBox, QPushButton,
                              QScrollArea, QHBoxLayout, QLabel, QSpinBox, QCheckBox)
 from PyQt5.QtCore import Qt, pyqtSignal
-from sequence_model import PatternMode, Waveform
+from common.sequence_model import PatternMode, Waveform
 
 def clear_layout(layout):
     if layout is not None:

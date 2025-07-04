@@ -17,11 +17,11 @@ from ui import themes
 from ui.step_list_panel import StepListPanel
 from ui.step_config_panel import StepConfigPanel
 from ui.preferences_dialog import PreferencesDialog
-from preferences import load_preferences, save_preferences, Preferences
+from audio.utils.preferences import load_preferences, save_preferences, Preferences
 # REMOVED: from ui.audio_settings_panel import AudioSettingsPanel
 from controllers.step_controller import StepController
 from controllers.file_controller import FileController
-from sequence_model import Oscillator, StrobeSet, Waveform, PatternMode, Step # Added Step import for clarity
+from common.sequence_model import Oscillator, StrobeSet, Waveform, PatternMode, Step # Added Step import for clarity
 from ui.simulator import SimulatorWindow
 
 def clear_layout(layout):

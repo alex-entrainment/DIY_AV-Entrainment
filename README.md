@@ -10,6 +10,18 @@ Approximate Device Cost (excluding host PC/Pi): ~$50-75 (depending on LEDs, powe
 
 ---
 
+## Project Structure
+
+```
+audio/   - standalone audio generation and playback package
+visual/  - GUI, controller scripts and ESP32 firmware
+common/  - shared utilities such as sequence models
+```
+
+Each area has its own README:
+* [Audio README](./audio/README.md)
+* [Visual README](./visual/README.md)
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -54,11 +66,11 @@ The system is intended for DIY research and experimentation and is **not** a med
 
 ## Visuals
 
-See the [Visual README](./README_VISUAL.md) for documentation on the visual portion of this project. This contains detailed information on the hardware and its setup.
+See the [Visual README](./visual/README.md) for documentation on the visual portion of this project. This contains detailed information on the hardware and its setup.
 
 ## Audio
 
-See the [Audio README](./README_Audio.md) for documention on the visual portion of this project. This contains detailed information on the capabilities of the audio generation software created here.  
+See the [Audio README](./audio/README.md) for documentation on the audio portion of this project. This contains detailed information on the capabilities of the audio generation software created here.
 See the [GUI overview](#gui-overview) below for more details on generating audio.
 
 ## Installation
@@ -76,14 +88,14 @@ See the [GUI overview](#gui-overview) below for more details on generating audio
     ```
 
     > *(Note: `pyaudio` installation might require system dependencies - see below).*
-4. **Install Node.js 20+:** The optional web interface in `src/audio/web_ui` is built with Vite, which requires Node.js version 20 or later. Install it from [nodejs.org](https://nodejs.org) if you plan to run the web UI.
+4. **Install Node.js 20+:** The optional web interface in `audio/src/audio/web_ui` is built with Vite, which requires Node.js version 20 or later. Install it from [nodejs.org](https://nodejs.org) if you plan to run the web UI.
 5. **Install PlatformIO:** On your development PC (Windows), install PlatformIO IDE, typically via the VS Code extension. This handles the C++ toolchain (compiler, etc.).
 6. **Install External Dependencies:**
     * **Audio Playback (`controller.py`):**
         * **PortAudio:** Required by `pyaudio`. Install system-wide (e.g., `sudo apt-get install portaudio19-dev` on Debian/Pi, or download installers/binaries for Windows/macOS if needed).
         * **libsndfile:** Required by `soundfile`. Install system-wide (e.g., `sudo apt-get install libsndfile1` on Debian/Pi, or download installers/binaries for Windows/macOS).
         * **ffmpeg / ffplay:** Required by `controller.py`'s `AudioPlayer` for MP3 conversion and FLAC playback. Download from ffmpeg.org and ensure `ffmpeg.exe` and `ffplay.exe` are in your system's PATH environment variable on the machine running `controller.py` (Windows and/or Pi).
-7. **Hardware Setup:** Connect the ESP32, build/connect your MOSFET driver circuits and LEDs according to the description in [Hardware Components](./README_Visual#hardware-components).
+7. **Hardware Setup:** Connect the ESP32, build/connect your MOSFET driver circuits and LEDs according to the description in [Hardware Components](./visual/README.md#hardware-components).
 8. **Initial Firmware Upload:** Use PlatformIO (e.g., in VS Code) on your development PC to compile and upload the initial ESP32 firmware project (`main.cpp`, `sequences.cpp`, etc.) to the ESP32-C3 board via USB.
 
 ---

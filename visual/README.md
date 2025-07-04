@@ -72,10 +72,10 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
 
 2. **Host Software (Python - Runs on PC or Raspberry Pi):**
     * **`sequence_editor.py` (PyQt5 GUI)**: (Runs on Dev PC) Visual tool to design multi-step sequences, configure oscillators, brightness, and audio parameters. Saves sequences to `.json` files. Can optionally generate corresponding audio files (`.wav`, `.flac`, `.mp3`) using the `synth_functions/sound_creator.py` engine.
-    * **`sequence_model.py`**: (Used by GUI) Data classes defining the structure of sequences stored in JSON.
-    * **`setup.py`**: (Run once per host machine) Configures environment-specific settings (serial port, paths for converter) and saves them to `config.ini`.
+    * **`common/sequence_model.py`**: (Used by GUI) Data classes defining the structure of sequences stored in JSON.
+    * **`setup_visual.py`**: (Run once per host machine) Configures environment-specific settings (serial port, paths for converter) and saves them to `config.ini`.
     * **`config.ini`**: Stores configuration settings read by the other Python scripts.
-    * **`sound_creator.py`**: (Used by GUI) The audio generation engine located in `synth_functions/`. It contains various synthesis functions and helpers to create complex audio waveforms based on parameters defined in the GUI. See the [Audio README](./README_Audio.md) for detailed information on its functionality and usage.
+    * **`sound_creator.py`**: (Used by GUI) The audio generation engine located in `../audio/src/audio/synth_functions/`. It contains various synthesis functions and helpers to create complex audio waveforms based on parameters defined in the GUI. See the [Audio README](../audio/README.md) for detailed information on its functionality and usage.
     * **`json_to_cpp_converter.py`**: (Runs on Dev PC)
         * Reads a `.json` sequence file (or all `.json` files in its directory).
         * Generates corresponding C++ function code for the *visual* sequence.
@@ -103,7 +103,7 @@ The system now consists of two main parts: the ESP32 firmware and the host contr
     * Append the code/declaration to `sequences.cpp`/`.hpp`.
     * Update `main.cpp` and `controller.py`.
     * Compile and upload the firmware to the connected ESP32 via PlatformIO.
-    *(Ensure `setup.py` has been run previously to configure paths).*
+    *(Ensure `setup_visual.py` has been run previously to configure paths).*
 4. **Run Sequence (on Dev PC or Pi):**
     * Ensure the ESP32 is connected via USB.
     * Run the `controller.py` script.

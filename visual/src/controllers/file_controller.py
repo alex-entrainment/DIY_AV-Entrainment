@@ -1,7 +1,7 @@
 import json
 import os
 from PyQt5.QtWidgets import QMessageBox
-from sequence_model import Step, Sequence # Import Sequence if using it for structure
+from common.sequence_model import Step, Sequence # Import Sequence if using it for structure
 
 # REMOVED: from audio_generator import generate_audio_file_for_steps_offline_rfm
 
