@@ -63,3 +63,24 @@ WebAssembly allows the DSP routines to run at near-native speed in the browser. 
 
 Refer to `REALTIME_BACKEND_PLAN.md` for the remaining tasks and planned features.
 
+## Example Vite Integration (web_ui)
+
+For a working browser demo see the `web_ui` folder inside this repository
+(`audio/src/web_ui`). It contains a minimal Vite project that consumes the WASM
+module generated above. The setup copies the `pkg` output into the project's
+`src/pkg` directory via `npm run sync-wasm` so Vite can bundle the files.
+
+The example creates a `SharedRingBuffer` (defined in
+`web_ui/src/ringbuffer.js`) backed by `SharedArrayBuffer` objects. The main
+thread fills this buffer using the `process_block` export from the WASM module
+while an `AudioWorklet` (`web_ui/src/wasm-worklet.js`) reads from it each audio
+callback. This pattern avoids reallocating `Float32Array` objects and keeps the
+audio thread free of heavy JavaScript work.
+
+You can reuse these components in your own project by importing the ring buffer
+class and worklet script and wiring them up to your build system. The
+`web_ui/src/main.js` file demonstrates the complete flow: initializing the
+module, setting up the `AudioContext`, populating the ring buffer, and controlling
+playback. Adapting this code provides a reliable blueprint for any application
+that needs low-latency audio streaming from WebAssembly.
+
