@@ -1,0 +1,15 @@
+{
+  "name": "realtime_backend",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "realtime_backend_bg.wasm",
+    "realtime_backend.js",
+    "realtime_backend.d.ts"
+  ],
+  "main": "realtime_backend.js",
+  "types": "realtime_backend.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
