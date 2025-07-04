@@ -8,4 +8,6 @@ node_modules/
 audio/src/audio/web_ui/dist/
 audio/src/audio/realtime_backend/Cargo.lock
 audio/src/audio/realtime_backend/target/
+audio/src/web_ui/public/pkg/
+audio/src/realtime_backend/pkg/
 

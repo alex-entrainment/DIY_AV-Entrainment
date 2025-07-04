@@ -12,8 +12,9 @@ from a web page.
    cd ../realtime_backend
    wasm-pack build --target web --release --no-default-features --features web
    ```
-3. Copy the generated `pkg` folder into `public/` so Vite can serve
-    `realtime_backend.js` and `realtime_backend_bg.wasm`.
+3. Run `npm run sync-wasm` (or any of the dev/build scripts) to copy the
+   generated `pkg` folder into `public/` so Vite can serve
+   `realtime_backend.js` and `realtime_backend_bg.wasm`.
 
 ## Running the Demo
 
@@ -23,6 +24,9 @@ Install the npm dependencies and start the development server. **Vite 5 requires
 npm install
 npm run dev
 ```
+
+`npm run dev` will automatically copy the latest WASM build from
+`../realtime_backend/pkg` into the `public/pkg` directory before starting Vite.
 
 Vite will serve the application at the printed URL. You can either paste a track
 JSON object into the text box or use the **Upload** field to load a `.json`

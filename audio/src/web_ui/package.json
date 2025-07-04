@@ -8,8 +8,9 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "sync-wasm": "node ./sync-wasm.js",
+    "dev": "npm run sync-wasm && vite",
+    "build": "npm run sync-wasm && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
