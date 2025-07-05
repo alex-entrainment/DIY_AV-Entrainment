@@ -238,6 +238,9 @@ export function handleNoiseUpload(event) {
         track.background_noise = {};
       }
       track.background_noise.params = params;
+      if (track.background_noise.amp === undefined) {
+        track.background_noise.amp = 1.0;
+      }
       textarea.value = JSON.stringify(track, null, 2);
     } catch (err) {
       console.error('Failed to parse .noise file', err);
@@ -304,6 +307,9 @@ async function loadNoiseFromServer() {
     }
     if (!track.background_noise) track.background_noise = {};
     track.background_noise.params = params;
+    if (track.background_noise.amp === undefined) {
+      track.background_noise.amp = 1.0;
+    }
     textarea.value = JSON.stringify(track, null, 2);
   } catch (err) {
     console.error('Failed to load noise file', err);
