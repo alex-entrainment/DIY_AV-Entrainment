@@ -20,6 +20,11 @@ let wasmLoaded = false;
 console.debug('Web UI script loaded');
 let statusTimer = null;
 
+// Keep track of files uploaded via the UI so they can be re-selected
+const uploadedTracks = {};
+const uploadedNoises = {};
+const uploadedClips = {};
+
 async function populateSelect(id, url) {
   try {
     const list = await fetch(url).then(r => r.json());
@@ -215,6 +220,14 @@ export function handleJsonUpload(event) {
   const reader = new FileReader();
   reader.onload = (e) => {
     document.getElementById('track-json').value = e.target.result;
+    uploadedTracks[file.name] = e.target.result;
+    const select = document.getElementById('track-select');
+    if (select && !select.querySelector(`option[value="${file.name}"]`)) {
+      const opt = new Option(file.name, file.name);
+      opt.dataset.uploaded = 'true';
+      select.appendChild(opt);
+      select.value = file.name;
+    }
   };
   reader.readAsText(file);
 }
@@ -242,6 +255,14 @@ export function handleNoiseUpload(event) {
         track.background_noise.amp = 1.0;
       }
       textarea.value = JSON.stringify(track, null, 2);
+      uploadedNoises[file.name] = e.target.result;
+      const select = document.getElementById('noise-select');
+      if (select && !select.querySelector(`option[value="${file.name}"]`)) {
+        const opt = new Option(file.name, file.name);
+        opt.dataset.uploaded = 'true';
+        select.appendChild(opt);
+        select.value = file.name;
+      }
     } catch (err) {
       console.error('Failed to parse .noise file', err);
     }
@@ -269,6 +290,14 @@ export function handleClipUpload(event) {
         const r = new FileReader();
         r.onload = () => {
           track.overlay_clips.push({ file_path: r.result, start: 0, amp: 1.0 });
+          uploadedClips[f.name] = r.result;
+          const select = document.getElementById('clip-select');
+          if (select && !select.querySelector(`option[value="${f.name}"]`)) {
+            const opt = new Option(f.name, f.name);
+            opt.dataset.uploaded = 'true';
+            select.appendChild(opt);
+            select.selectedIndex = select.options.length - 1;
+          }
           resolve();
         };
         r.readAsDataURL(f);
@@ -284,6 +313,14 @@ async function loadTrackFromServer() {
   const select = document.getElementById('track-select');
   const file = select && select.value;
   if (!file) return;
+  const opt = select.selectedOptions[0];
+  if (opt && opt.dataset.uploaded === 'true') {
+    const text = uploadedTracks[file];
+    if (text) {
+      document.getElementById('track-json').value = text;
+    }
+    return;
+  }
   try {
     const text = await fetch(`/tracks/${file}`).then(r => r.text());
     document.getElementById('track-json').value = text;
@@ -296,6 +333,28 @@ async function loadNoiseFromServer() {
   const select = document.getElementById('noise-select');
   const file = select && select.value;
   if (!file) return;
+  const opt = select.selectedOptions[0];
+  if (opt && opt.dataset.uploaded === 'true') {
+    try {
+      const params = JSON.parse(uploadedNoises[file]);
+      const textarea = document.getElementById('track-json');
+      let track;
+      try {
+        track = JSON.parse(textarea.value);
+      } catch (_) {
+        track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
+      }
+      if (!track.background_noise) track.background_noise = {};
+      track.background_noise.params = params;
+      if (track.background_noise.amp === undefined) {
+        track.background_noise.amp = 1.0;
+      }
+      textarea.value = JSON.stringify(track, null, 2);
+    } catch (err) {
+      console.error('Failed to parse uploaded noise data', err);
+    }
+    return;
+  }
   try {
     const params = await fetch(`/noise/${file}`).then(r => r.json());
     const textarea = document.getElementById('track-json');
@@ -328,8 +387,12 @@ async function addClipFromServer() {
     track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
   }
   if (!Array.isArray(track.overlay_clips)) track.overlay_clips = [];
-  const promises = files.map(f =>
-    fetch(`/clips/${f}`)
+  const promises = files.map(f => {
+    const opt = select.querySelector(`option[value="${f}"]`);
+    if (opt && opt.dataset.uploaded === 'true') {
+      return Promise.resolve(uploadedClips[f]);
+    }
+    return fetch(`/clips/${f}`)
       .then(r => r.blob())
       .then(
         b =>
@@ -338,10 +401,11 @@ async function addClipFromServer() {
             r.onload = () => res(r.result);
             r.readAsDataURL(b);
           })
-      )
-  );
+      );
+  });
   const urls = await Promise.all(promises);
-  for (const u of urls) {
+  for (let i = 0; i < urls.length; i++) {
+    const u = urls[i];
     track.overlay_clips.push({ file_path: u, start: 0, amp: 1.0 });
   }
   textarea.value = JSON.stringify(track, null, 2);
