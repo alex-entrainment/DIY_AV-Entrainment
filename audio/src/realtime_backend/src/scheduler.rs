@@ -1,5 +1,4 @@
-use crate::dsp::noise_flanger::generate_swept_notch_noise;
-use crate::dsp::{generate_brown_noise_samples, generate_pink_noise_samples};
+use crate::streaming_noise::StreamingNoise;
 use crate::models::{StepData, TrackData};
 use crate::voices::{voices_for_step, VoiceKind};
 use crate::gpu::GpuMixer;
@@ -37,66 +36,6 @@ impl CrossfadeCurve {
     }
 }
 
-fn noise_from_params(
-    params: &crate::noise_params::NoiseParams,
-    duration: f64,
-    sample_rate: u32,
-) -> Vec<f32> {
-    let lfo_freq = if params.transition {
-        params.start_lfo_freq
-    } else if params.lfo_freq != 0.0 {
-        params.lfo_freq
-    } else {
-        1.0 / 12.0
-    };
-    let sweeps: Vec<(f32, f32)> = if !params.sweeps.is_empty() {
-        params
-            .sweeps
-            .iter()
-            .map(|sw| {
-                let min = if sw.start_min > 0.0 { sw.start_min } else { 1000.0 };
-                let max = if sw.start_max > 0.0 {
-                    sw.start_max.max(min + 1.0)
-                } else {
-                    (min + 1.0).max(min)
-                };
-                (min, max)
-            })
-            .collect()
-    } else {
-        vec![(1000.0, 10000.0)]
-    };
-    let qs: Vec<f32> = if !params.sweeps.is_empty() {
-        params
-            .sweeps
-            .iter()
-            .map(|sw| if sw.start_q > 0.0 { sw.start_q } else { 25.0 })
-            .collect()
-    } else {
-        vec![25.0; sweeps.len()]
-    };
-    let casc: Vec<usize> = if !params.sweeps.is_empty() {
-        params
-            .sweeps
-            .iter()
-            .map(|sw| if sw.start_casc > 0 { sw.start_casc } else { 10 })
-            .collect()
-    } else {
-        vec![10usize; sweeps.len()]
-    };
-    generate_swept_notch_noise(
-        duration as f32,
-        sample_rate,
-        lfo_freq,
-        &sweeps,
-        &qs,
-        &casc,
-        params.start_lfo_phase_offset_deg,
-        params.start_intra_phase_offset_deg,
-        &params.noise_type,
-        &params.lfo_waveform,
-    )
-}
 
 fn steps_have_continuous_voices(a: &StepData, b: &StepData) -> bool {
     if a.voices.len() != b.voices.len() {
@@ -156,8 +95,7 @@ pub struct LoadedClip {
 }
 
 pub struct BackgroundNoise {
-    samples: Vec<f32>,
-    position: usize,
+    generator: StreamingNoise,
     gain: f32,
 }
 
@@ -272,16 +210,14 @@ impl TrackScheduler {
         let background_noise = if let Some(noise_cfg) = &track.background_noise {
             if !noise_cfg.file_path.is_empty() && noise_cfg.file_path.ends_with(".noise") {
                 if let Ok(params) = crate::noise_params::load_noise_params(&noise_cfg.file_path) {
-                    let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-                    let samples = noise_from_params(&params, total_duration, device_rate);
-                    Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp })
+                    let gen = StreamingNoise::new(&params, device_rate);
+                    Some(BackgroundNoise { generator: gen, gain: noise_cfg.amp * cfg.noise_gain })
                 } else {
                     None
                 }
             } else if let Some(params) = &noise_cfg.params {
-                let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-                let samples = noise_from_params(params, total_duration, device_rate);
-                Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp })
+                let gen = StreamingNoise::new(params, device_rate);
+                Some(BackgroundNoise { generator: gen, gain: noise_cfg.amp * cfg.noise_gain })
             } else {
                 None
             }
@@ -333,9 +269,7 @@ impl TrackScheduler {
             };
         }
 
-        if let Some(noise) = &mut self.background_noise {
-            noise.position = (abs_samples * 2).min(noise.samples.len());
-        }
+
 
         let mut remaining = abs_samples;
         self.current_step = 0;
@@ -357,6 +291,9 @@ impl TrackScheduler {
         self.next_step_sample = 0;
         self.crossfade_prev.clear();
         self.crossfade_next.clear();
+        if let Some(noise) = &mut self.background_noise {
+            noise.generator.skip_samples(abs_samples);
+        }
     }
 
     /// Replace the current track data while preserving playback progress.
@@ -387,16 +324,14 @@ impl TrackScheduler {
         self.background_noise = if let Some(noise_cfg) = &track.background_noise {
             if !noise_cfg.file_path.is_empty() && noise_cfg.file_path.ends_with(".noise") {
                 if let Ok(params) = crate::noise_params::load_noise_params(&noise_cfg.file_path) {
-                    let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-                    let samples = noise_from_params(&params, total_duration, self.sample_rate as u32);
-                    Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp * self.noise_gain })
+                    let gen = StreamingNoise::new(&params, self.sample_rate as u32);
+                    Some(BackgroundNoise { generator: gen, gain: noise_cfg.amp * self.noise_gain })
                 } else {
                     None
                 }
             } else if let Some(params) = &noise_cfg.params {
-                let total_duration: f64 = track.steps.iter().map(|s| s.duration).sum();
-                let samples = noise_from_params(params, total_duration, self.sample_rate as u32);
-                Some(BackgroundNoise { samples, position: 0, gain: noise_cfg.amp * self.noise_gain })
+                let gen = StreamingNoise::new(params, self.sample_rate as u32);
+                Some(BackgroundNoise { generator: gen, gain: noise_cfg.amp * self.noise_gain })
             } else {
                 None
             }
@@ -657,13 +592,13 @@ impl TrackScheduler {
         let frames = frame_count;
 
         if let Some(noise) = &mut self.background_noise {
-            for i in 0..frames {
-                if noise.position + 1 >= noise.samples.len() {
-                    break;
-                }
-                buffer[i * 2] += noise.samples[noise.position] * noise.gain;
-                buffer[i * 2 + 1] += noise.samples[noise.position + 1] * noise.gain;
-                noise.position += 2;
+            if self.scratch.len() != buffer.len() {
+                self.scratch.resize(buffer.len(), 0.0);
+            }
+            self.scratch.fill(0.0);
+            noise.generator.generate(&mut self.scratch);
+            for i in 0..buffer.len() {
+                buffer[i] += self.scratch[i] * noise.gain;
             }
         }
 
