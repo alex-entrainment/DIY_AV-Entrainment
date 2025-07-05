@@ -10,7 +10,7 @@ use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::MediaSourceStream;
+use symphonia::core::io::{MediaSourceStream, MediaSource};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
@@ -162,8 +162,81 @@ pub struct BackgroundNoise {
 }
 
 use crate::command::Command;
+use std::io::Cursor;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 
+fn decode_clip_reader<R: MediaSource + 'static>(reader: R, sample_rate: u32) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    let mss = MediaSourceStream::new(Box::new(reader), Default::default());
+    let probed = get_probe().format(
+        &Hint::new(),
+        mss,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    )?;
+    let mut format = probed.format;
+    let track = format.default_track().ok_or("no default track")?;
+    let mut decoder = get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
+    let src_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or("unknown sample rate")?;
+    let channels = track
+        .codec_params
+        .channels
+        .ok_or("unknown channel count")?
+        .count();
+
+    let mut sample_buf: Option<SampleBuffer<f32>> = None;
+    let mut samples: Vec<f32> = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(SymphoniaError::IoError(_)) => break,
+            Err(SymphoniaError::ResetRequired) => {
+                decoder.reset();
+                continue;
+            }
+            Err(e) => return Err(Box::new(e)),
+        };
+        let decoded = decoder.decode(&packet)?;
+        if sample_buf.is_none() {
+            sample_buf = Some(SampleBuffer::<f32>::new(
+                decoded.capacity() as u64,
+                *decoded.spec(),
+            ));
+        }
+        let sbuf = sample_buf.as_mut().unwrap();
+        sbuf.copy_interleaved_ref(decoded);
+        let data = sbuf.samples();
+        for frame in data.chunks(channels) {
+            let l = frame[0];
+            let r = if channels > 1 { frame[1] } else { frame[0] };
+            samples.push(l);
+            samples.push(r);
+        }
+    }
+    if src_rate != sample_rate {
+        samples = resample_linear_stereo(&samples, src_rate, sample_rate);
+    }
+    Ok(samples)
+}
+
+fn load_clip_bytes(data: &[u8], sample_rate: u32) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    let cursor = Cursor::new(data.to_vec());
+    decode_clip_reader(cursor, sample_rate)
+}
 fn load_clip_file(path: &str, sample_rate: u32) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    if path.starts_with("data:") {
+        if let Some(idx) = path.find(',') {
+            let (_, b64) = path.split_at(idx + 1);
+            let bytes = BASE64.decode(b64.trim())?;
+            return load_clip_bytes(&bytes, sample_rate);
+        } else {
+            return Err("invalid data url".into());
+        }
+    }
+
     let file = File::open(path)?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let probed = get_probe().format(
