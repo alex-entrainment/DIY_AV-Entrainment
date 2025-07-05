@@ -253,11 +253,20 @@ export function handleClipUpload(event) {
   if (!Array.isArray(track.overlay_clips)) {
     track.overlay_clips = [];
   }
-  for (const file of files) {
-    const url = URL.createObjectURL(file);
-    track.overlay_clips.push({ file_path: url, start: 0, amp: 1.0 });
-  }
-  textarea.value = JSON.stringify(track, null, 2);
+  const readers = files.map(
+    (f) =>
+      new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => {
+          track.overlay_clips.push({ file_path: r.result, start: 0, amp: 1.0 });
+          resolve();
+        };
+        r.readAsDataURL(f);
+      })
+  );
+  Promise.all(readers).then(() => {
+    textarea.value = JSON.stringify(track, null, 2);
+  });
 }
 
 
@@ -294,7 +303,7 @@ async function loadNoiseFromServer() {
   }
 }
 
-function addClipFromServer() {
+async function addClipFromServer() {
   const select = document.getElementById('clip-select');
   const files = Array.from(select ? select.selectedOptions : []).map(o => o.value);
   if (!files.length) return;
@@ -306,8 +315,21 @@ function addClipFromServer() {
     track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
   }
   if (!Array.isArray(track.overlay_clips)) track.overlay_clips = [];
-  for (const file of files) {
-    track.overlay_clips.push({ file_path: `/clips/${file}`, start: 0, amp: 1.0 });
+  const promises = files.map(f =>
+    fetch(`/clips/${f}`)
+      .then(r => r.blob())
+      .then(
+        b =>
+          new Promise(res => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.readAsDataURL(b);
+          })
+      )
+  );
+  const urls = await Promise.all(promises);
+  for (const u of urls) {
+    track.overlay_clips.push({ file_path: u, start: 0, amp: 1.0 });
   }
   textarea.value = JSON.stringify(track, null, 2);
 }

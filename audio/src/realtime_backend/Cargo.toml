@@ -38,6 +38,7 @@ hound = "3.5.1"
 wgpu = { version = "0.19", optional = true }
 pollster = { version = "0.3", optional = true }
 bytemuck = { version = "1.14", features = ["derive"], optional = true }
+base64 = "0.21"
 toml = "0.7"
 
 
