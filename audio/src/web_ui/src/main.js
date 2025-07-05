@@ -94,6 +94,13 @@ async function setupAudio(sampleRate) {
   // 7️⃣ REFILL LOOP — keeps you topped up in small slices:
   // Use setInterval at ~5 ms so you stay ahead of the 128-frame (~2.9 ms) worklet callbacks.
   fillTimer = setInterval(() => {
+    // ringBuffer may be null if playback was stopped but an interval
+    // callback is still queued. Guard against accessing properties of
+    // a cleared buffer to avoid console errors.
+    if (!ringBuffer) {
+      return;
+    }
+
     let free = ringBuffer.availableWrite();
     // Write as many small, correctly‐sized chunks as will fit right now:
     while (free >= samplesPerFill) {
