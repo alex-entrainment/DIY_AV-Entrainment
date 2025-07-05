@@ -319,7 +319,4 @@ function addClipFromServer() {
   textarea.value = JSON.stringify(track, null, 2);
 }
 
-initSelects();
-document.getElementById('load-track').addEventListener('click', loadTrackFromServer);
-document.getElementById('load-noise').addEventListener('click', loadNoiseFromServer);
-document.getElementById('add-clip').addEventListener('click', addClipFromServer);
+export { initSelects, loadTrackFromServer, loadNoiseFromServer, addClipFromServer };

@@ -1,29 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Realtime Backend Web Demo</title>
-</head>
-<body>
-  <h1>Realtime Backend Web Demo</h1>
-  <input type="file" id="json-upload" accept=".json"><br>
-  <select id="track-select"></select> <button id="load-track">Load Track</button><br>
-  <input type="file" id="noise-upload" accept=".noise"><br>
-  <select id="noise-select"></select> <button id="load-noise">Insert Noise</button><br>
-  <input type="file" id="clip-upload" accept=".wav,.flac,.mp3" multiple><br>
-  <select id="clip-select" multiple></select> <button id="add-clip">Add Clip</button><br>
-  <textarea id="track-json" rows="10" cols="80">{\n  \"global\": {\"sample_rate\": 44100},\n  \"progression\": [],\n  \"background_noise\": {},\n  \"overlay_clips\": []\n}</textarea><br>
-  <label>Start time (s): <input id="start-time" type="number" step="0.1" value="0"></label><br>
-  <label><input type="checkbox" id="gpu-enable"> Enable GPU</label><br>
-  <button id="start">Start</button>
-  <button id="pause">Pause</button>
-  <button id="resume">Resume</button>
-  <button id="stop">Stop</button><br>
-  <label>Seek to (s): <input id="seek-time" type="number" step="0.1" value="0"></label>
-  <button id="seek-button">Seek</button>
-  <button id="update-track">Update Track</button>
-  <div>Current step: <span id="current-step">0</span></div>
-  <div>Elapsed samples: <span id="elapsed-samples">0</span></div>
-  <script type="module" src="/src/main.js"></script>
-</body>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Realtime Backend Web Demo</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
