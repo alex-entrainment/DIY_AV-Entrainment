@@ -179,16 +179,24 @@ impl StreamingNoise {
         self.generate(&mut scratch);
     }
 
-    fn apply_pass(&mut self, mut sample: f32, states: &mut [Vec<BiquadState>], phase: f32) -> f32 {
-        let lfo = lfo_value(phase, &self.lfo_waveform);
-        for (i, sweep) in self.sweeps.iter().enumerate() {
+    fn apply_pass(
+        mut sample: f32,
+        states: &mut [Vec<BiquadState>],
+        sweeps: &[(f32, f32)],
+        qs: &[f32],
+        sample_rate: f32,
+        lfo_waveform: &str,
+        phase: f32,
+    ) -> f32 {
+        let lfo = lfo_value(phase, lfo_waveform);
+        for (i, sweep) in sweeps.iter().enumerate() {
             let center = (sweep.0 + sweep.1) * 0.5;
             let range = (sweep.1 - sweep.0) * 0.5;
             let freq = center + range * lfo;
-            if freq >= self.sample_rate * 0.49 {
+            if freq >= sample_rate * 0.49 {
                 continue;
             }
-            let coeffs = notch_coeffs(freq, self.qs[i], self.sample_rate);
+            let coeffs = notch_coeffs(freq, qs[i], sample_rate);
             for state in &mut states[i] {
                 sample = state.process(sample, &coeffs);
             }
@@ -217,21 +225,28 @@ impl StreamingNoise {
 
     pub fn generate(&mut self, out: &mut [f32]) {
         let frames = out.len() / 2;
+        let sweeps = self.sweeps.clone();
+        let qs = self.qs.clone();
+        let sample_rate = self.sample_rate;
+        let lfo_waveform = self.lfo_waveform.clone();
+        let lfo_phase_offset = self.lfo_phase_offset;
+        let intra_offset = self.intra_offset;
+
         for i in 0..frames {
             let base = self.next_base();
             let l_phase = self.lfo_phase;
-            let r_phase = self.lfo_phase + self.lfo_phase_offset;
-            let mut l = self.apply_pass(base, &mut self.states_main_l, l_phase);
-            if self.intra_offset != 0.0 {
-                l = self.apply_pass(l, &mut self.states_extra_l, l_phase + self.intra_offset);
+            let r_phase = self.lfo_phase + lfo_phase_offset;
+            let mut l = Self::apply_pass(base, &mut self.states_main_l, &sweeps, &qs, sample_rate, &lfo_waveform, l_phase);
+            if intra_offset != 0.0 {
+                l = Self::apply_pass(l, &mut self.states_extra_l, &sweeps, &qs, sample_rate, &lfo_waveform, l_phase + intra_offset);
             }
-            let mut r = self.apply_pass(base, &mut self.states_main_r, r_phase);
-            if self.intra_offset != 0.0 {
-                r = self.apply_pass(r, &mut self.states_extra_r, r_phase + self.intra_offset);
+            let mut r = Self::apply_pass(base, &mut self.states_main_r, &sweeps, &qs, sample_rate, &lfo_waveform, r_phase);
+            if intra_offset != 0.0 {
+                r = Self::apply_pass(r, &mut self.states_extra_r, &sweeps, &qs, sample_rate, &lfo_waveform, r_phase + intra_offset);
             }
             out[i * 2] = l;
             out[i * 2 + 1] = r;
-            self.lfo_phase += 2.0 * std::f32::consts::PI * self.lfo_freq / self.sample_rate;
+            self.lfo_phase += 2.0 * std::f32::consts::PI * self.lfo_freq / sample_rate;
         }
     }
 }
