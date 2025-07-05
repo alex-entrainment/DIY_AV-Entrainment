@@ -20,6 +20,29 @@ let wasmLoaded = false;
 console.debug('Web UI script loaded');
 let statusTimer = null;
 
+async function populateSelect(id, url) {
+  try {
+    const list = await fetch(url).then(r => r.json());
+    const select = document.getElementById(id);
+    if (select && Array.isArray(list)) {
+      for (const name of list) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to populate', id, err);
+  }
+}
+
+function initSelects() {
+  populateSelect('track-select', '/tracks/index.json');
+  populateSelect('noise-select', '/noise/index.json');
+  populateSelect('clip-select', '/clips/index.json');
+}
+
 async function ensureWasmLoaded() {
   if (!wasmLoaded) {
     console.debug('Loading WASM module');
@@ -244,3 +267,59 @@ document.getElementById('clip-upload').addEventListener('change', (event) => {
   }
   textarea.value = JSON.stringify(track, null, 2);
 });
+
+async function loadTrackFromServer() {
+  const select = document.getElementById('track-select');
+  const file = select && select.value;
+  if (!file) return;
+  try {
+    const text = await fetch(`/tracks/${file}`).then(r => r.text());
+    document.getElementById('track-json').value = text;
+  } catch (err) {
+    console.error('Failed to load track', err);
+  }
+}
+
+async function loadNoiseFromServer() {
+  const select = document.getElementById('noise-select');
+  const file = select && select.value;
+  if (!file) return;
+  try {
+    const params = await fetch(`/noise/${file}`).then(r => r.json());
+    const textarea = document.getElementById('track-json');
+    let track;
+    try {
+      track = JSON.parse(textarea.value);
+    } catch (_) {
+      track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
+    }
+    if (!track.background_noise) track.background_noise = {};
+    track.background_noise.params = params;
+    textarea.value = JSON.stringify(track, null, 2);
+  } catch (err) {
+    console.error('Failed to load noise file', err);
+  }
+}
+
+function addClipFromServer() {
+  const select = document.getElementById('clip-select');
+  const files = Array.from(select ? select.selectedOptions : []).map(o => o.value);
+  if (!files.length) return;
+  const textarea = document.getElementById('track-json');
+  let track;
+  try {
+    track = JSON.parse(textarea.value);
+  } catch (_) {
+    track = { global: { sample_rate: 44100 }, progression: [], background_noise: {}, overlay_clips: [] };
+  }
+  if (!Array.isArray(track.overlay_clips)) track.overlay_clips = [];
+  for (const file of files) {
+    track.overlay_clips.push({ file_path: `/clips/${file}`, start: 0, amp: 1.0 });
+  }
+  textarea.value = JSON.stringify(track, null, 2);
+}
+
+initSelects();
+document.getElementById('load-track').addEventListener('click', loadTrackFromServer);
+document.getElementById('load-noise').addEventListener('click', loadNoiseFromServer);
+document.getElementById('add-clip').addEventListener('click', addClipFromServer);
