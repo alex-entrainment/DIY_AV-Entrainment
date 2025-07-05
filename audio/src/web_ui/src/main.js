@@ -93,7 +93,7 @@ async function setupAudio(sampleRate) {
 
   // 7️⃣ REFILL LOOP — keeps you topped up in small slices:
   // Use setInterval at ~5 ms so you stay ahead of the 128-frame (~2.9 ms) worklet callbacks.
-  fillInterval = setInterval(() => {
+  fillTimer = setInterval(() => {
     let free = ringBuffer.availableWrite();
     // Write as many small, correctly‐sized chunks as will fit right now:
     while (free >= samplesPerFill) {
@@ -107,7 +107,6 @@ async function setupAudio(sampleRate) {
 }
 export async function start() {
   await ensureWasmLoaded();
-  setupAudio(44100); // Default sample rate, will be updated below
   const trackJson = document.getElementById('track-json').value;
   const startTime = parseFloat(document.getElementById('start-time').value) || 0;
   let sampleRate = 44100;
@@ -123,10 +122,11 @@ export async function start() {
   } catch (e) {
     console.warn('Unable to parse track JSON for sample rate:', e);
   }
+
+  await setupAudio(sampleRate);
   console.debug('Starting stream with sampleRate', sampleRate, 'startTime', startTime);
   start_stream(trackJson, sampleRate, startTime);
   console.debug('Stream started');
-  await setupAudio(sampleRate);
 
   if (audioCtx.state === 'suspended') {
     await audioCtx.resume();
@@ -149,7 +149,7 @@ export function stop() {
     audioCtx = null;
   }
   if (fillTimer) {
-    clearTimeout(fillTimer);
+    clearInterval(fillTimer);
     fillTimer = null;
   }
   ringBuffer = null;
