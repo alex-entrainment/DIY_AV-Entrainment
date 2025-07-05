@@ -6,6 +6,7 @@ pub mod audio_io;
 pub mod dsp;
 pub mod models;
 pub mod noise_params;
+pub mod streaming_noise;
 pub mod scheduler;
 pub mod command;
 pub mod voices;
