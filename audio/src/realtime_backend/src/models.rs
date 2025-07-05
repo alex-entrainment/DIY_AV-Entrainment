@@ -2,8 +2,16 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-fn default_crossfade_duration() -> f64 { 3.0 }
-fn default_crossfade_curve() -> String { "linear".to_string() }
+fn default_amp() -> f32 {
+    1.0
+}
+
+fn default_crossfade_duration() -> f64 {
+    3.0
+}
+fn default_crossfade_curve() -> String {
+    "linear".to_string()
+}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct VolumeEnvelope {
@@ -65,7 +73,7 @@ pub struct ClipData {
     pub file_path: String,
     #[serde(default, alias = "start_time")]
     pub start: f64,
-    #[serde(default, alias = "gain")]
+    #[serde(default = "default_amp", alias = "gain")]
     pub amp: f32,
 }
 
@@ -75,7 +83,7 @@ pub struct BackgroundNoiseData {
     pub file_path: String,
     #[serde(default, rename = "type")]
     pub noise_type: String,
-    #[serde(default, alias = "gain", alias = "amp")]
+    #[serde(default = "default_amp", alias = "gain", alias = "amp")]
     pub amp: f32,
     #[serde(default)]
     pub params: Option<crate::noise_params::NoiseParams>,
