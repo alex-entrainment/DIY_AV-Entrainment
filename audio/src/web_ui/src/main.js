@@ -202,15 +202,7 @@ function stopStatusUpdates() {
   }
 }
 
-document.getElementById('start').addEventListener('click', start);
-document.getElementById('stop').addEventListener('click', stop);
-document.getElementById('pause').addEventListener('click', pause);
-document.getElementById('resume').addEventListener('click', resume);
-document.getElementById('seek-button').addEventListener('click', seek);
-document.getElementById('update-track').addEventListener('click', sendUpdate);
-document.getElementById('gpu-enable').addEventListener('change', toggleGpu);
-
-document.getElementById('json-upload').addEventListener('change', (event) => {
+export function handleJsonUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -218,9 +210,9 @@ document.getElementById('json-upload').addEventListener('change', (event) => {
     document.getElementById('track-json').value = e.target.result;
   };
   reader.readAsText(file);
-});
+}
 
-document.getElementById('noise-upload').addEventListener('change', (event) => {
+export function handleNoiseUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -245,9 +237,9 @@ document.getElementById('noise-upload').addEventListener('change', (event) => {
     }
   };
   reader.readAsText(file);
-});
+}
 
-document.getElementById('clip-upload').addEventListener('change', (event) => {
+export function handleClipUpload(event) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
   const textarea = document.getElementById('track-json');
@@ -266,7 +258,8 @@ document.getElementById('clip-upload').addEventListener('change', (event) => {
     track.overlay_clips.push({ file_path: url, start: 0, amp: 1.0 });
   }
   textarea.value = JSON.stringify(track, null, 2);
-});
+}
+
 
 async function loadTrackFromServer() {
   const select = document.getElementById('track-select');
@@ -319,4 +312,9 @@ function addClipFromServer() {
   textarea.value = JSON.stringify(track, null, 2);
 }
 
-export { initSelects, loadTrackFromServer, loadNoiseFromServer, addClipFromServer };
+export {
+  initSelects,
+  loadTrackFromServer,
+  loadNoiseFromServer,
+  addClipFromServer,
+};
