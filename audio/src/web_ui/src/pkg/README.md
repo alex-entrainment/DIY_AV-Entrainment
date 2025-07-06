@@ -4,6 +4,8 @@ This crate provides the initial structure for a Rust-based audio generation engi
 It mirrors the JSON track format used by the Python implementation and exposes a
 minimal PyO3 interface for starting and stopping playback.
 
+Also can be used as a standalone CLI executable or as a WASM component for backend use in-browser. 
+
 Implemented components:
 
 - **Project setup** with Cargo, PyO3, CPAL and DSP-related dependencies.
@@ -12,6 +14,8 @@ Implemented components:
 - **Skeleton scheduler** capable of processing blocks and advancing steps.
 - **Audio thread bootstrap** using CPAL with a stoppable loop.
 - **Python bindings** with `start_stream` and `stop_stream` functions.
+- **WASM-Ready** example with ring buffer implementation for high performance interaction with AudioWorklet
+- **CLI Tool** Runs and generates audio files from .json track files at realtime speeds from the terminal 
 
 Remaining tasks (see `REALTIME_BACKEND_PLAN.md` for full roadmap):
 
@@ -134,8 +138,10 @@ Options:
 ## Optional GPU Acceleration
 
 The backend includes an experimental GPU mixing path behind the `gpu` Cargo
-feature. When enabled, a compute shader is used to sum the active voice buffers
-for each processed block during file generation only.
+feature. When enabled, compute shaders are used to sum the active voice buffers
+for each processed block. Crossfade transitions also leverage the GPU so that
+large sessions with many voices can be rendered faster than the Numba powered
+Python implementation.
 
 Build the library with GPU support using:
 
