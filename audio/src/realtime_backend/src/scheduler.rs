@@ -700,16 +700,19 @@ impl TrackScheduler {
             clip.position = pos;
         }
 
-        // Apply a soft clipper with smooth knee
+        // Normalize including noise and overlay clips to avoid clipping
         const THRESH: f32 = 0.95;
-        for i in 0..buffer.len() {
-            let x = buffer[i];
-            buffer[i] = if x.abs() <= THRESH {
-                x
-            } else {
-                let sign = x.signum();
-                sign * (1.0 - (-((x.abs() - THRESH) / (1.0 - THRESH))).exp())
-            };
+        let mut max_val = 0.0f32;
+        for &s in buffer.iter() {
+            if s.abs() > max_val {
+                max_val = s.abs();
+            }
+        }
+        if max_val > THRESH {
+            let norm = THRESH / max_val;
+            for v in buffer.iter_mut() {
+                *v *= norm;
+            }
         }
 
         self.absolute_sample += frame_count as u64;

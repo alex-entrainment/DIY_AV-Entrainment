@@ -14,8 +14,10 @@ Implemented components:
 - **Skeleton scheduler** capable of processing blocks and advancing steps.
 - **Audio thread bootstrap** using CPAL with a stoppable loop.
 - **Python bindings** with `start_stream` and `stop_stream` functions.
+- **Block-level normalization** keeps voices, background noise and overlay
+  clips below a 0.95 peak to avoid clipping.
 - **WASM-Ready** example with ring buffer implementation for high performance interaction with AudioWorklet
-- **CLI Tool** Runs and generates audio files from .json track files at realtime speeds from the terminal 
+- **CLI Tool** Runs and generates audio files from .json track files at realtime speeds from the terminal
 
 Remaining tasks (see `REALTIME_BACKEND_PLAN.md` for full roadmap):
 
