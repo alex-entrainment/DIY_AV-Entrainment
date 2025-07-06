@@ -9,4 +9,6 @@ pub enum Command {
     SetPaused(bool),
     /// Seek to a new playback position in seconds
     StartFrom(f64),
+    /// Feed audio samples to a streaming overlay clip
+    PushClipSamples { index: usize, data: Vec<f32>, finished: bool },
 }
