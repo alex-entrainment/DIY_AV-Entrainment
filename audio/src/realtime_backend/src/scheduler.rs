@@ -87,8 +87,13 @@ pub struct TrackScheduler {
     pub gpu: GpuMixer,
 }
 
+pub enum ClipSamples {
+    Static(Vec<f32>),
+    Streaming { data: Vec<f32>, finished: bool },
+}
+
 pub struct LoadedClip {
-    samples: Vec<f32>,
+    samples: ClipSamples,
     start_sample: usize,
     position: usize,
     gain: f32,
@@ -270,14 +275,16 @@ impl TrackScheduler {
         let mut clips = Vec::new();
         let cfg = &CONFIG;
         for c in &track.clips {
-            if let Ok(samples) = load_clip_file(&c.file_path, device_rate) {
-                clips.push(LoadedClip {
-                    samples,
-                    start_sample: (c.start * sample_rate as f64) as usize,
-                    position: 0,
-                    gain: c.amp * cfg.clip_gain,
-                });
-            }
+            let clip_samples = match load_clip_file(&c.file_path, device_rate) {
+                Ok(samples) => ClipSamples::Static(samples),
+                Err(_) => ClipSamples::Streaming { data: Vec::new(), finished: false },
+            };
+            clips.push(LoadedClip {
+                samples: clip_samples,
+                start_sample: (c.start * sample_rate as f64) as usize,
+                position: 0,
+                gain: c.amp * cfg.clip_gain,
+            });
         }
 
         let background_noise = if let Some(noise_cfg) = &track.background_noise {
@@ -384,14 +391,16 @@ impl TrackScheduler {
 
         self.clips.clear();
         for c in &track.clips {
-            if let Ok(samples) = load_clip_file(&c.file_path, self.sample_rate as u32) {
-                self.clips.push(LoadedClip {
-                    samples,
-                    start_sample: (c.start * self.sample_rate as f64) as usize,
-                    position: 0,
-                    gain: c.amp * self.clip_gain,
-                });
-            }
+            let clip_samples = match load_clip_file(&c.file_path, self.sample_rate as u32) {
+                Ok(samples) => ClipSamples::Static(samples),
+                Err(_) => ClipSamples::Streaming { data: Vec::new(), finished: false },
+            };
+            self.clips.push(LoadedClip {
+                samples: clip_samples,
+                start_sample: (c.start * self.sample_rate as f64) as usize,
+                position: 0,
+                gain: c.amp * self.clip_gain,
+            });
         }
 
         self.background_noise = if let Some(noise_cfg) = &track.background_noise {
@@ -437,6 +446,16 @@ impl TrackScheduler {
             Command::StartFrom(time) => {
                 let samples = (time * self.sample_rate as f64) as usize;
                 self.seek_samples(samples);
+            }
+            Command::PushClipSamples { index, data, finished } => {
+                if let Some(clip) = self.clips.get_mut(index) {
+                    if let ClipSamples::Streaming { data: buf, finished: fin } = &mut clip.samples {
+                        buf.extend_from_slice(&data);
+                        if finished {
+                            *fin = true;
+                        }
+                    }
+                }
             }
         }
     }
@@ -685,17 +704,44 @@ impl TrackScheduler {
                 let offset = clip.start_sample - start_sample;
                 pos += offset * 2;
             }
-            for i in 0..frames {
-                let global_idx = start_sample + i;
-                if global_idx < clip.start_sample {
-                    continue;
+            match &mut clip.samples {
+                ClipSamples::Static(data) => {
+                    for i in 0..frames {
+                        let global_idx = start_sample + i;
+                        if global_idx < clip.start_sample {
+                            continue;
+                        }
+                        if pos + 1 >= data.len() {
+                            break;
+                        }
+                        buffer[i * 2] += data[pos] * clip.gain;
+                        buffer[i * 2 + 1] += data[pos + 1] * clip.gain;
+                        pos += 2;
+                    }
                 }
-                if pos + 1 >= clip.samples.len() {
-                    break;
+                ClipSamples::Streaming { data, finished } => {
+                    for i in 0..frames {
+                        let global_idx = start_sample + i;
+                        if global_idx < clip.start_sample {
+                            continue;
+                        }
+                        if pos + 1 >= data.len() {
+                            break;
+                        }
+                        buffer[i * 2] += data[pos] * clip.gain;
+                        buffer[i * 2 + 1] += data[pos + 1] * clip.gain;
+                        pos += 2;
+                    }
+                    if *finished && pos >= data.len() {
+                        pos = data.len();
+                    }
+                    // Remove consumed samples to free memory
+                    if pos > 4096 {
+                        data.drain(0..pos);
+                        clip.start_sample += pos / 2;
+                        pos = 0;
+                    }
                 }
-                buffer[i * 2] += clip.samples[pos] * clip.gain;
-                buffer[i * 2 + 1] += clip.samples[pos + 1] * clip.gain;
-                pos += 2;
             }
             clip.position = pos;
         }

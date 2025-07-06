@@ -9,6 +9,7 @@ export function elapsed_samples(): bigint;
 export function pause_stream(): void;
 export function resume_stream(): void;
 export function start_from(position: number): void;
+export function push_clip_samples(index: number, samples: Float32Array, finished: boolean): void;
 export function stop_stream(): void;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -23,6 +24,7 @@ export interface InitOutput {
   readonly elapsed_samples: () => bigint;
   readonly stop_stream: () => void;
   readonly start_from: (a: number) => void;
+  readonly push_clip_samples: (a: number, b: number, c: number) => void;
   readonly pause_stream: () => void;
   readonly resume_stream: () => void;
   readonly __wbindgen_exn_store: (a: number) => void;
