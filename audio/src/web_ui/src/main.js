@@ -9,6 +9,7 @@ import init, {
   enable_gpu,
   current_step,
   elapsed_samples,
+  push_clip_samples,
 } from '/src/pkg/realtime_backend.js?import';
 import SharedRingBuffer from './ringbuffer.js';
 
@@ -46,6 +47,36 @@ function initSelects() {
   populateSelect('track-select', '/tracks/index.json');
   populateSelect('noise-select', '/noise/index.json');
   populateSelect('clip-select', '/clips/index.json');
+}
+
+async function streamOverlayClip(index, path) {
+  try {
+    let arrayBuf;
+    if (path.startsWith('data:')) {
+      const comma = path.indexOf(',');
+      arrayBuf = Uint8Array.from(atob(path.slice(comma + 1)), c => c.charCodeAt(0)).buffer;
+    } else {
+      const resp = await fetch(path);
+      arrayBuf = await resp.arrayBuffer();
+    }
+    const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+    const l = audioBuf.getChannelData(0);
+    const r = audioBuf.numberOfChannels > 1 ? audioBuf.getChannelData(1) : l;
+    const total = audioBuf.length;
+    const chunkFrames = 2048;
+    for (let pos = 0; pos < total; pos += chunkFrames) {
+      const frames = Math.min(chunkFrames, total - pos);
+      const chunk = new Float32Array(frames * 2);
+      for (let i = 0; i < frames; i++) {
+        chunk[i * 2] = l[pos + i];
+        chunk[i * 2 + 1] = r[pos + i];
+      }
+      push_clip_samples(index, chunk, pos + frames >= total);
+      await new Promise(res => setTimeout(res, 0));
+    }
+  } catch (err) {
+    console.error('Failed to stream clip', path, err);
+  }
 }
 
 async function ensureWasmLoaded() {
@@ -122,11 +153,15 @@ export async function start() {
   const trackJson = document.getElementById('track-json').value;
   const startTime = parseFloat(document.getElementById('start-time').value) || 0;
   let sampleRate = 44100;
+  let trackObj = null;
   try {
-    const trackObj = JSON.parse(trackJson);
+    trackObj = JSON.parse(trackJson);
     if (trackObj.global && trackObj.global.sample_rate) {
       sampleRate = trackObj.global.sample_rate;
-    } else if (trackObj.global_settings && trackObj.global_settings.sample_rate) {
+    } else if (
+      trackObj.global_settings &&
+      trackObj.global_settings.sample_rate
+    ) {
       sampleRate = trackObj.global_settings.sample_rate;
     } else if (trackObj.sample_rate) {
       sampleRate = trackObj.sample_rate;
@@ -139,6 +174,14 @@ export async function start() {
   console.debug('Starting stream with sampleRate', sampleRate, 'startTime', startTime);
   start_stream(trackJson, sampleRate, startTime);
   console.debug('Stream started');
+
+  if (trackObj && Array.isArray(trackObj.overlay_clips)) {
+    trackObj.overlay_clips.forEach((clip, idx) => {
+      if (clip.file_path) {
+        streamOverlayClip(idx, clip.file_path);
+      }
+    });
+  }
 
   if (audioCtx.state === 'suspended') {
     await audioCtx.resume();
