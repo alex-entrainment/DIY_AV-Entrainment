@@ -865,6 +865,22 @@ def load_track_from_json(filepath):
 
         raw.setdefault("background_noise", {})
         raw.setdefault("clips", [])
+
+        # Fill in missing start times so the GUI knows when each step begins
+        crossfade = float(raw["global_settings"].get("crossfade_duration", 0.0))
+        current_time = 0.0
+        for step in raw["steps"]:
+            if "start" not in step and "start_time" not in step:
+                step["start"] = current_time
+                advance = float(step.get("duration", 0))
+                if crossfade > 0:
+                    advance = max(0.0, advance - crossfade)
+                current_time += advance
+            else:
+                step["start"] = float(step.get("start", step.get("start_time", 0)))
+                current_time = max(current_time, step["start"] + float(step.get("duration", 0)))
+            step.pop("start_time", None)
+
         return raw
     except FileNotFoundError:
         print(f"Error: File not found at {filepath}")
@@ -895,12 +911,16 @@ def save_track_to_json(track_data, filepath):
             "overlay_clips": track_data.get("clips", []),
         }
 
+        crossfade = float(track_data.get("global_settings", {}).get("crossfade_duration", 0.0))
         current_time = 0.0
         for step in track_data.get("steps", []):
             step_copy = copy.deepcopy(step)
             if "start" not in step_copy and "start_time" not in step_copy:
                 step_copy["start"] = current_time
-                current_time += float(step_copy.get("duration", 0))
+                advance = float(step_copy.get("duration", 0))
+                if crossfade > 0:
+                    advance = max(0.0, advance - crossfade)
+                current_time += advance
             else:
                 step_copy["start"] = float(step_copy.get("start", step_copy.get("start_time", 0)))
                 current_time = max(current_time, step_copy["start"] + float(step_copy.get("duration", 0)))
