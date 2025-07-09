@@ -623,65 +623,55 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
             else:
                 audio_to_use = audio_to_use[:segment_len_in_track]
 
-        # --- Decide if we should phase-stitch or crossfade ---
-        use_stitch = i > 0 and steps_have_continuous_voices(steps_data[i-1], step_data)
-
+        # --- Always use crossfade when overlap exists ---
         overlap_start_sample_in_track = safe_place_start
         overlap_end_sample_in_track = min(safe_place_end, last_step_end_sample_in_track)
         overlap_samples = overlap_end_sample_in_track - overlap_start_sample_in_track
 
-        can_crossfade = i > 0 and overlap_samples > 0 and crossfade_samples > 0 and not use_stitch
-
-        if use_stitch and overlap_samples > 0:
-            print(f"        Phase stitching Step {i+1} with previous step.")
-            align_len = crossfade_samples if crossfade_samples > 0 else 1024
-            tail_start = max(0, last_step_end_sample_in_track - align_len)
-            prev_tail = track[tail_start:last_step_end_sample_in_track]
-            audio_to_use = phase_align_signal(prev_tail, audio_to_use, align_len)
-            track[safe_place_start:safe_place_end] = audio_to_use
-
-        elif can_crossfade:
+        if i > 0 and overlap_samples > 0 and crossfade_samples > 0:
             actual_crossfade_samples = min(overlap_samples, crossfade_samples)
             print(
                 f"        Crossfading Step {i+1} with previous. Overlap: {overlap_samples / sample_rate:.3f}s, "
                 f"Actual CF: {actual_crossfade_samples / sample_rate:.3f}s, Curve: {crossfade_curve}"
             )
 
-            if actual_crossfade_samples > 0:
-                # Get segments for crossfading
-                prev_segment = track[overlap_start_sample_in_track : overlap_start_sample_in_track + actual_crossfade_samples]
-                new_segment = audio_to_use[:actual_crossfade_samples]
+            prev_segment = track[
+                overlap_start_sample_in_track : overlap_start_sample_in_track + actual_crossfade_samples
+            ]
+            new_segment = audio_to_use[:actual_crossfade_samples]
 
-                # Perform crossfade
-                blended_segment = crossfade_signals(
-                    prev_segment,
-                    new_segment,
-                    sample_rate,
-                    actual_crossfade_samples / sample_rate,
-                    curve=crossfade_curve,
-                    phase_align=True,
+            blended_segment = crossfade_signals(
+                prev_segment,
+                new_segment,
+                sample_rate,
+                actual_crossfade_samples / sample_rate,
+                curve=crossfade_curve,
+                phase_align=True,
+            )
+
+            track[
+                overlap_start_sample_in_track : overlap_start_sample_in_track + actual_crossfade_samples
+            ] = blended_segment
+
+            remaining_start_index_in_step_audio = actual_crossfade_samples
+            remaining_start_index_in_track = overlap_start_sample_in_track + actual_crossfade_samples
+            remaining_end_index_in_track = safe_place_end
+
+            if remaining_start_index_in_track < remaining_end_index_in_track:
+                num_remaining_samples_to_add = (
+                    remaining_end_index_in_track - remaining_start_index_in_track
                 )
+                if remaining_start_index_in_step_audio < audio_to_use.shape[0]:
+                    remaining_audio_from_step = audio_to_use[
+                        remaining_start_index_in_step_audio : remaining_start_index_in_step_audio
+                        + num_remaining_samples_to_add
+                    ]
+                    track[
+                        remaining_start_index_in_track : remaining_start_index_in_track
+                        + remaining_audio_from_step.shape[0]
+                    ] += remaining_audio_from_step
 
-                # Place blended segment (overwrite previous tail)
-                track[overlap_start_sample_in_track : overlap_start_sample_in_track + actual_crossfade_samples] = blended_segment
-
-                # Add the remainder of the new step (after the crossfaded part)
-                remaining_start_index_in_step_audio = actual_crossfade_samples
-                remaining_start_index_in_track = overlap_start_sample_in_track + actual_crossfade_samples
-                remaining_end_index_in_track = safe_place_end
-
-                if remaining_start_index_in_track < remaining_end_index_in_track:
-                    num_remaining_samples_to_add = remaining_end_index_in_track - remaining_start_index_in_track
-                    if remaining_start_index_in_step_audio < audio_to_use.shape[0]:
-                        remaining_audio_from_step = audio_to_use[remaining_start_index_in_step_audio : remaining_start_index_in_step_audio + num_remaining_samples_to_add]
-                        # Add the remaining part (use += as it might overlap with the next step's fade-in region)
-                        track[remaining_start_index_in_track : remaining_start_index_in_track + remaining_audio_from_step.shape[0]] += remaining_audio_from_step
-
-            else: # Overlap existed but calculated crossfade samples was zero
-                 print(f"        Placing Step {i+1} without crossfade (actual_crossfade_samples=0). Adding.")
-                 track[safe_place_start:safe_place_end] += audio_to_use # Add instead of overwrite
-
-        else:  # No crossfade or stitching needed
+        else:
             print(f"        Placing Step {i+1} without crossfade. Adding.")
             track[safe_place_start:safe_place_end] += audio_to_use
 
