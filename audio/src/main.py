@@ -897,11 +897,22 @@ class TrackEditorApp(QMainWindow):
         self.noise_file_entry.setText(noise.get("file_path", ""))
         self.noise_amp_entry.setText(str(noise.get("amp", 0.0)))
 
+    def _recalculate_step_start_times(self):
+        crossfade = float(self.track_data.get("global_settings", {}).get("crossfade_duration", 0.0))
+        current_time = 0.0
+        for step in self.track_data.get("steps", []):
+            step["start"] = current_time
+            advance = float(step.get("duration", 0.0))
+            if crossfade > 0.0:
+                advance = max(0.0, advance - crossfade)
+            current_time += advance
+
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
         self._steps_tree_updating = True
         current_row = self.get_selected_step_index()
         selected_rows = self.get_selected_step_indices()
+        self._recalculate_step_start_times()
         self.step_model.refresh(self.track_data.get("steps", []))
         sel_model = self.steps_tree.selectionModel()
         sel_model.clearSelection()
@@ -1233,10 +1244,11 @@ class TrackEditorApp(QMainWindow):
                 self.refresh_steps_tree()
                 QMessageBox.information(self, "Load Success", f"{loaded_count} step(s) loaded and added from\n{filepath}")
                 if current_step_count < len(self.track_data["steps"]):
-                    new_item = self.steps_tree.topLevelItem(current_step_count)
-                    if new_item:
-                        self.steps_tree.setCurrentItem(new_item)
-                        self.steps_tree.scrollToItem(new_item, QTreeWidget.PositionAtCenter)
+                    idx = self.step_model.index(current_step_count, 0)
+                    self.steps_tree.selectionModel().clearSelection()
+                    self.steps_tree.setCurrentIndex(idx)
+                    self.steps_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                    self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
                 self._push_history_state()
             else:
                 QMessageBox.information(self, "Load Info", "No valid steps found to load.")
