@@ -288,18 +288,40 @@ def get_synth_params(func_name):
 
 def steps_have_continuous_voices(prev_step, next_step):
     """Return True if ``next_step`` appears to continue the same voices as
-    ``prev_step``.  The heuristic simply compares synth function names and
-    parameter dictionaries for voices with the same index."""
+    ``prev_step``.
+
+    The heuristic compares synth function names and parameter dictionaries for
+    voices with the same index.  Some older track files may store voice
+    parameters directly at the top level instead of inside the ``params``
+    dictionary.  This function now merges both representations when comparing
+    voices so the detection works reliably.
+    """
 
     voices_a = prev_step.get("voices", []) if prev_step else []
     voices_b = next_step.get("voices", []) if next_step else []
     if len(voices_a) != len(voices_b):
         return False
 
+    def combined_params(v):
+        if isinstance(v.get("params"), dict) and v["params"]:
+            return v["params"]
+        # Fallback: collect non-meta keys from the top level
+        return {
+            k: v[k]
+            for k in v
+            if k
+            not in (
+                "synth_function_name",
+                "is_transition",
+                "volume_envelope",
+                "params",
+            )
+        }
+
     for v_a, v_b in zip(voices_a, voices_b):
         if v_a.get("synth_function_name") != v_b.get("synth_function_name"):
             return False
-        if v_a.get("params") != v_b.get("params"):
+        if combined_params(v_a) != combined_params(v_b):
             return False
         if v_a.get("is_transition") != v_b.get("is_transition"):
             return False
