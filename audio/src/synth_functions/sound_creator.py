@@ -641,8 +641,45 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                     ] += remaining_audio_from_step
 
         else:
-            print(f"        Placing Step {i+1} without crossfade. Adding.")
-            track[safe_place_start:safe_place_end] += audio_to_use
+            if i > 0 and crossfade_samples > 0:
+                # Force crossfade even when no natural overlap exists
+                actual_crossfade_samples = min(
+                    crossfade_samples,
+                    audio_to_use.shape[0],
+                    last_step_end_sample_in_track,
+                )
+                if actual_crossfade_samples > 0:
+                    print(
+                        f"        Force crossfading Step {i+1} (no overlap). "
+                        f"Actual CF: {actual_crossfade_samples / sample_rate:.3f}s, Curve: {crossfade_curve}"
+                    )
+                    prev_segment = track[
+                        last_step_end_sample_in_track - actual_crossfade_samples : last_step_end_sample_in_track
+                    ]
+                    new_segment = audio_to_use[:actual_crossfade_samples]
+
+                    blended_segment = crossfade_signals(
+                        prev_segment,
+                        new_segment,
+                        sample_rate,
+                        actual_crossfade_samples / sample_rate,
+                        curve=crossfade_curve,
+                        phase_align=True,
+                    )
+
+                    track[
+                        last_step_end_sample_in_track - actual_crossfade_samples : last_step_end_sample_in_track
+                    ] = blended_segment
+
+                    remaining_audio = audio_to_use[actual_crossfade_samples:]
+                    end_idx = last_step_end_sample_in_track + remaining_audio.shape[0]
+                    track[last_step_end_sample_in_track:end_idx] += remaining_audio
+                    safe_place_end = end_idx
+                else:
+                    track[safe_place_start:safe_place_end] += audio_to_use
+            else:
+                print(f"        Placing Step {i+1} without crossfade. Adding.")
+                track[safe_place_start:safe_place_end] += audio_to_use
 
         # --- Update Markers for Next Loop ---
         last_step_end_sample_in_track = max(last_step_end_sample_in_track, safe_place_end)
