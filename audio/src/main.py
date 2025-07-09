@@ -1200,12 +1200,22 @@ class TrackEditorApp(QMainWindow):
 
     @pyqtSlot()
     def load_external_step(self):
-        filepath, _ = QFileDialog.getOpenFileName(self, "Load External Steps from JSON", "", "JSON files (*.json);;All files (*.*)")
-        if not filepath: return
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load External Steps from JSON",
+            "",
+            "JSON files (*.json);;All files (*.*)"
+        )
+        if not filepath:
+            return
         try:
-            with open(filepath, 'r') as f: external_data = json.load(f)
-            if "steps" not in external_data or not isinstance(external_data["steps"], list):
-                QMessageBox.critical(self, "Load Error", "Invalid JSON structure: 'steps' key missing or not a list.")
+            external_data = sound_creator.load_track_from_json(filepath)
+            if not external_data or "steps" not in external_data or not isinstance(external_data["steps"], list):
+                QMessageBox.critical(
+                    self,
+                    "Load Error",
+                    "Invalid JSON structure: 'steps' key missing or not a list."
+                )
                 return
             external_steps = external_data["steps"]
             if not external_steps:
