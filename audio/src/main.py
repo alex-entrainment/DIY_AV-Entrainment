@@ -897,9 +897,22 @@ class TrackEditorApp(QMainWindow):
         self.noise_file_entry.setText(noise.get("file_path", ""))
         self.noise_amp_entry.setText(str(noise.get("amp", 0.0)))
 
+    def _recalculate_step_start_times(self):
+        """Recompute sequential start times for all steps."""
+        steps = self.track_data.get("steps", [])
+        crossfade = float(self.track_data.get("global_settings", {}).get("crossfade_duration", 0.0))
+        current_time = 0.0
+        for step in steps:
+            step["start"] = current_time
+            advance = float(step.get("duration", 0))
+            if crossfade > 0:
+                advance = max(0.0, advance - crossfade)
+            current_time += advance
+
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
         self._steps_tree_updating = True
+        self._recalculate_step_start_times()
         current_row = self.get_selected_step_index()
         selected_rows = self.get_selected_step_indices()
         self.step_model.refresh(self.track_data.get("steps", []))
