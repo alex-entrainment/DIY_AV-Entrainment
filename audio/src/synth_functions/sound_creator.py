@@ -463,6 +463,15 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
              audio[:fade_len] *= fade_in[:, np.newaxis]
              audio[-fade_len:] *= fade_out[:, np.newaxis]
 
+    # --- Normalize voice amplitude ---
+    voice_target_peak = float(voice_data.get("target_peak", 1.0))
+    voice_max = np.max(np.abs(audio)) if audio.size > 0 else 0.0
+    if voice_max > 1e-9:
+        if voice_max != voice_target_peak:
+            audio = audio * (voice_target_peak / voice_max)
+    else:
+        print("Warning: Generated voice audio is silent.")
+
     return audio.astype(np.float32) # Ensure float32 output
 
 
