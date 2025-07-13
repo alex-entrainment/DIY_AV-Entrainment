@@ -13,6 +13,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        logo: 'logo.html'
+      }
+    }
   },
   // Optimize dependencies to prevent vite from reloading the page on wasm changes
   optimizeDeps: {
