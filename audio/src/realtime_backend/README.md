@@ -1,28 +1,28 @@
-# Realtime Backend (Work in progress)
+# Realtime Backend
 
-This crate provides the initial structure for a Rust-based audio generation engine.
-It mirrors the JSON track format used by the Python implementation and exposes a
-minimal PyO3 interface for starting and stopping playback.
+This crate implements a Rust based audio generation engine capable of real‑time
+streaming or offline rendering.  It mirrors the JSON track format used by the
+Python implementation and exposes a PyO3 interface for controlling playback.
 
 Also can be used as a standalone CLI executable or as a WASM component for backend use in-browser. 
 
 Implemented components:
 
-- **Project setup** with Cargo, PyO3, CPAL and DSP-related dependencies.
-- **Track models** mirroring the Python data structures.
-- **Basic DSP utilities** (noise generators, sine wave, ADSR, pan).
-- **Skeleton scheduler** capable of processing blocks and advancing steps.
-- **Audio thread bootstrap** using CPAL with a stoppable loop.
-- **Python bindings** with `start_stream` and `stop_stream` functions.
-- **Block-level normalization** keeps voices, background noise and overlay
-  clips below a 0.95 peak to avoid clipping.
-- **WASM-Ready** example with ring buffer implementation for high performance interaction with AudioWorklet
-- **CLI Tool** Runs and generates audio files from .json track files at realtime speeds from the terminal
+- **Project setup** with Cargo, PyO3, CPAL, Symphonia and other DSP dependencies.
+- **Track models** matching the Python structures including overlay clips and background noise.
+- **Comprehensive voice library** covering all synth functions and their transition variants.
+- **Crossfade scheduler** with linear and equal-power curves for smooth step transitions.
+- **Audio thread** using CPAL with pausing, seeking and dynamic track updates.
+- **Streaming noise and overlay clip support** with block-level normalization to avoid clipping.
+- **Optional GPU acceleration** for mixing and crossfades.
+- **Python bindings** exposing `start_stream`, `stop_stream`, `pause_stream`, `resume_stream`,
+  `start_from`, `update_track`, `enable_gpu`, `push_clip_samples`, `render_sample_wav` and
+  `render_full_wav`.
+- **WASM-ready build** with ring buffer integration for AudioWorklet use in the browser.
+- **CLI tool** to stream or render tracks with configuration file support.
 
 Remaining tasks (see `REALTIME_BACKEND_PLAN.md` for full roadmap):
 
-- Proper voice implementations for each synth function.
-- Crossfade and transition handling in `TrackScheduler`.
 - Unit tests comparing DSP routines with the Python version.
 - Integration with the rest of the application via a high-level Python wrapper.
 
