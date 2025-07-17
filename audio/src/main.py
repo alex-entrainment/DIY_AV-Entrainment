@@ -518,6 +518,8 @@ class TrackEditorApp(QMainWindow):
         steps_outer_layout = QVBoxLayout(steps_outer_widget)
         steps_outer_layout.setContentsMargins(0,0,0,0)
         main_splitter.addWidget(steps_outer_widget)
+        # Allow steps pane to shrink well below half the window width
+        steps_outer_widget.setMinimumWidth(150)
         steps_groupbox = QGroupBox("Steps")
         steps_groupbox_layout = QVBoxLayout(steps_groupbox)
         steps_outer_layout.addWidget(steps_groupbox)
@@ -611,7 +613,7 @@ class TrackEditorApp(QMainWindow):
 
 
         # --- Right Pane (Splitter) ---
-        right_splitter = QSplitter(Qt.Vertical)
+        right_splitter = QSplitter(Qt.Horizontal)
         main_splitter.addWidget(right_splitter)
 
         # --- Voices Frame Widgets ---
@@ -725,7 +727,8 @@ class TrackEditorApp(QMainWindow):
         clips_groupbox_layout.addWidget(self.clips_tree, 1)
 
         main_splitter.setSizes([400, 700])
-        right_splitter.setSizes([500, 200])
+        # Provide a reasonable default width split between voices and details
+        right_splitter.setSizes([500, 300])
         # Give the control section a relatively small initial height so that the
         # main editor gets more space by default. Users can resize it as needed.
         vertical_splitter.setSizes([control_groupbox.sizeHint().height(), 1])
