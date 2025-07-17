@@ -540,9 +540,10 @@ class TrackEditorApp(QMainWindow):
             lambda *_: self.on_step_select()
         )
         self.step_model.dataChanged.connect(lambda *_: self._push_history_state())
-        steps_groupbox_layout.addWidget(self.steps_tree, 1)
 
-        steps_button_layout_1 = QHBoxLayout()
+        steps_content_layout = QHBoxLayout()
+        steps_button_layout = QVBoxLayout()
+
         self.add_step_button = QPushButton("Add Step")
         self.load_external_step_button = QPushButton("Load External Step")
         self.duplicate_step_button = QPushButton("Duplicate Step")
@@ -553,15 +554,7 @@ class TrackEditorApp(QMainWindow):
         self.duplicate_step_button.clicked.connect(self.duplicate_step)
         self.create_end_state_button.clicked.connect(self.create_end_state_step)
         self.remove_step_button.clicked.connect(self.remove_step)
-        steps_button_layout_1.addWidget(self.add_step_button)
-        steps_button_layout_1.addWidget(self.load_external_step_button)
-        steps_button_layout_1.addWidget(self.duplicate_step_button)
-        steps_button_layout_1.addWidget(self.create_end_state_button)
-        steps_button_layout_1.addWidget(self.remove_step_button)
-        steps_button_layout_1.addStretch(1)
-        steps_groupbox_layout.addLayout(steps_button_layout_1)
 
-        steps_button_layout_2 = QHBoxLayout()
         self.edit_duration_button = QPushButton("Edit Duration")
         self.edit_description_button = QPushButton("Edit Description")
         self.move_step_up_button = QPushButton("Move Up")
@@ -570,12 +563,22 @@ class TrackEditorApp(QMainWindow):
         self.edit_description_button.clicked.connect(self.edit_step_description)
         self.move_step_up_button.clicked.connect(lambda: self.move_step(-1))
         self.move_step_down_button.clicked.connect(lambda: self.move_step(1))
-        steps_button_layout_2.addWidget(self.edit_duration_button)
-        steps_button_layout_2.addWidget(self.edit_description_button)
-        steps_button_layout_2.addWidget(self.move_step_up_button)
-        steps_button_layout_2.addWidget(self.move_step_down_button)
-        steps_button_layout_2.addStretch(1)
-        steps_groupbox_layout.addLayout(steps_button_layout_2)
+
+        steps_button_layout.addWidget(self.add_step_button)
+        steps_button_layout.addWidget(self.load_external_step_button)
+        steps_button_layout.addWidget(self.duplicate_step_button)
+        steps_button_layout.addWidget(self.create_end_state_button)
+        steps_button_layout.addWidget(self.remove_step_button)
+        steps_button_layout.addWidget(self.edit_duration_button)
+        steps_button_layout.addWidget(self.edit_description_button)
+        steps_button_layout.addWidget(self.move_step_up_button)
+        steps_button_layout.addWidget(self.move_step_down_button)
+        steps_button_layout.addStretch(1)
+
+        steps_content_layout.addLayout(steps_button_layout)
+        steps_content_layout.addWidget(self.steps_tree, 1)
+
+        steps_groupbox_layout.addLayout(steps_content_layout)
 
         # --- Test Step Preview Section ---
         test_step_groupbox = QGroupBox("Test Step Preview")
