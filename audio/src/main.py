@@ -650,12 +650,15 @@ class TrackEditorApp(QMainWindow):
         voices_buttons_layout = QVBoxLayout()
         self.add_voice_button = QPushButton("Add Voice")
         self.edit_voice_button = QPushButton("Edit Voice")
+        self.group_edit_button = QPushButton("Group Edit")
         self.remove_voice_button = QPushButton("Remove Voice(s)")
         self.add_voice_button.clicked.connect(self.add_voice)
         self.edit_voice_button.clicked.connect(self.edit_voice)
+        self.group_edit_button.clicked.connect(self.group_edit_voices)
         self.remove_voice_button.clicked.connect(self.remove_voice)
         voices_buttons_layout.addWidget(self.add_voice_button)
         voices_buttons_layout.addWidget(self.edit_voice_button)
+        voices_buttons_layout.addWidget(self.group_edit_button)
         voices_buttons_layout.addWidget(self.remove_voice_button)
         self.move_voice_up_button = QPushButton("Move Up")
         self.move_voice_down_button = QPushButton("Move Down")
@@ -809,6 +812,7 @@ class TrackEditorApp(QMainWindow):
 
         if not is_single_step_selected:
             self.edit_voice_button.setEnabled(False)
+            self.group_edit_button.setEnabled(False)
             self.remove_voice_button.setEnabled(False)
             self.move_voice_up_button.setEnabled(False)
             self.move_voice_down_button.setEnabled(False)
@@ -820,6 +824,7 @@ class TrackEditorApp(QMainWindow):
         # Enable editing whenever a single voice is selected. The click handler
         # will report an error if the dialog cannot be loaded.
         self.edit_voice_button.setEnabled(is_single_voice_selection)
+        self.group_edit_button.setEnabled(num_selected_voices > 1)
         self.remove_voice_button.setEnabled(has_voice_selection)
 
         num_voices_in_current_step = 0
@@ -1521,6 +1526,53 @@ class TrackEditorApp(QMainWindow):
             self._push_history_state()
 
     @pyqtSlot()
+    def group_edit_voices(self):
+        selected_step_idx = self.get_selected_step_index()
+        selected_voice_indices = self.get_selected_voice_indices()
+        if selected_step_idx is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Group Edit", "Please select exactly one step first.")
+            return
+        if len(selected_voice_indices) < 2:
+            QMessageBox.warning(self, "Group Edit", "Select two or more voices to edit.")
+            return
+        try:
+            voices_list = self.track_data["steps"][selected_step_idx]["voices"]
+            base_func = voices_list[selected_voice_indices[0]].get("synth_function_name", "")
+            for idx in selected_voice_indices[1:]:
+                if voices_list[idx].get("synth_function_name", "") != base_func:
+                    QMessageBox.warning(self, "Group Edit", "Selected voices must use the same synth function.")
+                    return
+        except Exception as exc:
+            QMessageBox.critical(self, "Group Edit", f"Failed to load voices: {exc}")
+            return
+
+        if self.current_test_step_index == selected_step_idx and self.test_step_raw_audio:
+            self.on_reset_step_test()
+
+        dialog = VoiceEditorDialog(parent=self, app_ref=self, step_index=selected_step_idx,
+                                   voice_index=selected_voice_indices[0])
+        if dialog.exec_() == QDialog.Accepted:
+            try:
+                new_data = copy.deepcopy(self.track_data["steps"][selected_step_idx]["voices"][selected_voice_indices[0]])
+                for idx in selected_voice_indices[1:]:
+                    self.track_data["steps"][selected_step_idx]["voices"][idx] = copy.deepcopy(new_data)
+                self.refresh_steps_tree()
+                if 0 <= selected_step_idx < self.step_model.rowCount():
+                    step_idx = self.step_model.index(selected_step_idx, 0)
+                    self.steps_tree.setCurrentIndex(step_idx)
+                sel_model = self.voices_tree.selectionModel()
+                sel_model.clearSelection()
+                for vi in selected_voice_indices:
+                    if 0 <= vi < self.voice_model.rowCount():
+                        idx_obj = self.voice_model.index(vi, 0)
+                        sel_model.select(idx_obj, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                self.voices_tree.scrollTo(self.voice_model.index(selected_voice_indices[0], 0), QAbstractItemView.PositionAtCenter)
+                self._update_voice_actions_state()
+                self._push_history_state()
+            except Exception as exc:
+                QMessageBox.critical(self, "Group Edit", f"Failed to apply changes: {exc}")
+
+    @pyqtSlot()
     def remove_voice(self):
         selected_step_idx = self.get_selected_step_index()
         selected_voice_indices = self.get_selected_voice_indices()
@@ -1624,6 +1676,7 @@ class TrackEditorApp(QMainWindow):
                     del self.track_data["clips"][i]
             self.refresh_clips_tree()
             self._push_history_state()
+
 
     @pyqtSlot()
     def on_start_stop_clip(self):
