@@ -102,7 +102,15 @@ class StepModel(QAbstractTableModel):
 
 class VoiceModel(QAbstractTableModel):
     """Model holding a list of voice dictionaries for a selected step."""
-    headers = ["Synth Function", "Carrier Freq", "Beat Freq", "Transition?", "Description"]
+    headers = [
+        "Synth Function",
+        "Carrier Freq",
+        "Beat Freq",
+        "Transition?",
+        "Init Offset",
+        "Post Offset",
+        "Description",
+    ]
 
     def __init__(self, voices=None, parent=None):
         super().__init__(parent)
@@ -112,7 +120,7 @@ class VoiceModel(QAbstractTableModel):
         return len(self.voices)
 
     def columnCount(self, parent=QModelIndex()):
-        return 5
+        return len(self.headers)
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -150,6 +158,10 @@ class VoiceModel(QAbstractTableModel):
             if index.column() == 3:
                 return "Yes" if is_transition else "No"
             if index.column() == 4:
+                return self._format_number(params.get("initial_offset", 0.0)) if is_transition else "N/A"
+            if index.column() == 5:
+                return self._format_number(params.get("post_offset", 0.0)) if is_transition else "N/A"
+            if index.column() == 6:
                 return description
         return None
 
@@ -201,6 +213,20 @@ class VoiceModel(QAbstractTableModel):
             return False
         voice = self.voices[index.row()]
         if index.column() == 4:
+            try:
+                voice.setdefault('params', {})['initial_offset'] = float(value)
+            except (ValueError, TypeError):
+                return False
+            self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+            return True
+        if index.column() == 5:
+            try:
+                voice.setdefault('params', {})['post_offset'] = float(value)
+            except (ValueError, TypeError):
+                return False
+            self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+            return True
+        if index.column() == 6:
             voice['description'] = str(value).strip()
             self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
             return True
@@ -210,7 +236,7 @@ class VoiceModel(QAbstractTableModel):
         if not index.isValid():
             return Qt.ItemIsEnabled
         flags = Qt.ItemIsSelectable | Qt.ItemIsEnabled
-        if index.column() == 4:
+        if index.column() in (4, 5, 6):
             flags |= Qt.ItemIsEditable
         return flags
 
