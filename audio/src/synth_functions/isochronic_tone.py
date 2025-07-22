@@ -1,7 +1,114 @@
 """Isochronic tone synthesis functions."""
 
 import numpy as np
+import numba
 from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_alpha
+
+
+@numba.njit(fastmath=True)
+def _trapezoid_envelope_scalar(t_in_cycle, cycle_len, ramp_percent, gap_percent):
+    """Scalar version of the trapezoidal envelope generator."""
+    if cycle_len <= 0.0:
+        return 0.0
+
+    audible_len = (1.0 - gap_percent) * cycle_len
+    if audible_len <= 0.0:
+        return 0.0
+
+    ramp_total = audible_len * ramp_percent * 2.0
+    if ramp_total > audible_len:
+        ramp_total = audible_len
+
+    stable_len = audible_len - ramp_total
+    ramp_up_len = ramp_total / 2.0
+    stable_end = ramp_up_len + stable_len
+
+    if t_in_cycle >= audible_len:
+        return 0.0
+    if t_in_cycle < ramp_up_len:
+        return 0.0 if ramp_up_len == 0.0 else t_in_cycle / ramp_up_len
+    if t_in_cycle < stable_end:
+        return 1.0
+    if ramp_up_len == 0.0:
+        return 0.0
+    return 1.0 - (t_in_cycle - stable_end) / ramp_up_len
+
+
+@numba.njit(fastmath=True)
+def _isochronic_tone_core(
+    N, duration, sample_rate,
+    ampL, ampR, baseFreq, beatFreq, force_mono,
+    startPhaseL, startPhaseR,
+    ampOscDepthL, ampOscFreqL,
+    ampOscDepthR, ampOscFreqR,
+    freqOscRangeL, freqOscFreqL,
+    freqOscRangeR, freqOscFreqR,
+    ampOscPhaseOffsetL, ampOscPhaseOffsetR,
+    phaseOscFreq, phaseOscRange,
+    rampPercent, gapPercent,
+):
+    if N <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    out = np.empty((N, 2), dtype=np.float32)
+    dt = duration / N if N > 0 else 0.0
+
+    phaseL = startPhaseL
+    phaseR = startPhaseR
+
+    cycle_len = 1.0 / beatFreq if beatFreq > 1e-9 else 0.0
+    cycle_phase = 0.0
+
+    for i in range(N):
+        t = i * dt
+
+        vibL = (freqOscRangeL * 0.5) * np.sin(2 * np.pi * freqOscFreqL * t)
+        vibR = (freqOscRangeR * 0.5) * np.sin(2 * np.pi * freqOscFreqR * t)
+
+        instL = baseFreq + vibL
+        instR = baseFreq + vibR
+
+        if force_mono:
+            instL = baseFreq
+            instR = baseFreq
+
+        if instL < 0.0:
+            instL = 0.0
+        if instR < 0.0:
+            instR = 0.0
+
+        phaseL += 2 * np.pi * instL * dt
+        phaseR += 2 * np.pi * instR * dt
+
+        phL = phaseL
+        phR = phaseR
+
+        if phaseOscFreq != 0.0 or phaseOscRange != 0.0:
+            dphi = (phaseOscRange * 0.5) * np.sin(2 * np.pi * phaseOscFreq * t)
+            phL -= dphi
+            phR += dphi
+
+        if cycle_len > 0.0:
+            cycle_phase += beatFreq * dt
+            if cycle_phase >= 1.0:
+                cycle_phase -= int(cycle_phase)
+            t_in_cycle = cycle_phase * cycle_len
+        else:
+            t_in_cycle = 0.0
+
+        iso = _trapezoid_envelope_scalar(t_in_cycle, cycle_len, rampPercent, gapPercent)
+
+        envL = 1.0 - ampOscDepthL * (
+            0.5 * (1.0 + np.sin(2 * np.pi * ampOscFreqL * t + ampOscPhaseOffsetL))
+        )
+        envR = 1.0 - ampOscDepthR * (
+            0.5 * (1.0 + np.sin(2 * np.pi * ampOscFreqR * t + ampOscPhaseOffsetR))
+        )
+
+        out[i, 0] = np.float32(np.sin(phL) * iso * envL * ampL)
+        out[i, 1] = np.float32(np.sin(phR) * iso * envR * ampR)
+
+    return out
 
 
 def isochronic_tone(duration, sample_rate=44100, **params):
@@ -36,82 +143,35 @@ def isochronic_tone(duration, sample_rate=44100, **params):
     gapPercent = float(params.get('gapPercent', 0.15))
 
     N = int(sample_rate * duration)
-    if N <= 0:
-        return np.zeros((0, 2))
-
-    t = np.linspace(0, duration, N, endpoint=False)
-    dt = 1.0 / sample_rate if N > 1 else duration
-
-    # --- Instantaneous carrier frequencies (with vibrato) ---
-    vibL = (freqOscRangeL / 2.0) * np.sin(2 * np.pi * freqOscFreqL * t)
-    vibR = (freqOscRangeR / 2.0) * np.sin(2 * np.pi * freqOscFreqR * t)
-
-    inst_freq_L = baseFreq + vibL
-    inst_freq_R = baseFreq + vibR
-
-    if force_mono:
-        inst_freq_L[:] = baseFreq
-        inst_freq_R[:] = baseFreq
-
-    inst_freq_L = np.maximum(0.0, inst_freq_L)
-    inst_freq_R = np.maximum(0.0, inst_freq_R)
-
-    # --- Phase accumulation ---
-    phase_inc_L = 2 * np.pi * inst_freq_L * dt
-    phase_inc_R = 2 * np.pi * inst_freq_R * dt
-    phase_L = startPhaseL + np.cumsum(np.concatenate(([0.0], phase_inc_L[:-1])))
-    phase_R = startPhaseR + np.cumsum(np.concatenate(([0.0], phase_inc_R[:-1])))
-
-    # --- Phase modulation ---
-    if phaseOscFreq != 0.0 or phaseOscRange != 0.0:
-        dphi = (phaseOscRange / 2.0) * np.sin(2 * np.pi * phaseOscFreq * t)
-        phase_L -= dphi
-        phase_R += dphi
-
-    carrier_L = np.sin(phase_L)
-    carrier_R = np.sin(phase_R)
-
-    # --- Isochronic Envelope ---
-    instantaneous_beat_freq = np.maximum(0.0, beatFreq) # Pulse rate, ensure non-negative
-    beat_freq_array = np.full(N, instantaneous_beat_freq)
-
-    # Calculate cycle length (period) of the pulse rate
-    cycle_len_array = np.zeros_like(beat_freq_array)
-    valid_beat_mask = beat_freq_array > 1e-9 # Avoid division by zero
-
-    # Use np.errstate to suppress division by zero warnings for the masked elements
-    with np.errstate(divide='ignore', invalid='ignore'):
-        cycle_len_array[valid_beat_mask] = 1.0 / beat_freq_array[valid_beat_mask]
-        # For beat_freq == 0, cycle_len_array remains 0
-
-    # Calculate phase within the isochronic cycle (0 to 1 represents one full cycle)
-    beat_phase_cycles = np.cumsum(beat_freq_array * dt)
-
-    # Calculate time within the current cycle (handling beat_freq=0 where cycle_len=0)
-    # Use modulo 1.0 on the cycle phase, then scale by cycle length
-    t_in_cycle = np.mod(beat_phase_cycles, 1.0) * cycle_len_array
-    t_in_cycle[~valid_beat_mask] = 0.0 # Set time to 0 if beat freq is zero
-
-    # Generate the trapezoid envelope based on time within cycle
-    iso_env = trapezoid_envelope_vectorized(t_in_cycle, cycle_len_array, rampPercent, gapPercent)
-
-    # Apply envelope to carriers
-    env_amp_L = 1.0 - ampOscDepthL * (0.5 * (1.0 + np.sin(2 * np.pi * ampOscFreqL * t + ampOscPhaseOffsetL)))
-    env_amp_R = 1.0 - ampOscDepthR * (0.5 * (1.0 + np.sin(2 * np.pi * ampOscFreqR * t + ampOscPhaseOffsetR)))
-
-    left = carrier_L * iso_env * env_amp_L * ampL
-    right = carrier_R * iso_env * env_amp_R * ampR
+    audio = _isochronic_tone_core(
+        N,
+        float(duration),
+        float(sample_rate),
+        ampL,
+        ampR,
+        baseFreq,
+        beatFreq,
+        force_mono,
+        startPhaseL,
+        startPhaseR,
+        ampOscDepthL,
+        ampOscFreqL,
+        ampOscDepthR,
+        ampOscFreqR,
+        freqOscRangeL,
+        freqOscFreqL,
+        freqOscRangeR,
+        freqOscFreqR,
+        ampOscPhaseOffsetL,
+        ampOscPhaseOffsetR,
+        phaseOscFreq,
+        phaseOscRange,
+        rampPercent,
+        gapPercent,
+    )
 
     if pan != 0.0:
-        # Apply additional panning if requested
-        stereo = np.column_stack((left, right))
-        stereo = pan2(stereo.mean(axis=1), pan=pan)
-        left, right = stereo[:, 0], stereo[:, 1]
-
-    audio = np.column_stack((left, right))
-
-    # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
-    # The trapezoid envelope is inherent to the isochronic tone generation itself.
+        audio = pan2(audio.mean(axis=1), pan=pan)
 
     return audio.astype(np.float32)
 
