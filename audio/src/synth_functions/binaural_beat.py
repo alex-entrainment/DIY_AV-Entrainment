@@ -134,10 +134,10 @@ def _binaural_beat_core(
         instL[i] = max(0.0, fL_base + vibL)
         instR[i] = max(0.0, fR_base + vibR)
     
-    if beatF == 0.0:
-        for i in numba.prange(N): # Use prange
-            instL[i] = baseF
-            instR[i] = baseF
+    # If beat frequency is zero we still want any frequency oscillations to
+    # apply.  The original code overwrote the instantaneous frequency with the
+    # base value, ignoring modulation.  Dropping that behaviour keeps both
+    # channels identical while respecting `freqOsc*` parameters.
 
     phL = np.empty(N, dtype=np.float64)
     phR = np.empty(N, dtype=np.float64)
@@ -419,11 +419,11 @@ def _binaural_beat_transition_core(
         instL[i] = instL_candidate if instL_candidate > 0.0 else 0.0
         instR[i] = instR_candidate if instR_candidate > 0.0 else 0.0
         
-        if beatF_arr[i] == 0.0:
-            instL[i] = baseF_arr[i]
-            instR[i] = baseF_arr[i]
-            if instL[i] < 0.0: instL[i] = 0.0 # Ensure baseF is not negative
-            if instR[i] < 0.0: instR[i] = 0.0
+        # Previously the instantaneous frequencies were forced to the base
+        # value whenever `beatFreq` was zero.  This prevented any frequency
+        # oscillation from being applied when using a 0 Hz beat to create a
+        # monaural tone.  Removing that check allows the `freqOsc*` parameters
+        # to modulate the base frequency in both channels equally.
 
 
     # Phase accumulation (sequential)
