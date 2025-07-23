@@ -1552,13 +1552,43 @@ class TrackEditorApp(QMainWindow):
         if self.current_test_step_index == selected_step_idx and self.test_step_raw_audio:
             self.on_reset_step_test()
 
+        voices = self.track_data["steps"][selected_step_idx]["voices"]
+        original = copy.deepcopy(voices[selected_voice_indices[0]])
+
         dialog = VoiceEditorDialog(parent=self, app_ref=self, step_index=selected_step_idx,
                                    voice_index=selected_voice_indices[0])
         if dialog.exec_() == QDialog.Accepted:
             try:
-                new_data = copy.deepcopy(self.track_data["steps"][selected_step_idx]["voices"][selected_voice_indices[0]])
+                new_data = copy.deepcopy(voices[selected_voice_indices[0]])
+
+                # Determine which top-level fields changed
+                changed_fields = {
+                    k: new_data.get(k)
+                    for k in ["synth_function_name", "is_transition", "volume_envelope", "description"]
+                    if new_data.get(k) != original.get(k)
+                }
+
+                # Determine which individual parameters changed
+                old_params = original.get("params", {})
+                new_params = new_data.get("params", {})
+                changed_params = {
+                    k: new_params.get(k)
+                    for k in set(new_params.keys()) | set(old_params.keys())
+                    if new_params.get(k) != old_params.get(k)
+                }
+
                 for idx in selected_voice_indices[1:]:
-                    self.track_data["steps"][selected_step_idx]["voices"][idx] = copy.deepcopy(new_data)
+                    target = voices[idx]
+                    for f, val in changed_fields.items():
+                        target[f] = copy.deepcopy(val)
+                    if changed_params:
+                        target.setdefault("params", {})
+                        for p, val in changed_params.items():
+                            if val is None:
+                                target["params"].pop(p, None)
+                            else:
+                                target["params"][p] = copy.deepcopy(val)
+
                 self.refresh_steps_tree()
                 if 0 <= selected_step_idx < self.step_model.rowCount():
                     step_idx = self.step_model.index(selected_step_idx, 0)
