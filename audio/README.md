@@ -127,6 +127,7 @@ and Overlay Clips – plus a test preview section and several helper tools.
 
 - **Add Voice** – open the Voice Editor dialog to configure a new voice.
 - **Edit Voice** – modify parameters of the highlighted voice.
+- **Duplicate Voice** – copy the selected voice within the current step.
 - **Remove Voice(s)** – delete selected voices from the step.
 - **Move Up/Move Down** – change a voice's order (affects mixing priority).
 

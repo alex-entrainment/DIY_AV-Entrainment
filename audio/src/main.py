@@ -654,14 +654,17 @@ class TrackEditorApp(QMainWindow):
         self.add_voice_button = QPushButton("Add Voice")
         self.edit_voice_button = QPushButton("Edit Voice")
         self.group_edit_button = QPushButton("Group Edit")
+        self.duplicate_voice_button = QPushButton("Duplicate Voice")
         self.remove_voice_button = QPushButton("Remove Voice(s)")
         self.add_voice_button.clicked.connect(self.add_voice)
         self.edit_voice_button.clicked.connect(self.edit_voice)
         self.group_edit_button.clicked.connect(self.group_edit_voices)
+        self.duplicate_voice_button.clicked.connect(self.duplicate_voice)
         self.remove_voice_button.clicked.connect(self.remove_voice)
         voices_buttons_layout.addWidget(self.add_voice_button)
         voices_buttons_layout.addWidget(self.edit_voice_button)
         voices_buttons_layout.addWidget(self.group_edit_button)
+        voices_buttons_layout.addWidget(self.duplicate_voice_button)
         voices_buttons_layout.addWidget(self.remove_voice_button)
         self.move_voice_up_button = QPushButton("Move Up")
         self.move_voice_down_button = QPushButton("Move Down")
@@ -816,6 +819,7 @@ class TrackEditorApp(QMainWindow):
         if not is_single_step_selected:
             self.edit_voice_button.setEnabled(False)
             self.group_edit_button.setEnabled(False)
+            self.duplicate_voice_button.setEnabled(False)
             self.remove_voice_button.setEnabled(False)
             self.move_voice_up_button.setEnabled(False)
             self.move_voice_down_button.setEnabled(False)
@@ -828,6 +832,7 @@ class TrackEditorApp(QMainWindow):
         # will report an error if the dialog cannot be loaded.
         self.edit_voice_button.setEnabled(is_single_voice_selection)
         self.group_edit_button.setEnabled(num_selected_voices > 1)
+        self.duplicate_voice_button.setEnabled(is_single_voice_selection)
         self.remove_voice_button.setEnabled(has_voice_selection)
 
         num_voices_in_current_step = 0
@@ -1604,6 +1609,39 @@ class TrackEditorApp(QMainWindow):
                 self._push_history_state()
             except Exception as exc:
                 QMessageBox.critical(self, "Group Edit", f"Failed to apply changes: {exc}")
+
+    @pyqtSlot()
+    def duplicate_voice(self):
+        selected_step_idx = self.get_selected_step_index()
+        selected_voice_idx = self.get_selected_voice_index()
+        if selected_step_idx is None or selected_voice_idx is None or \
+           len(self.get_selected_step_indices()) != 1 or len(self.get_selected_voice_indices()) != 1:
+            QMessageBox.warning(self, "Duplicate Voice", "Please select exactly one step and one voice to duplicate.")
+            return
+
+        if self.current_test_step_index == selected_step_idx and self.test_step_raw_audio:
+            self.on_reset_step_test()
+
+        try:
+            voices_list = self.track_data["steps"][selected_step_idx]["voices"]
+            original_voice = voices_list[selected_voice_idx]
+            duplicated_voice = copy.deepcopy(original_voice)
+            insert_idx = selected_voice_idx + 1
+            voices_list.insert(insert_idx, duplicated_voice)
+            self.refresh_voices_tree()
+            if 0 <= insert_idx < self.voice_model.rowCount():
+                idx = self.voice_model.index(insert_idx, 0)
+                self.voices_tree.selectionModel().clearSelection()
+                self.voices_tree.setCurrentIndex(idx)
+                self.voices_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                self.voices_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
+            self._push_history_state()
+        except IndexError:
+            QMessageBox.critical(self, "Error", "Failed to duplicate voice (index out of range).")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to duplicate voice:\n{e}")
+            traceback.print_exc()
+        self._update_voice_actions_state()
 
     @pyqtSlot()
     def remove_voice(self):
