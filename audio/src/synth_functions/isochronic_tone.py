@@ -2,7 +2,7 @@
 
 import numpy as np
 import numba
-from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_alpha
+from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_alpha, skewed_sine_phase, _frac
 
 
 @numba.njit(fastmath=True)
@@ -43,7 +43,9 @@ def _isochronic_tone_core(
     ampOscDepthR, ampOscFreqR,
     freqOscRangeL, freqOscFreqL,
     freqOscRangeR, freqOscFreqR,
+    freqOscSkewL, freqOscSkewR,
     ampOscPhaseOffsetL, ampOscPhaseOffsetR,
+    ampOscSkewL, ampOscSkewR,
     phaseOscFreq, phaseOscRange,
     rampPercent, gapPercent,
 ):
@@ -62,8 +64,8 @@ def _isochronic_tone_core(
     for i in range(N):
         t = i * dt
 
-        vibL = (freqOscRangeL * 0.5) * np.sin(2 * np.pi * freqOscFreqL * t)
-        vibR = (freqOscRangeR * 0.5) * np.sin(2 * np.pi * freqOscFreqR * t)
+        vibL = (freqOscRangeL * 0.5) * skewed_sine_phase(_frac(freqOscFreqL * t), freqOscSkewL)
+        vibR = (freqOscRangeR * 0.5) * skewed_sine_phase(_frac(freqOscFreqR * t), freqOscSkewR)
 
         instL = baseFreq + vibL
         instR = baseFreq + vibR
@@ -99,10 +101,10 @@ def _isochronic_tone_core(
         iso = _trapezoid_envelope_scalar(t_in_cycle, cycle_len, rampPercent, gapPercent)
 
         envL = 1.0 - ampOscDepthL * (
-            0.5 * (1.0 + np.sin(2 * np.pi * ampOscFreqL * t + ampOscPhaseOffsetL))
+            0.5 * (1.0 + skewed_sine_phase(_frac(ampOscFreqL * t + ampOscPhaseOffsetL/(2*np.pi)), ampOscSkewL))
         )
         envR = 1.0 - ampOscDepthR * (
-            0.5 * (1.0 + np.sin(2 * np.pi * ampOscFreqR * t + ampOscPhaseOffsetR))
+            0.5 * (1.0 + skewed_sine_phase(_frac(ampOscFreqR * t + ampOscPhaseOffsetR/(2*np.pi)), ampOscSkewR))
         )
 
         out[i, 0] = np.float32(np.sin(phL) * iso * envL * ampL)
@@ -134,8 +136,12 @@ def isochronic_tone(duration, sample_rate=44100, **params):
     freqOscFreqL = float(params.get('freqOscFreqL', 0.0))
     freqOscRangeR = float(params.get('freqOscRangeR', 0.0))
     freqOscFreqR = float(params.get('freqOscFreqR', 0.0))
+    freqOscSkewL = float(params.get('freqOscSkewL', 0.0))
+    freqOscSkewR = float(params.get('freqOscSkewR', 0.0))
     ampOscPhaseOffsetL = float(params.get('ampOscPhaseOffsetL', 0.0))
     ampOscPhaseOffsetR = float(params.get('ampOscPhaseOffsetR', 0.0))
+    ampOscSkewL = float(params.get('ampOscSkewL', 0.0))
+    ampOscSkewR = float(params.get('ampOscSkewR', 0.0))
     phaseOscFreq = float(params.get('phaseOscFreq', 0.0))
     phaseOscRange = float(params.get('phaseOscRange', 0.0))
 
@@ -162,8 +168,12 @@ def isochronic_tone(duration, sample_rate=44100, **params):
         freqOscFreqL,
         freqOscRangeR,
         freqOscFreqR,
+        freqOscSkewL,
+        freqOscSkewR,
         ampOscPhaseOffsetL,
         ampOscPhaseOffsetR,
+        ampOscSkewL,
+        ampOscSkewR,
         phaseOscFreq,
         phaseOscRange,
         rampPercent,
@@ -206,6 +216,10 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     endAODR = float(params.get('endAmpOscDepthR', startAODR))
     startAOFR = float(params.get('startAmpOscFreqR', params.get('ampOscFreqR', 0.0)))
     endAOFR = float(params.get('endAmpOscFreqR', startAOFR))
+    startAmpOscSkewL = float(params.get('startAmpOscSkewL', params.get('ampOscSkewL', 0.0)))
+    endAmpOscSkewL = float(params.get('endAmpOscSkewL', startAmpOscSkewL))
+    startAmpOscSkewR = float(params.get('startAmpOscSkewR', params.get('ampOscSkewR', 0.0)))
+    endAmpOscSkewR = float(params.get('endAmpOscSkewR', startAmpOscSkewR))
     startAmpOscPhaseOffsetL = float(params.get('startAmpOscPhaseOffsetL', params.get('ampOscPhaseOffsetL', 0.0)))
     endAmpOscPhaseOffsetL = float(params.get('endAmpOscPhaseOffsetL', startAmpOscPhaseOffsetL))
     startAmpOscPhaseOffsetR = float(params.get('startAmpOscPhaseOffsetR', params.get('ampOscPhaseOffsetR', 0.0)))
@@ -219,6 +233,10 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     endFORR = float(params.get('endFreqOscRangeR', startFORR))
     startFOFR = float(params.get('startFreqOscFreqR', params.get('freqOscFreqR', 0.0)))
     endFOFR = float(params.get('endFreqOscFreqR', startFOFR))
+    startFreqOscSkewL = float(params.get('startFreqOscSkewL', params.get('freqOscSkewL', 0.0)))
+    endFreqOscSkewL = float(params.get('endFreqOscSkewL', startFreqOscSkewL))
+    startFreqOscSkewR = float(params.get('startFreqOscSkewR', params.get('freqOscSkewR', 0.0)))
+    endFreqOscSkewR = float(params.get('endFreqOscSkewR', startFreqOscSkewR))
 
     startPOF = float(params.get('startPhaseOscFreq', params.get('phaseOscFreq', 0.0)))
     endPOF = float(params.get('endPhaseOscFreq', startPOF))
@@ -260,9 +278,15 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     dt = 1.0 / sample_rate if N > 1 else duration
 
     vibL = (startFORL + (endFORL - startFORL) * alpha) / 2.0
-    vibL *= np.sin(2 * np.pi * (startFOFL + (endFOFL - startFOFL) * alpha) * t)
+    vibL *= skewed_sine_phase(
+        _frac((startFOFL + (endFOFL - startFOFL) * alpha) * t),
+        startFreqOscSkewL + (endFreqOscSkewL - startFreqOscSkewL) * alpha,
+    )
     vibR = (startFORR + (endFORR - startFORR) * alpha) / 2.0
-    vibR *= np.sin(2 * np.pi * (startFOFR + (endFOFR - startFOFR) * alpha) * t)
+    vibR *= skewed_sine_phase(
+        _frac((startFOFR + (endFOFR - startFOFR) * alpha) * t),
+        startFreqOscSkewR + (endFreqOscSkewR - startFreqOscSkewR) * alpha,
+    )
 
     inst_freq_L = instantaneous_carrier_freq_array + vibL
     inst_freq_R = instantaneous_carrier_freq_array + vibR
@@ -312,12 +336,18 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
 
 
     env_amp_L = 1.0 - (startAODL + (endAODL - startAODL) * alpha) * (
-        0.5 * (1.0 + np.sin(2 * np.pi * (startAOFL + (endAOFL - startAOFL) * alpha) * t +
-                           (startAmpOscPhaseOffsetL + (endAmpOscPhaseOffsetL - startAmpOscPhaseOffsetL) * alpha)))
+        0.5 * (1.0 + skewed_sine_phase(
+            _frac((startAOFL + (endAOFL - startAOFL) * alpha) * t +
+                  (startAmpOscPhaseOffsetL + (endAmpOscPhaseOffsetL - startAmpOscPhaseOffsetL) * alpha) / (2*np.pi)),
+            startAmpOscSkewL + (endAmpOscSkewL - startAmpOscSkewL) * alpha,
+        ))
     )
     env_amp_R = 1.0 - (startAODR + (endAODR - startAODR) * alpha) * (
-        0.5 * (1.0 + np.sin(2 * np.pi * (startAOFR + (endAOFR - startAOFR) * alpha) * t +
-                           (startAmpOscPhaseOffsetR + (endAmpOscPhaseOffsetR - startAmpOscPhaseOffsetR) * alpha)))
+        0.5 * (1.0 + skewed_sine_phase(
+            _frac((startAOFR + (endAOFR - startAOFR) * alpha) * t +
+                  (startAmpOscPhaseOffsetR + (endAmpOscPhaseOffsetR - startAmpOscPhaseOffsetR) * alpha) / (2*np.pi)),
+            startAmpOscSkewR + (endAmpOscSkewR - startAmpOscSkewR) * alpha,
+        ))
     )
 
     ampL_arr = startAmpL + (endAmpL - startAmpL) * alpha
