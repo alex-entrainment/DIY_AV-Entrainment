@@ -2,6 +2,7 @@
 
 import numpy as np
 import numba
+from .common import skewed_sine_phase, _frac
 
 
 def binaural_beat(duration, sample_rate=44100, **params):
@@ -20,8 +21,12 @@ def binaural_beat(duration, sample_rate=44100, **params):
     fOFL = float(params.get('freqOscFreqL', 0.0))
     fORR = float(params.get('freqOscRangeR', 0.0))
     fOFR = float(params.get('freqOscFreqR', 0.0))
+    freqOscSkewL = float(params.get('freqOscSkewL', 0.0))
+    freqOscSkewR = float(params.get('freqOscSkewR', 0.0))
     ampOscPhaseOffsetL = float(params.get('ampOscPhaseOffsetL', 0.0))
     ampOscPhaseOffsetR = float(params.get('ampOscPhaseOffsetR', 0.0))
+    ampOscSkewL = float(params.get('ampOscSkewL', 0.0))
+    ampOscSkewR = float(params.get('ampOscSkewR', 0.0))
     pOF = float(params.get('phaseOscFreq', 0.0))
     pOR = float(params.get('phaseOscRange', 0.0)) # in radians
 
@@ -99,7 +104,9 @@ def binaural_beat(duration, sample_rate=44100, **params):
         startL, startR, pOF, pOR,
         aODL, aOFL, aODR, aOFR,
         ampOscPhaseOffsetL, ampOscPhaseOffsetR,
+        ampOscSkewL, ampOscSkewR,
         fORL, fOFL, fORR, fOFR,
+        freqOscSkewL, freqOscSkewR,
         pos_arr, burst_arr
     )
 
@@ -111,7 +118,9 @@ def _binaural_beat_core(
     startL, startR, pOF, pOR,
     aODL, aOFL, aODR, aOFR,
     ampOscPhaseOffsetL, ampOscPhaseOffsetR,
+    ampOscSkewL, ampOscSkewR,
     fORL, fOFL, fORR, fOFR,
+    freqOscSkewL, freqOscSkewR,
     pos,   # int32[:] start indices
     burst  # float32[:] concatenated glitch samples
 ):
@@ -129,8 +138,10 @@ def _binaural_beat_core(
     instL = np.empty(N, dtype=np.float64)
     instR = np.empty(N, dtype=np.float64)
     for i in numba.prange(N): # Use prange
-        vibL = (fORL/2.0) * np.sin(2*np.pi*fOFL*t[i])
-        vibR = (fORR/2.0) * np.sin(2*np.pi*fOFR*t[i])
+        phaseL = fOFL * t[i]
+        phaseR = fOFR * t[i]
+        vibL = (fORL/2.0) * skewed_sine_phase(_frac(phaseL), freqOscSkewL)
+        vibR = (fORR/2.0) * skewed_sine_phase(_frac(phaseR), freqOscSkewR)
         instL[i] = max(0.0, fL_base + vibL)
         instR[i] = max(0.0, fR_base + vibR)
     
@@ -158,8 +169,10 @@ def _binaural_beat_core(
     envL = np.empty(N, dtype=np.float64)
     envR = np.empty(N, dtype=np.float64)
     for i in numba.prange(N): # Use prange
-        envL[i] = 1.0 - aODL * (0.5*(1.0 + np.sin(2*np.pi*aOFL*t[i] + ampOscPhaseOffsetL)))
-        envR[i] = 1.0 - aODR * (0.5*(1.0 + np.sin(2*np.pi*aOFR*t[i] + ampOscPhaseOffsetR)))
+        phaseL = aOFL*t[i] + ampOscPhaseOffsetL/(2*np.pi)
+        phaseR = aOFR*t[i] + ampOscPhaseOffsetR/(2*np.pi)
+        envL[i] = 1.0 - aODL * (0.5*(1.0 + skewed_sine_phase(_frac(phaseL), ampOscSkewL)))
+        envR[i] = 1.0 - aODR * (0.5*(1.0 + skewed_sine_phase(_frac(phaseR), ampOscSkewR)))
 
     out = np.empty((N,2), dtype=np.float32)
     for i in numba.prange(N): # Use prange
@@ -225,6 +238,10 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     endAODR = float(params.get('endAmpOscDepthR', startAODR))
     startAOFR = float(params.get('startAmpOscFreqR', params.get('ampOscFreqR', 0.0)))
     endAOFR = float(params.get('endAmpOscFreqR', startAOFR))
+    startAmpOscSkewL = float(params.get('startAmpOscSkewL', params.get('ampOscSkewL', 0.0)))
+    endAmpOscSkewL = float(params.get('endAmpOscSkewL', startAmpOscSkewL))
+    startAmpOscSkewR = float(params.get('startAmpOscSkewR', params.get('ampOscSkewR', 0.0)))
+    endAmpOscSkewR = float(params.get('endAmpOscSkewR', startAmpOscSkewR))
 
     startAmpOscPhaseOffsetL = float(params.get('startAmpOscPhaseOffsetL', params.get('ampOscPhaseOffsetL', 0.0)))
     endAmpOscPhaseOffsetL = float(params.get('endAmpOscPhaseOffsetL', startAmpOscPhaseOffsetL))
@@ -239,6 +256,10 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     endFORR = float(params.get('endFreqOscRangeR', startFORR))
     startFOFR = float(params.get('startFreqOscFreqR', params.get('freqOscFreqR', 0.0)))
     endFOFR = float(params.get('endFreqOscFreqR', startFOFR))
+    startFreqOscSkewL = float(params.get('startFreqOscSkewL', params.get('freqOscSkewL', 0.0)))
+    endFreqOscSkewL = float(params.get('endFreqOscSkewL', startFreqOscSkewL))
+    startFreqOscSkewR = float(params.get('startFreqOscSkewR', params.get('freqOscSkewR', 0.0)))
+    endFreqOscSkewR = float(params.get('endFreqOscSkewR', startFreqOscSkewR))
 
     # Glitch parameters (using average for pre-computation)
     s_glitchInterval = float(params.get('startGlitchInterval', params.get('glitchInterval', 0.0)))
@@ -332,8 +353,12 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
         startAODR, endAODR, startAOFR, endAOFR,
         startAmpOscPhaseOffsetL, endAmpOscPhaseOffsetL,
         startAmpOscPhaseOffsetR, endAmpOscPhaseOffsetR,
+        startAmpOscSkewL, endAmpOscSkewL,
+        startAmpOscSkewR, endAmpOscSkewR,
         startFORL, endFORL, startFOFL, endFOFL,
         startFORR, endFORR, startFOFR, endFOFR,
+        startFreqOscSkewL, endFreqOscSkewL,
+        startFreqOscSkewR, endFreqOscSkewR,
         pos_arr, burst_arr, # Pass pre-calculated glitches
         alpha_arr
     )
@@ -350,8 +375,12 @@ def _binaural_beat_transition_core(
     startAODR, endAODR, startAOFR, endAOFR,
     startAmpOscPhaseOffsetL, endAmpOscPhaseOffsetL,
     startAmpOscPhaseOffsetR, endAmpOscPhaseOffsetR,
+    startAmpOscSkewL, endAmpOscSkewL,
+    startAmpOscSkewR, endAmpOscSkewR,
     startFORL, endFORL, startFOFL, endFOFL,
     startFORR, endFORR, startFOFR, endFOFR,
+    startFreqOscSkewL, endFreqOscSkewL,
+    startFreqOscSkewR, endFreqOscSkewR,
     pos, burst, # Glitch arrays (static for this core run)
     alpha_arr
 ):
@@ -374,10 +403,14 @@ def _binaural_beat_transition_core(
     aOFR_arr = np.empty(N, np.float64)
     ampOscPhaseOffsetL_arr = np.empty(N, np.float64)
     ampOscPhaseOffsetR_arr = np.empty(N, np.float64)
+    ampOscSkewL_arr = np.empty(N, np.float64)
+    ampOscSkewR_arr = np.empty(N, np.float64)
     fORL_arr = np.empty(N, np.float64)
     fOFL_arr = np.empty(N, np.float64)
     fORR_arr = np.empty(N, np.float64)
     fOFR_arr = np.empty(N, np.float64)
+    freqOscSkewL_arr = np.empty(N, np.float64)
+    freqOscSkewR_arr = np.empty(N, np.float64)
     
     instL = np.empty(N, np.float64)
     instR = np.empty(N, np.float64)
@@ -400,18 +433,24 @@ def _binaural_beat_transition_core(
         aOFR_arr[i] = startAOFR + (endAOFR - startAOFR) * alpha
         ampOscPhaseOffsetL_arr[i] = startAmpOscPhaseOffsetL + (endAmpOscPhaseOffsetL - startAmpOscPhaseOffsetL) * alpha
         ampOscPhaseOffsetR_arr[i] = startAmpOscPhaseOffsetR + (endAmpOscPhaseOffsetR - startAmpOscPhaseOffsetR) * alpha
+        ampOscSkewL_arr[i] = startAmpOscSkewL + (endAmpOscSkewL - startAmpOscSkewL) * alpha
+        ampOscSkewR_arr[i] = startAmpOscSkewR + (endAmpOscSkewR - startAmpOscSkewR) * alpha
         fORL_arr[i] = startFORL + (endFORL - startFORL) * alpha
         fOFL_arr[i] = startFOFL + (endFOFL - startFOFL) * alpha
         fORR_arr[i] = startFORR + (endFORR - startFORR) * alpha
         fOFR_arr[i] = startFOFR + (endFOFR - startFOFR) * alpha
+        freqOscSkewL_arr[i] = startFreqOscSkewL + (endFreqOscSkewL - startFreqOscSkewL) * alpha
+        freqOscSkewR_arr[i] = startFreqOscSkewR + (endFreqOscSkewR - startFreqOscSkewR) * alpha
 
         # Instantaneous frequencies
         halfB_i = beatF_arr[i] * 0.5
         fL_base_i = baseF_arr[i] - halfB_i
         fR_base_i = baseF_arr[i] + halfB_i
 
-        vibL_i = (fORL_arr[i]/2.0) * np.sin(2*np.pi*fOFL_arr[i]*t_arr[i])
-        vibR_i = (fORR_arr[i]/2.0) * np.sin(2*np.pi*fOFR_arr[i]*t_arr[i])
+        phL_frac = _frac(fOFL_arr[i]*t_arr[i])
+        phR_frac = _frac(fOFR_arr[i]*t_arr[i])
+        vibL_i = (fORL_arr[i]/2.0) * skewed_sine_phase(phL_frac, freqOscSkewL_arr[i])
+        vibR_i = (fORR_arr[i]/2.0) * skewed_sine_phase(phR_frac, freqOscSkewR_arr[i])
         
         instL_candidate = fL_base_i + vibL_i
         instR_candidate = fR_base_i + vibR_i
@@ -456,8 +495,10 @@ def _binaural_beat_transition_core(
     envL = np.empty(N, np.float64)
     envR = np.empty(N, np.float64)
     for i in numba.prange(N): # Parallel
-        envL[i] = 1.0 - aODL_arr[i] * (0.5*(1.0 + np.sin(2*np.pi*aOFL_arr[i]*t_arr[i] + ampOscPhaseOffsetL_arr[i])))
-        envR[i] = 1.0 - aODR_arr[i] * (0.5*(1.0 + np.sin(2*np.pi*aOFR_arr[i]*t_arr[i] + ampOscPhaseOffsetR_arr[i])))
+        phL_env = aOFL_arr[i]*t_arr[i] + ampOscPhaseOffsetL_arr[i]/(2*np.pi)
+        phR_env = aOFR_arr[i]*t_arr[i] + ampOscPhaseOffsetR_arr[i]/(2*np.pi)
+        envL[i] = 1.0 - aODL_arr[i] * (0.5*(1.0 + skewed_sine_phase(_frac(phL_env), ampOscSkewL_arr[i])))
+        envR[i] = 1.0 - aODR_arr[i] * (0.5*(1.0 + skewed_sine_phase(_frac(phR_env), ampOscSkewR_arr[i])))
 
     # Generate output
     out = np.empty((N, 2), dtype=np.float32)
