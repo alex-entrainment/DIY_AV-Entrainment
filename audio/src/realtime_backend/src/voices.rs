@@ -136,6 +136,8 @@ pub struct BinauralBeatVoice {
     freq_osc_freq_l: f32,
     freq_osc_range_r: f32,
     freq_osc_freq_r: f32,
+    freq_osc_phase_offset_l: f32,
+    freq_osc_phase_offset_r: f32,
     amp_osc_phase_offset_l: f32,
     amp_osc_phase_offset_r: f32,
     phase_osc_freq: f32,
@@ -186,6 +188,10 @@ pub struct BinauralBeatTransitionVoice {
     end_freq_osc_range_r: f32,
     start_freq_osc_freq_r: f32,
     end_freq_osc_freq_r: f32,
+    start_freq_osc_phase_offset_l: f32,
+    end_freq_osc_phase_offset_l: f32,
+    start_freq_osc_phase_offset_r: f32,
+    end_freq_osc_phase_offset_r: f32,
     curve: TransitionCurve,
     initial_offset: f32,
     post_offset: f32,
@@ -213,6 +219,8 @@ pub struct IsochronicToneVoice {
     freq_osc_freq_l: f32,
     freq_osc_range_r: f32,
     freq_osc_freq_r: f32,
+    freq_osc_phase_offset_l: f32,
+    freq_osc_phase_offset_r: f32,
     amp_osc_phase_offset_l: f32,
     amp_osc_phase_offset_r: f32,
     phase_osc_freq: f32,
@@ -267,6 +275,10 @@ pub struct IsochronicToneTransitionVoice {
     end_freq_osc_range_r: f32,
     start_freq_osc_freq_r: f32,
     end_freq_osc_freq_r: f32,
+    start_freq_osc_phase_offset_l: f32,
+    end_freq_osc_phase_offset_l: f32,
+    start_freq_osc_phase_offset_r: f32,
+    end_freq_osc_phase_offset_r: f32,
     ramp_percent: f32,
     gap_percent: f32,
     pan: f32,
@@ -776,6 +788,8 @@ impl BinauralBeatVoice {
         let freq_osc_freq_l = get_f32(params, "freqOscFreqL", 0.0);
         let freq_osc_range_r = get_f32(params, "freqOscRangeR", 0.0);
         let freq_osc_freq_r = get_f32(params, "freqOscFreqR", 0.0);
+        let freq_osc_phase_offset_l = get_f32(params, "freqOscPhaseOffsetL", 0.0);
+        let freq_osc_phase_offset_r = get_f32(params, "freqOscPhaseOffsetR", 0.0);
         let amp_osc_phase_offset_l = get_f32(params, "ampOscPhaseOffsetL", 0.0);
         let amp_osc_phase_offset_r = get_f32(params, "ampOscPhaseOffsetR", 0.0);
         let phase_osc_freq = get_f32(params, "phaseOscFreq", 0.0);
@@ -798,6 +812,8 @@ impl BinauralBeatVoice {
             freq_osc_freq_l,
             freq_osc_range_r,
             freq_osc_freq_r,
+            freq_osc_phase_offset_l,
+            freq_osc_phase_offset_r,
             amp_osc_phase_offset_l,
             amp_osc_phase_offset_r,
             phase_osc_freq,
@@ -919,6 +935,26 @@ impl BinauralBeatTransitionVoice {
             get_f32(params, "freqOscFreqR", 0.0),
         );
         let end_freq_osc_freq_r = get_f32(params, "endFreqOscFreqR", start_freq_osc_freq_r);
+        let start_freq_osc_phase_offset_l = get_f32(
+            params,
+            "startFreqOscPhaseOffsetL",
+            get_f32(params, "freqOscPhaseOffsetL", 0.0),
+        );
+        let end_freq_osc_phase_offset_l = get_f32(
+            params,
+            "endFreqOscPhaseOffsetL",
+            start_freq_osc_phase_offset_l,
+        );
+        let start_freq_osc_phase_offset_r = get_f32(
+            params,
+            "startFreqOscPhaseOffsetR",
+            get_f32(params, "freqOscPhaseOffsetR", 0.0),
+        );
+        let end_freq_osc_phase_offset_r = get_f32(
+            params,
+            "endFreqOscPhaseOffsetR",
+            start_freq_osc_phase_offset_r,
+        );
 
         let curve = TransitionCurve::from_str(
             params
@@ -970,6 +1006,10 @@ impl BinauralBeatTransitionVoice {
             end_freq_osc_range_r,
             start_freq_osc_freq_r,
             end_freq_osc_freq_r,
+            start_freq_osc_phase_offset_l,
+            end_freq_osc_phase_offset_l,
+            start_freq_osc_phase_offset_r,
+            end_freq_osc_phase_offset_r,
             curve,
             initial_offset,
             post_offset,
@@ -1001,6 +1041,8 @@ impl IsochronicToneVoice {
         let freq_osc_freq_l = get_f32(params, "freqOscFreqL", 0.0);
         let freq_osc_range_r = get_f32(params, "freqOscRangeR", 0.0);
         let freq_osc_freq_r = get_f32(params, "freqOscFreqR", 0.0);
+        let freq_osc_phase_offset_l = get_f32(params, "freqOscPhaseOffsetL", 0.0);
+        let freq_osc_phase_offset_r = get_f32(params, "freqOscPhaseOffsetR", 0.0);
         let amp_osc_phase_offset_l = get_f32(params, "ampOscPhaseOffsetL", 0.0);
         let amp_osc_phase_offset_r = get_f32(params, "ampOscPhaseOffsetR", 0.0);
         let phase_osc_freq = get_f32(params, "phaseOscFreq", 0.0);
@@ -1027,6 +1069,8 @@ impl IsochronicToneVoice {
             freq_osc_freq_l,
             freq_osc_range_r,
             freq_osc_freq_r,
+            freq_osc_phase_offset_l,
+            freq_osc_phase_offset_r,
             amp_osc_phase_offset_l,
             amp_osc_phase_offset_r,
             phase_osc_freq,
@@ -1760,11 +1804,11 @@ impl Voice for BinauralBeatVoice {
             let half_beat = self.beat_freq * 0.5;
             let mut freq_l = self.base_freq - half_beat
                 + (self.freq_osc_range_l * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t);
+                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t + self.freq_osc_phase_offset_l);
             let mut freq_r = self.base_freq
                 + half_beat
                 + (self.freq_osc_range_r * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t);
+                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t + self.freq_osc_phase_offset_r);
 
             if self.force_mono || self.beat_freq == 0.0 {
                 freq_l = self.base_freq.max(0.0);
@@ -1889,11 +1933,11 @@ impl Voice for BinauralBeatTransitionVoice {
             let half_beat = beat_freq * 0.5;
             let mut freq_l = base_freq - half_beat
                 + (freq_osc_range_l * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t);
+                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t + start_freq_osc_phase_offset_l + (end_freq_osc_phase_offset_l - start_freq_osc_phase_offset_l) * alpha);
             let mut freq_r = base_freq
                 + half_beat
                 + (freq_osc_range_r * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t);
+                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t + start_freq_osc_phase_offset_r + (end_freq_osc_phase_offset_r - start_freq_osc_phase_offset_r) * alpha);
 
             if force_mono || beat_freq == 0.0 {
                 freq_l = base_freq.max(0.0);

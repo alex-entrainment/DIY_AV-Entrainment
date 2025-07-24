@@ -43,6 +43,7 @@ def _isochronic_tone_core(
     ampOscDepthR, ampOscFreqR,
     freqOscRangeL, freqOscFreqL,
     freqOscRangeR, freqOscFreqR,
+    freqOscPhaseOffsetL, freqOscPhaseOffsetR,
     ampOscPhaseOffsetL, ampOscPhaseOffsetR,
     phaseOscFreq, phaseOscRange,
     rampPercent, gapPercent,
@@ -62,8 +63,8 @@ def _isochronic_tone_core(
     for i in range(N):
         t = i * dt
 
-        vibL = (freqOscRangeL * 0.5) * np.sin(2 * np.pi * freqOscFreqL * t)
-        vibR = (freqOscRangeR * 0.5) * np.sin(2 * np.pi * freqOscFreqR * t)
+        vibL = (freqOscRangeL * 0.5) * np.sin(2 * np.pi * freqOscFreqL * t + freqOscPhaseOffsetL)
+        vibR = (freqOscRangeR * 0.5) * np.sin(2 * np.pi * freqOscFreqR * t + freqOscPhaseOffsetR)
 
         instL = baseFreq + vibL
         instR = baseFreq + vibR
@@ -134,6 +135,8 @@ def isochronic_tone(duration, sample_rate=44100, **params):
     freqOscFreqL = float(params.get('freqOscFreqL', 0.0))
     freqOscRangeR = float(params.get('freqOscRangeR', 0.0))
     freqOscFreqR = float(params.get('freqOscFreqR', 0.0))
+    freqOscPhaseOffsetL = float(params.get('freqOscPhaseOffsetL', 0.0))
+    freqOscPhaseOffsetR = float(params.get('freqOscPhaseOffsetR', 0.0))
     ampOscPhaseOffsetL = float(params.get('ampOscPhaseOffsetL', 0.0))
     ampOscPhaseOffsetR = float(params.get('ampOscPhaseOffsetR', 0.0))
     phaseOscFreq = float(params.get('phaseOscFreq', 0.0))
@@ -162,6 +165,8 @@ def isochronic_tone(duration, sample_rate=44100, **params):
         freqOscFreqL,
         freqOscRangeR,
         freqOscFreqR,
+        freqOscPhaseOffsetL,
+        freqOscPhaseOffsetR,
         ampOscPhaseOffsetL,
         ampOscPhaseOffsetR,
         phaseOscFreq,
@@ -210,6 +215,11 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     endAmpOscPhaseOffsetL = float(params.get('endAmpOscPhaseOffsetL', startAmpOscPhaseOffsetL))
     startAmpOscPhaseOffsetR = float(params.get('startAmpOscPhaseOffsetR', params.get('ampOscPhaseOffsetR', 0.0)))
     endAmpOscPhaseOffsetR = float(params.get('endAmpOscPhaseOffsetR', startAmpOscPhaseOffsetR))
+
+    startFreqOscPhaseOffsetL = float(params.get('startFreqOscPhaseOffsetL', params.get('freqOscPhaseOffsetL', 0.0)))
+    endFreqOscPhaseOffsetL = float(params.get('endFreqOscPhaseOffsetL', startFreqOscPhaseOffsetL))
+    startFreqOscPhaseOffsetR = float(params.get('startFreqOscPhaseOffsetR', params.get('freqOscPhaseOffsetR', 0.0)))
+    endFreqOscPhaseOffsetR = float(params.get('endFreqOscPhaseOffsetR', startFreqOscPhaseOffsetR))
 
     startFORL = float(params.get('startFreqOscRangeL', params.get('freqOscRangeL', 0.0)))
     endFORL = float(params.get('endFreqOscRangeL', startFORL))
@@ -260,9 +270,11 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     dt = 1.0 / sample_rate if N > 1 else duration
 
     vibL = (startFORL + (endFORL - startFORL) * alpha) / 2.0
-    vibL *= np.sin(2 * np.pi * (startFOFL + (endFOFL - startFOFL) * alpha) * t)
+    vibL *= np.sin(2 * np.pi * (startFOFL + (endFOFL - startFOFL) * alpha) * t +
+                   (startFreqOscPhaseOffsetL + (endFreqOscPhaseOffsetL - startFreqOscPhaseOffsetL) * alpha))
     vibR = (startFORR + (endFORR - startFORR) * alpha) / 2.0
-    vibR *= np.sin(2 * np.pi * (startFOFR + (endFOFR - startFOFR) * alpha) * t)
+    vibR *= np.sin(2 * np.pi * (startFOFR + (endFOFR - startFOFR) * alpha) * t +
+                   (startFreqOscPhaseOffsetR + (endFreqOscPhaseOffsetR - startFreqOscPhaseOffsetR) * alpha))
 
     inst_freq_L = instantaneous_carrier_freq_array + vibL
     inst_freq_R = instantaneous_carrier_freq_array + vibR
