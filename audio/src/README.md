@@ -114,6 +114,7 @@ Creates the classic binaural beat illusion by playing two close frequencies.
 | `ampOscFreqL` / `ampOscFreqR` | 0 | Frequency of amplitude modulation |
 | `freqOscRangeL` / `freqOscRangeR` | 0 | Range of vibrato modulation |
 | `freqOscFreqL` / `freqOscFreqR` | 0 | Rate of vibrato modulation |
+| `freqOscPhaseOffsetL` / `freqOscPhaseOffsetR` | 0 | Phase of the vibrato LFO |
 | `phaseOscFreq` | 0 | Rate of interaural phase modulation |
 | `phaseOscRange` | 0 | Amount of phase modulation |
 
