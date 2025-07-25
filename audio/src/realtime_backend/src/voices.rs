@@ -11,7 +11,7 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 
-use crate::dsp::{pan2, trapezoid_envelope, build_volume_envelope};
+use crate::dsp::{pan2, trapezoid_envelope, build_volume_envelope, skewed_sine_phase};
 use crate::dsp::trig::{sin_lut, cos_lut};
 use crate::scheduler::Voice;
 use crate::models::{StepData, VoiceData};
@@ -136,8 +136,14 @@ pub struct BinauralBeatVoice {
     freq_osc_freq_l: f32,
     freq_osc_range_r: f32,
     freq_osc_freq_r: f32,
+    freq_osc_skew_l: f32,
+    freq_osc_skew_r: f32,
+    freq_osc_phase_offset_l: f32,
+    freq_osc_phase_offset_r: f32,
     amp_osc_phase_offset_l: f32,
     amp_osc_phase_offset_r: f32,
+    amp_osc_skew_l: f32,
+    amp_osc_skew_r: f32,
     phase_osc_freq: f32,
     phase_osc_range: f32,
     phase_l: f32,
@@ -186,6 +192,18 @@ pub struct BinauralBeatTransitionVoice {
     end_freq_osc_range_r: f32,
     start_freq_osc_freq_r: f32,
     end_freq_osc_freq_r: f32,
+    start_freq_osc_skew_l: f32,
+    end_freq_osc_skew_l: f32,
+    start_freq_osc_skew_r: f32,
+    end_freq_osc_skew_r: f32,
+    start_freq_osc_phase_offset_l: f32,
+    end_freq_osc_phase_offset_l: f32,
+    start_freq_osc_phase_offset_r: f32,
+    end_freq_osc_phase_offset_r: f32,
+    start_amp_osc_skew_l: f32,
+    end_amp_osc_skew_l: f32,
+    start_amp_osc_skew_r: f32,
+    end_amp_osc_skew_r: f32,
     curve: TransitionCurve,
     initial_offset: f32,
     post_offset: f32,
@@ -213,8 +231,14 @@ pub struct IsochronicToneVoice {
     freq_osc_freq_l: f32,
     freq_osc_range_r: f32,
     freq_osc_freq_r: f32,
+    freq_osc_skew_l: f32,
+    freq_osc_skew_r: f32,
+    freq_osc_phase_offset_l: f32,
+    freq_osc_phase_offset_r: f32,
     amp_osc_phase_offset_l: f32,
     amp_osc_phase_offset_r: f32,
+    amp_osc_skew_l: f32,
+    amp_osc_skew_r: f32,
     phase_osc_freq: f32,
     phase_osc_range: f32,
     ramp_percent: f32,
@@ -267,6 +291,18 @@ pub struct IsochronicToneTransitionVoice {
     end_freq_osc_range_r: f32,
     start_freq_osc_freq_r: f32,
     end_freq_osc_freq_r: f32,
+    start_freq_osc_skew_l: f32,
+    end_freq_osc_skew_l: f32,
+    start_freq_osc_skew_r: f32,
+    end_freq_osc_skew_r: f32,
+    start_freq_osc_phase_offset_l: f32,
+    end_freq_osc_phase_offset_l: f32,
+    start_freq_osc_phase_offset_r: f32,
+    end_freq_osc_phase_offset_r: f32,
+    start_amp_osc_skew_l: f32,
+    end_amp_osc_skew_l: f32,
+    start_amp_osc_skew_r: f32,
+    end_amp_osc_skew_r: f32,
     ramp_percent: f32,
     gap_percent: f32,
     pan: f32,
@@ -776,8 +812,14 @@ impl BinauralBeatVoice {
         let freq_osc_freq_l = get_f32(params, "freqOscFreqL", 0.0);
         let freq_osc_range_r = get_f32(params, "freqOscRangeR", 0.0);
         let freq_osc_freq_r = get_f32(params, "freqOscFreqR", 0.0);
+        let freq_osc_skew_l = get_f32(params, "freqOscSkewL", 0.0);
+        let freq_osc_skew_r = get_f32(params, "freqOscSkewR", 0.0);
+        let freq_osc_phase_offset_l = get_f32(params, "freqOscPhaseOffsetL", 0.0);
+        let freq_osc_phase_offset_r = get_f32(params, "freqOscPhaseOffsetR", 0.0);
         let amp_osc_phase_offset_l = get_f32(params, "ampOscPhaseOffsetL", 0.0);
         let amp_osc_phase_offset_r = get_f32(params, "ampOscPhaseOffsetR", 0.0);
+        let amp_osc_skew_l = get_f32(params, "ampOscSkewL", 0.0);
+        let amp_osc_skew_r = get_f32(params, "ampOscSkewR", 0.0);
         let phase_osc_freq = get_f32(params, "phaseOscFreq", 0.0);
         let phase_osc_range = get_f32(params, "phaseOscRange", 0.0);
 
@@ -798,8 +840,14 @@ impl BinauralBeatVoice {
             freq_osc_freq_l,
             freq_osc_range_r,
             freq_osc_freq_r,
+            freq_osc_skew_l,
+            freq_osc_skew_r,
+            freq_osc_phase_offset_l,
+            freq_osc_phase_offset_r,
             amp_osc_phase_offset_l,
             amp_osc_phase_offset_r,
+            amp_osc_skew_l,
+            amp_osc_skew_r,
             phase_osc_freq,
             phase_osc_range,
             phase_l: start_phase_l,
@@ -919,6 +967,18 @@ impl BinauralBeatTransitionVoice {
             get_f32(params, "freqOscFreqR", 0.0),
         );
         let end_freq_osc_freq_r = get_f32(params, "endFreqOscFreqR", start_freq_osc_freq_r);
+        let start_freq_osc_skew_l = get_f32(params, "startFreqOscSkewL", get_f32(params, "freqOscSkewL", 0.0));
+        let end_freq_osc_skew_l = get_f32(params, "endFreqOscSkewL", start_freq_osc_skew_l);
+        let start_freq_osc_skew_r = get_f32(params, "startFreqOscSkewR", get_f32(params, "freqOscSkewR", 0.0));
+        let end_freq_osc_skew_r = get_f32(params, "endFreqOscSkewR", start_freq_osc_skew_r);
+        let start_freq_osc_phase_offset_l = get_f32(params, "startFreqOscPhaseOffsetL", get_f32(params, "freqOscPhaseOffsetL", 0.0));
+        let end_freq_osc_phase_offset_l = get_f32(params, "endFreqOscPhaseOffsetL", start_freq_osc_phase_offset_l);
+        let start_freq_osc_phase_offset_r = get_f32(params, "startFreqOscPhaseOffsetR", get_f32(params, "freqOscPhaseOffsetR", 0.0));
+        let end_freq_osc_phase_offset_r = get_f32(params, "endFreqOscPhaseOffsetR", start_freq_osc_phase_offset_r);
+        let start_amp_osc_skew_l = get_f32(params, "startAmpOscSkewL", get_f32(params, "ampOscSkewL", 0.0));
+        let end_amp_osc_skew_l = get_f32(params, "endAmpOscSkewL", start_amp_osc_skew_l);
+        let start_amp_osc_skew_r = get_f32(params, "startAmpOscSkewR", get_f32(params, "ampOscSkewR", 0.0));
+        let end_amp_osc_skew_r = get_f32(params, "endAmpOscSkewR", start_amp_osc_skew_r);
 
         let curve = TransitionCurve::from_str(
             params
@@ -970,6 +1030,18 @@ impl BinauralBeatTransitionVoice {
             end_freq_osc_range_r,
             start_freq_osc_freq_r,
             end_freq_osc_freq_r,
+            start_freq_osc_skew_l,
+            end_freq_osc_skew_l,
+            start_freq_osc_skew_r,
+            end_freq_osc_skew_r,
+            start_freq_osc_phase_offset_l,
+            end_freq_osc_phase_offset_l,
+            start_freq_osc_phase_offset_r,
+            end_freq_osc_phase_offset_r,
+            start_amp_osc_skew_l,
+            end_amp_osc_skew_l,
+            start_amp_osc_skew_r,
+            end_amp_osc_skew_r,
             curve,
             initial_offset,
             post_offset,
@@ -1001,8 +1073,14 @@ impl IsochronicToneVoice {
         let freq_osc_freq_l = get_f32(params, "freqOscFreqL", 0.0);
         let freq_osc_range_r = get_f32(params, "freqOscRangeR", 0.0);
         let freq_osc_freq_r = get_f32(params, "freqOscFreqR", 0.0);
+        let freq_osc_skew_l = get_f32(params, "freqOscSkewL", 0.0);
+        let freq_osc_skew_r = get_f32(params, "freqOscSkewR", 0.0);
+        let freq_osc_phase_offset_l = get_f32(params, "freqOscPhaseOffsetL", 0.0);
+        let freq_osc_phase_offset_r = get_f32(params, "freqOscPhaseOffsetR", 0.0);
         let amp_osc_phase_offset_l = get_f32(params, "ampOscPhaseOffsetL", 0.0);
         let amp_osc_phase_offset_r = get_f32(params, "ampOscPhaseOffsetR", 0.0);
+        let amp_osc_skew_l = get_f32(params, "ampOscSkewL", 0.0);
+        let amp_osc_skew_r = get_f32(params, "ampOscSkewR", 0.0);
         let phase_osc_freq = get_f32(params, "phaseOscFreq", 0.0);
         let phase_osc_range = get_f32(params, "phaseOscRange", 0.0);
         let ramp_percent = get_f32(params, "rampPercent", 0.2);
@@ -1027,8 +1105,14 @@ impl IsochronicToneVoice {
             freq_osc_freq_l,
             freq_osc_range_r,
             freq_osc_freq_r,
+            freq_osc_skew_l,
+            freq_osc_skew_r,
+            freq_osc_phase_offset_l,
+            freq_osc_phase_offset_r,
             amp_osc_phase_offset_l,
             amp_osc_phase_offset_r,
+            amp_osc_skew_l,
+            amp_osc_skew_r,
             phase_osc_freq,
             phase_osc_range,
             ramp_percent,
@@ -1758,13 +1842,16 @@ impl Voice for BinauralBeatVoice {
 
             // Instantaneous frequency with vibrato
             let half_beat = self.beat_freq * 0.5;
-            let mut freq_l = self.base_freq - half_beat
-                + (self.freq_osc_range_l * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t);
-            let mut freq_r = self.base_freq
-                + half_beat
-                + (self.freq_osc_range_r * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t);
+            let phase_l_vib = self.freq_osc_freq_l * t
+                + self.freq_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let phase_r_vib = self.freq_osc_freq_r * t
+                + self.freq_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
+            let vib_l = (self.freq_osc_range_l * 0.5)
+                * skewed_sine_phase(phase_l_vib.fract(), self.freq_osc_skew_l);
+            let vib_r = (self.freq_osc_range_r * 0.5)
+                * skewed_sine_phase(phase_r_vib.fract(), self.freq_osc_skew_r);
+            let mut freq_l = self.base_freq - half_beat + vib_l;
+            let mut freq_r = self.base_freq + half_beat + vib_r;
 
             if self.force_mono || self.beat_freq == 0.0 {
                 freq_l = self.base_freq.max(0.0);
@@ -1796,18 +1883,20 @@ impl Voice for BinauralBeatVoice {
             }
 
             // Amplitude envelopes
+            let amp_phase_l = self.amp_osc_freq_l * t
+                + self.amp_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let amp_phase_r = self.amp_osc_freq_r * t
+                + self.amp_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
             let env_l = 1.0
                 - self.amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
-                                + self.amp_osc_phase_offset_l)));
+                            + skewed_sine_phase(amp_phase_l.fract(), self.amp_osc_skew_l)));
             let env_r = 1.0
                 - self.amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
-                                + self.amp_osc_phase_offset_r)));
+                            + skewed_sine_phase(amp_phase_r.fract(), self.amp_osc_skew_r)));
 
             let sample_l = sin_lut(ph_l) * env_l * self.amp_l;
             let sample_r = sin_lut(ph_r) * env_r * self.amp_r;
@@ -1884,16 +1973,43 @@ impl Voice for BinauralBeatTransitionVoice {
                 + (self.end_freq_osc_range_r - self.start_freq_osc_range_r) * alpha;
             let freq_osc_freq_r = self.start_freq_osc_freq_r
                 + (self.end_freq_osc_freq_r - self.start_freq_osc_freq_r) * alpha;
+            let freq_osc_skew_l = self.start_freq_osc_skew_l
+                + (self.end_freq_osc_skew_l - self.start_freq_osc_skew_l) * alpha;
+            let freq_osc_skew_r = self.start_freq_osc_skew_r
+                + (self.end_freq_osc_skew_r - self.start_freq_osc_skew_r) * alpha;
+            let freq_osc_phase_offset_l = self.start_freq_osc_phase_offset_l
+                + (self.end_freq_osc_phase_offset_l - self.start_freq_osc_phase_offset_l) * alpha;
+            let freq_osc_phase_offset_r = self.start_freq_osc_phase_offset_r
+                + (self.end_freq_osc_phase_offset_r - self.start_freq_osc_phase_offset_r) * alpha;
+            let amp_osc_skew_l = self.start_amp_osc_skew_l
+                + (self.end_amp_osc_skew_l - self.start_amp_osc_skew_l) * alpha;
+            let amp_osc_skew_r = self.start_amp_osc_skew_r
+                + (self.end_amp_osc_skew_r - self.start_amp_osc_skew_r) * alpha;
+            let freq_osc_skew_l = self.start_freq_osc_skew_l
+                + (self.end_freq_osc_skew_l - self.start_freq_osc_skew_l) * alpha;
+            let freq_osc_skew_r = self.start_freq_osc_skew_r
+                + (self.end_freq_osc_skew_r - self.start_freq_osc_skew_r) * alpha;
+            let freq_osc_phase_offset_l = self.start_freq_osc_phase_offset_l
+                + (self.end_freq_osc_phase_offset_l - self.start_freq_osc_phase_offset_l) * alpha;
+            let freq_osc_phase_offset_r = self.start_freq_osc_phase_offset_r
+                + (self.end_freq_osc_phase_offset_r - self.start_freq_osc_phase_offset_r) * alpha;
+            let amp_osc_skew_l = self.start_amp_osc_skew_l
+                + (self.end_amp_osc_skew_l - self.start_amp_osc_skew_l) * alpha;
+            let amp_osc_skew_r = self.start_amp_osc_skew_r
+                + (self.end_amp_osc_skew_r - self.start_amp_osc_skew_r) * alpha;
 
             // instantaneous frequencies
             let half_beat = beat_freq * 0.5;
-            let mut freq_l = base_freq - half_beat
-                + (freq_osc_range_l * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t);
-            let mut freq_r = base_freq
-                + half_beat
-                + (freq_osc_range_r * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t);
+            let phase_l_vib = freq_osc_freq_l * t
+                + freq_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let phase_r_vib = freq_osc_freq_r * t
+                + freq_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
+            let vib_l = (freq_osc_range_l * 0.5)
+                * skewed_sine_phase(phase_l_vib.fract(), freq_osc_skew_l);
+            let vib_r = (freq_osc_range_r * 0.5)
+                * skewed_sine_phase(phase_r_vib.fract(), freq_osc_skew_r);
+            let mut freq_l = base_freq - half_beat + vib_l;
+            let mut freq_r = base_freq + half_beat + vib_r;
 
             if force_mono || beat_freq == 0.0 {
                 freq_l = base_freq.max(0.0);
@@ -1920,18 +2036,20 @@ impl Voice for BinauralBeatTransitionVoice {
                 ph_r += dphi;
             }
 
+            let amp_phase_l = amp_osc_freq_l * t
+                + amp_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let amp_phase_r = amp_osc_freq_r * t
+                + amp_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
             let env_l = 1.0
                 - amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_l * t
-                                + amp_osc_phase_offset_l)));
+                            + skewed_sine_phase(amp_phase_l.fract(), amp_osc_skew_l)));
             let env_r = 1.0
                 - amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_r * t
-                                + amp_osc_phase_offset_r)));
+                            + skewed_sine_phase(amp_phase_r.fract(), amp_osc_skew_r)));
 
             let sample_l = sin_lut(ph_l) * env_l * amp_l;
             let sample_r = sin_lut(ph_r) * env_r * amp_r;
@@ -1960,12 +2078,16 @@ impl Voice for IsochronicToneVoice {
             let dt = 1.0 / self.sample_rate;
             let t = self.sample_idx as f32 / self.sample_rate;
 
-            let mut freq_l = self.base_freq
-                + (self.freq_osc_range_l * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_l * t);
-            let mut freq_r = self.base_freq
-                + (self.freq_osc_range_r * 0.5)
-                    * sin_lut(2.0 * std::f32::consts::PI * self.freq_osc_freq_r * t);
+            let phase_l_vib = self.freq_osc_freq_l * t
+                + self.freq_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let phase_r_vib = self.freq_osc_freq_r * t
+                + self.freq_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
+            let vib_l = (self.freq_osc_range_l * 0.5)
+                * skewed_sine_phase(phase_l_vib.fract(), self.freq_osc_skew_l);
+            let vib_r = (self.freq_osc_range_r * 0.5)
+                * skewed_sine_phase(phase_r_vib.fract(), self.freq_osc_skew_r);
+            let mut freq_l = self.base_freq + vib_l;
+            let mut freq_r = self.base_freq + vib_r;
 
             if self.force_mono {
                 freq_l = self.base_freq.max(0.0);
@@ -1999,18 +2121,20 @@ impl Voice for IsochronicToneVoice {
                 ph_r += dphi;
             }
 
+            let amp_phase_l = self.amp_osc_freq_l * t
+                + self.amp_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let amp_phase_r = self.amp_osc_freq_r * t
+                + self.amp_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
             let env_l = 1.0
                 - self.amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_l * t
-                                + self.amp_osc_phase_offset_l)));
+                            + skewed_sine_phase(amp_phase_l.fract(), self.amp_osc_skew_l)));
             let env_r = 1.0
                 - self.amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * self.amp_osc_freq_r * t
-                                + self.amp_osc_phase_offset_r)));
+                            + skewed_sine_phase(amp_phase_r.fract(), self.amp_osc_skew_r)));
 
             let mut sample_l = sin_lut(ph_l) * env_l * self.amp_l * iso_env;
             let mut sample_r = sin_lut(ph_r) * env_r * self.amp_r * iso_env;
@@ -2095,10 +2219,16 @@ impl Voice for IsochronicToneTransitionVoice {
             let freq_osc_freq_r = self.start_freq_osc_freq_r
                 + (self.end_freq_osc_freq_r - self.start_freq_osc_freq_r) * alpha;
 
-            let mut freq_l = base_freq
-                + (freq_osc_range_l * 0.5) * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_l * t);
-            let mut freq_r = base_freq
-                + (freq_osc_range_r * 0.5) * sin_lut(2.0 * std::f32::consts::PI * freq_osc_freq_r * t);
+            let phase_l_vib = freq_osc_freq_l * t
+                + freq_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let phase_r_vib = freq_osc_freq_r * t
+                + freq_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
+            let vib_l = (freq_osc_range_l * 0.5)
+                * skewed_sine_phase(phase_l_vib.fract(), freq_osc_skew_l);
+            let vib_r = (freq_osc_range_r * 0.5)
+                * skewed_sine_phase(phase_r_vib.fract(), freq_osc_skew_r);
+            let mut freq_l = base_freq + vib_l;
+            let mut freq_r = base_freq + vib_r;
 
             if force_mono {
                 freq_l = base_freq.max(0.0);
@@ -2132,18 +2262,20 @@ impl Voice for IsochronicToneTransitionVoice {
                 ph_r += dphi;
             }
 
+            let amp_phase_l = amp_osc_freq_l * t
+                + amp_osc_phase_offset_l / (2.0 * std::f32::consts::PI);
+            let amp_phase_r = amp_osc_freq_r * t
+                + amp_osc_phase_offset_r / (2.0 * std::f32::consts::PI);
             let env_l = 1.0
                 - amp_osc_depth_l
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_l * t
-                                + amp_osc_phase_offset_l)));
+                            + skewed_sine_phase(amp_phase_l.fract(), amp_osc_skew_l)));
             let env_r = 1.0
                 - amp_osc_depth_r
                     * (0.5
                         * (1.0
-                            + sin_lut(2.0 * std::f32::consts::PI * amp_osc_freq_r * t
-                                + amp_osc_phase_offset_r)));
+                            + skewed_sine_phase(amp_phase_r.fract(), amp_osc_skew_r)));
 
             let mut sample_l = sin_lut(ph_l) * env_l * amp_l * iso_env;
             let mut sample_r = sin_lut(ph_r) * env_r * amp_r * iso_env;
