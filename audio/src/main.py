@@ -64,6 +64,12 @@ from utils.timeline_visualizer import visualize_track_timeline
 from ui.overlay_clip_dialog import OverlayClipDialog
 from ui.collapsible_box import CollapsibleBox
 from models import StepModel, VoiceModel
+from utils.voice_file import (
+    VoicePreset,
+    save_voice_preset_list,
+    load_voice_preset_list,
+    VOICES_FILE_EXTENSION,
+)
 
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
@@ -666,6 +672,12 @@ class TrackEditorApp(QMainWindow):
         voices_buttons_layout.addWidget(self.group_edit_button)
         voices_buttons_layout.addWidget(self.duplicate_voice_button)
         voices_buttons_layout.addWidget(self.remove_voice_button)
+        self.save_voices_button = QPushButton("Save Voices")
+        self.load_voices_button = QPushButton("Load Voices")
+        self.save_voices_button.clicked.connect(self.save_selected_voices)
+        self.load_voices_button.clicked.connect(self.load_voices_from_file)
+        voices_buttons_layout.addWidget(self.save_voices_button)
+        voices_buttons_layout.addWidget(self.load_voices_button)
         self.move_voice_up_button = QPushButton("Move Up")
         self.move_voice_down_button = QPushButton("Move Down")
         self.move_voice_up_button.clicked.connect(lambda: self.move_voice(-1))
@@ -821,6 +833,8 @@ class TrackEditorApp(QMainWindow):
             self.group_edit_button.setEnabled(False)
             self.duplicate_voice_button.setEnabled(False)
             self.remove_voice_button.setEnabled(False)
+            self.save_voices_button.setEnabled(False)
+            self.load_voices_button.setEnabled(False)
             self.move_voice_up_button.setEnabled(False)
             self.move_voice_down_button.setEnabled(False)
             return
@@ -834,6 +848,8 @@ class TrackEditorApp(QMainWindow):
         self.group_edit_button.setEnabled(num_selected_voices > 1)
         self.duplicate_voice_button.setEnabled(is_single_voice_selection)
         self.remove_voice_button.setEnabled(has_voice_selection)
+        self.save_voices_button.setEnabled(has_voice_selection)
+        self.load_voices_button.setEnabled(True)
 
         num_voices_in_current_step = 0
         current_step_idx = self.get_selected_step_index()
@@ -1701,6 +1717,93 @@ class TrackEditorApp(QMainWindow):
         except IndexError: QMessageBox.critical(self, "Error", "Failed to move voice (index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
         self._update_voice_actions_state()
+
+    @pyqtSlot()
+    def save_selected_voices(self):
+        step_idx = self.get_selected_step_index()
+        selected_voice_indices = self.get_selected_voice_indices()
+        if step_idx is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Save Voices", "Please select exactly one step first.")
+            return
+        if not selected_voice_indices:
+            QMessageBox.warning(self, "Save Voices", "Please select one or more voices to save.")
+            return
+        try:
+            voices = [
+                copy.deepcopy(self.track_data["steps"][step_idx]["voices"][i])
+                for i in selected_voice_indices
+            ]
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Voices", f"Failed to access selected voices:\n{exc}")
+            return
+        presets = [
+            VoicePreset(
+                synth_function_name=v.get("synth_function_name", ""),
+                is_transition=v.get("is_transition", False),
+                params=v.get("params", {}),
+                volume_envelope=v.get("volume_envelope"),
+                description=v.get("description", ""),
+            )
+            for v in voices
+        ]
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Voices",
+            "",
+            f"Voice Lists (*{VOICES_FILE_EXTENSION})",
+        )
+        if not path:
+            return
+        try:
+            save_voice_preset_list(presets, path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Voices", f"Failed to save voices:\n{exc}")
+
+    @pyqtSlot()
+    def load_voices_from_file(self):
+        step_idx = self.get_selected_step_index()
+        if step_idx is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Load Voices", "Please select exactly one step first.")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Voices",
+            "",
+            f"Voice Lists (*{VOICES_FILE_EXTENSION})",
+        )
+        if not path:
+            return
+        try:
+            presets = load_voice_preset_list(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Load Voices", f"Failed to load voices:\n{exc}")
+            return
+        if not presets:
+            QMessageBox.information(self, "Load Voices", "No voices found in file.")
+            return
+        voices_list = self.track_data["steps"][step_idx].setdefault("voices", [])
+        for preset in presets:
+            voices_list.append(
+                {
+                    "synth_function_name": preset.synth_function_name,
+                    "is_transition": preset.is_transition,
+                    "params": copy.deepcopy(preset.params),
+                    "volume_envelope": copy.deepcopy(preset.volume_envelope),
+                    "description": preset.description,
+                }
+            )
+        self.refresh_steps_tree()
+        if voices_list:
+            last = len(voices_list) - 1
+            sel_model = self.voices_tree.selectionModel()
+            sel_model.clearSelection()
+            for i in range(last - len(presets) + 1, last + 1):
+                if 0 <= i < self.voice_model.rowCount():
+                    idx = self.voice_model.index(i, 0)
+                    sel_model.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            if 0 <= last < self.voice_model.rowCount():
+                self.voices_tree.scrollTo(self.voice_model.index(last, 0), QAbstractItemView.PositionAtCenter)
+        self._push_history_state()
 
     @pyqtSlot()
     def add_clip(self):
