@@ -9,6 +9,9 @@ from .utils.voice_file import (
     save_voice_preset,
     load_voice_preset,
     VOICE_FILE_EXTENSION,
+    VOICES_FILE_EXTENSION,
+    save_voice_preset_list,
+    load_voice_preset_list,
 )
 from .utils.timeline_visualizer import visualize_track_timeline
 
@@ -21,5 +24,8 @@ __all__ = [
     'save_voice_preset',
     'load_voice_preset',
     'VOICE_FILE_EXTENSION',
+    'VOICES_FILE_EXTENSION',
+    'save_voice_preset_list',
+    'load_voice_preset_list',
     'visualize_track_timeline',
 ]
