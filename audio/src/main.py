@@ -756,7 +756,8 @@ class TrackEditorApp(QMainWindow):
 
     # --- Button State Management ---
     def _update_step_actions_state(self):
-        num_selected = len(self.get_selected_step_indices())
+        selected_indices = self.get_selected_step_indices()
+        num_selected = len(selected_indices)
         current_idx = self.get_selected_step_index()  # focused item
 
         is_single_selection = (num_selected == 1) and (current_idx is not None)
@@ -776,8 +777,8 @@ class TrackEditorApp(QMainWindow):
         self.add_voice_button.setEnabled(is_single_selection)
         self.open_subliminal_button.setEnabled(is_single_selection)
 
-        can_move_up = is_single_selection and current_idx is not None and current_idx > 0
-        can_move_down = is_single_selection and current_idx is not None and current_idx < (num_steps - 1)
+        can_move_up = has_selection and min(selected_indices) > 0
+        can_move_down = has_selection and max(selected_indices) < (num_steps - 1)
         self.move_step_up_button.setEnabled(can_move_up)
         self.move_step_down_button.setEnabled(can_move_down)
 
@@ -818,7 +819,8 @@ class TrackEditorApp(QMainWindow):
 
 
     def _update_voice_actions_state(self):
-        num_selected_voices = len(self.get_selected_voice_indices())
+        selected_voice_indices = self.get_selected_voice_indices()
+        num_selected_voices = len(selected_voice_indices)
         current_voice_idx = self.get_selected_voice_index()
 
         is_single_step_selected = len(self.get_selected_step_indices()) == 1 and self.get_selected_step_index() is not None
@@ -856,8 +858,8 @@ class TrackEditorApp(QMainWindow):
         if current_step_idx is not None and 0 <= current_step_idx < len(self.track_data["steps"]):
             num_voices_in_current_step = len(self.track_data["steps"][current_step_idx].get("voices", []))
 
-        can_move_voice_up = is_single_voice_selection and current_voice_idx is not None and current_voice_idx > 0
-        can_move_voice_down = is_single_voice_selection and current_voice_idx is not None and current_voice_idx < (num_voices_in_current_step - 1)
+        can_move_voice_up = has_voice_selection and min(selected_voice_indices) > 0
+        can_move_voice_down = has_voice_selection and max(selected_voice_indices) < (num_voices_in_current_step - 1)
         self.move_voice_up_button.setEnabled(can_move_voice_up)
         self.move_voice_down_button.setEnabled(can_move_voice_down)
 
@@ -1456,32 +1458,41 @@ class TrackEditorApp(QMainWindow):
 
     @pyqtSlot(int)
     def move_step(self, direction):
-        selected_index = self.get_selected_step_index()
-        if selected_index is None or len(self.get_selected_step_indices()) != 1:
-            QMessageBox.warning(self, "Move Step", "Please select exactly one step to move.")
+        selected_indices = self.get_selected_step_indices()
+        if not selected_indices:
+            QMessageBox.warning(self, "Move Step", "Please select one or more steps to move.")
             return
-        
-        # If the moved step was the one loaded in tester, update current_test_step_index
-        # or reset tester if it becomes complex to track. For simplicity, reset.
-        if self.current_test_step_index == selected_index:
-            self.on_reset_step_test() 
-            # After reset, the new selection logic in on_reset_step_test will handle the label for the moved item if it's selected.
+
+        if self.current_test_step_index in selected_indices:
+            self.on_reset_step_test()
 
         num_steps = len(self.track_data["steps"])
-        new_index = selected_index + direction
-        if 0 <= new_index < num_steps:
-            try:
-                steps = self.track_data["steps"]
-                steps[selected_index], steps[new_index] = steps[new_index], steps[selected_index]
-                self.refresh_steps_tree()
-                if 0 <= new_index < self.step_model.rowCount():
-                    idx = self.step_model.index(new_index, 0)
-                    self.steps_tree.selectionModel().clearSelection()
-                    self.steps_tree.setCurrentIndex(idx)
-                    self.steps_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
-                    self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
-                self._push_history_state()
-            except Exception as e: QMessageBox.critical(self, "Error", f"Failed to move step:\n{e}"); traceback.print_exc()
+        if direction < 0:
+            if min(selected_indices) == 0:
+                return
+            iter_indices = selected_indices
+        else:
+            if max(selected_indices) >= num_steps - 1:
+                return
+            iter_indices = sorted(selected_indices, reverse=True)
+
+        try:
+            steps = self.track_data["steps"]
+            for idx in iter_indices:
+                steps[idx], steps[idx + direction] = steps[idx + direction], steps[idx]
+            self.refresh_steps_tree()
+            sel_model = self.steps_tree.selectionModel()
+            sel_model.clearSelection()
+            for idx in [i + direction for i in selected_indices]:
+                if 0 <= idx < self.step_model.rowCount():
+                    qidx = self.step_model.index(idx, 0)
+                    sel_model.select(qidx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            anchor = min(selected_indices) + direction if direction < 0 else max(selected_indices) + direction
+            if 0 <= anchor < self.step_model.rowCount():
+                self.steps_tree.scrollTo(self.step_model.index(anchor, 0), QAbstractItemView.PositionAtCenter)
+            self._push_history_state()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to move step:\n{e}"); traceback.print_exc()
 
     @pyqtSlot()
     def add_voice(self):
@@ -1690,10 +1701,9 @@ class TrackEditorApp(QMainWindow):
     @pyqtSlot(int)
     def move_voice(self, direction):
         selected_step_idx = self.get_selected_step_index()
-        selected_voice_idx = self.get_selected_voice_index()
-        if selected_step_idx is None or selected_voice_idx is None or \
-           len(self.get_selected_step_indices()) != 1 or len(self.get_selected_voice_indices()) != 1:
-            QMessageBox.warning(self, "Move Voice", "Please select exactly one step and one voice to move.")
+        selected_voice_indices = self.get_selected_voice_indices()
+        if selected_step_idx is None or not selected_voice_indices or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Move Voice", "Please select one step and one or more voices to move.")
             return
         
         # Moving voices might change audio characteristics. Reset if it's the loaded step.
@@ -1703,19 +1713,36 @@ class TrackEditorApp(QMainWindow):
         try:
             voices_list = self.track_data["steps"][selected_step_idx]["voices"]
             num_voices = len(voices_list)
-            new_voice_idx = selected_voice_idx + direction
-            if 0 <= new_voice_idx < num_voices:
-                voices_list[selected_voice_idx], voices_list[new_voice_idx] = voices_list[new_voice_idx], voices_list[selected_voice_idx]
-                self.refresh_voices_tree() # Calls on_voice_select -> _update_voice_actions_state
-                if 0 <= new_voice_idx < self.voice_model.rowCount():
-                    idx = self.voice_model.index(new_voice_idx, 0)
-                    self.voices_tree.selectionModel().clearSelection()
-                    self.voices_tree.setCurrentIndex(idx)
-                    self.voices_tree.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
-                    self.voices_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
-                self._push_history_state()
-        except IndexError: QMessageBox.critical(self, "Error", "Failed to move voice (index out of range).")
-        except Exception as e: QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
+
+            if direction < 0:
+                if min(selected_voice_indices) == 0:
+                    return
+                iter_indices = selected_voice_indices
+            else:
+                if max(selected_voice_indices) >= num_voices - 1:
+                    return
+                iter_indices = sorted(selected_voice_indices, reverse=True)
+
+            for idx in iter_indices:
+                voices_list[idx], voices_list[idx + direction] = voices_list[idx + direction], voices_list[idx]
+
+            self.refresh_voices_tree()  # Calls on_voice_select -> _update_voice_actions_state
+
+            sel_model = self.voices_tree.selectionModel()
+            sel_model.clearSelection()
+            for idx in [i + direction for i in selected_voice_indices]:
+                if 0 <= idx < self.voice_model.rowCount():
+                    qidx = self.voice_model.index(idx, 0)
+                    sel_model.select(qidx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            anchor = min(selected_voice_indices) + direction if direction < 0 else max(selected_voice_indices) + direction
+            if 0 <= anchor < self.voice_model.rowCount():
+                self.voices_tree.scrollTo(self.voice_model.index(anchor, 0), QAbstractItemView.PositionAtCenter)
+
+            self._push_history_state()
+        except IndexError:
+            QMessageBox.critical(self, "Error", "Failed to move voice (index out of range).")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An unexpected error occurred while moving voice:\n{e}")
         self._update_voice_actions_state()
 
     @pyqtSlot()
