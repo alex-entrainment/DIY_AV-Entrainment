@@ -98,6 +98,8 @@ class PreferencesDialog(QDialog):
         if idx_mode != -1:
             self.amp_mode_combo.setCurrentIndex(idx_mode)
         self.amp_mode_combo.currentTextChanged.connect(self._on_amp_mode_change)
+        self.convert_amps_btn = QPushButton("Convert Amplitudes to dB")
+        self.convert_amps_btn.clicked.connect(self.convert_amplitudes_to_db)
         audio_form.addRow("Sample Rate (Hz):", self.sample_rate_spin)
         audio_form.addRow("Test Step Duration (s):", self.test_duration_spin)
         audio_form.addRow("Target Output Amplitude:", self.target_amp_spin)
@@ -105,6 +107,7 @@ class PreferencesDialog(QDialog):
         audio_form.addRow("Crossfade Curve:", self.crossfade_curve_combo)
         audio_form.addRow(self.track_metadata_chk)
         audio_form.addRow(self.apply_target_amp_chk)
+        audio_form.addRow(self.convert_amps_btn)
         audio_group.setLayout(audio_form)
         layout.addWidget(audio_group)
 
@@ -144,6 +147,46 @@ class PreferencesDialog(QDialog):
             self.target_amp_spin.setSingleStep(0.05)
             self.target_amp_spin.setSuffix("")
         self.target_amp_spin.setValue(value)
+
+    def convert_amplitudes_to_db(self):
+        """Convert current amplitude values in the project to dB."""
+        from utils.amp_utils import amplitude_to_db, MIN_DB
+
+        if self._amp_mode != "dB":
+            self._on_amp_mode_change("dB")
+            idx = self.amp_mode_combo.findText("dB")
+            if idx != -1:
+                self.amp_mode_combo.setCurrentIndex(idx)
+
+        parent = self.parent()
+        if parent and hasattr(parent, "track_data"):
+            def convert_dict(d: dict):
+                for k, v in d.items():
+                    if isinstance(v, (int, float)) and "amp" in k.lower():
+                        d[k] = amplitude_to_db(v)
+
+            td = parent.track_data
+            bg = td.get("background_noise", {})
+            if isinstance(bg, dict):
+                convert_dict(bg)
+
+            for clip in td.get("clips", []):
+                if isinstance(clip, dict):
+                    convert_dict(clip)
+
+            for step in td.get("steps", []):
+                for voice in step.get("voices", []):
+                    params = voice.get("params", {})
+                    if isinstance(params, dict):
+                        convert_dict(params)
+
+        dv = getattr(self._prefs, "default_voice", {})
+        if isinstance(dv, dict):
+            params = dv.get("params", {})
+            if isinstance(params, dict):
+                for k, v in params.items():
+                    if isinstance(v, (int, float)) and "amp" in k.lower():
+                        params[k] = amplitude_to_db(v)
 
     def get_preferences(self) -> Preferences:
         from utils.amp_utils import db_to_amplitude
