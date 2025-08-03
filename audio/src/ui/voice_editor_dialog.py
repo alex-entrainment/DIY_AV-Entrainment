@@ -368,7 +368,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
             if isinstance(current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
                 nlow = name.lower()
                 if any(s in nlow for s in ["amp", "gain", "level"]):
-                    from ..utils.amp_utils import amplitude_to_db
+                    from utils.amp_utils import amplitude_to_db
                     display_current = amplitude_to_db(float(current_value))
 
             prefix, base_after = self._split_name_prefix(name)
@@ -384,7 +384,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     if isinstance(end_current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
                         nlow = end_name.lower()
                         if any(s in nlow for s in ["amp", "gain", "level"]):
-                            from ..utils.amp_utils import amplitude_to_db
+                            from utils.amp_utils import amplitude_to_db
                             display_end = amplitude_to_db(float(end_current_value))
 
                     frame = QWidget()
@@ -462,12 +462,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     if isinstance(left_cur, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
                         nlow = left_name.lower()
                         if any(s in nlow for s in ["amp", "gain", "level"]):
-                            from ..utils.amp_utils import amplitude_to_db
+                            from utils.amp_utils import amplitude_to_db
                             disp_left = amplitude_to_db(float(left_cur))
                     if isinstance(right_cur, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
                         nlow = right_name.lower()
                         if any(s in nlow for s in ["amp", "gain", "level"]):
-                            from ..utils.amp_utils import amplitude_to_db
+                            from utils.amp_utils import amplitude_to_db
                             disp_right = amplitude_to_db(float(right_cur))
 
                     frame = QWidget()
@@ -558,7 +558,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 if isinstance(end_current_value, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB":
                     nlow = end_name.lower()
                     if any(s in nlow for s in ["amp", "gain", "level"]):
-                        from ..utils.amp_utils import amplitude_to_db
+                        from utils.amp_utils import amplitude_to_db
                         display_end = amplitude_to_db(float(end_current_value))
 
                 current_validator = None # Create a new validator instance for each pair or reuse type
