@@ -260,6 +260,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.reference_details_text.setReadOnly(True)
         self.reference_details_text.setFont(QFont("Consolas", 9)) # Good for code/data display
         reference_layout.addWidget(self.reference_details_text, 1) # Allow text edit to stretch
+
+        self.set_ref_end_button = QPushButton("Set Reference as End State")
+        self.set_ref_end_button.setEnabled(self.transition_check.isChecked())
+        self.set_ref_end_button.clicked.connect(self._apply_reference_as_end_state)
+        reference_layout.addWidget(self.set_ref_end_button)
+
         h_splitter.addWidget(reference_groupbox)
         h_splitter.setSizes([int(self.DEFAULT_WIDTH * 0.6), int(self.DEFAULT_WIDTH * 0.4)]) # Adjust initial split
 
@@ -854,6 +860,66 @@ class VoiceEditorDialog(QDialog): # Standard class name
             elif self.reference_voice_combo.count() > 0 and self.reference_voice_combo.itemData(0) != -1: # Not "No voices"
                 self.reference_voice_combo.setCurrentIndex(0) # Fallback to first actual voice
 
+    @pyqtSlot()
+    def _apply_reference_as_end_state(self):
+        if not self.transition_check.isChecked():
+            return
+
+        ref_step_idx = self.reference_step_combo.currentData()
+        ref_voice_idx = self.reference_voice_combo.currentData()
+        if ref_step_idx is None or ref_step_idx < 0 or ref_voice_idx is None or ref_voice_idx < 0:
+            QMessageBox.warning(self, "Reference Voice", "Please select a valid reference voice.")
+            return
+
+        try:
+            ref_voice = self.app.track_data["steps"][ref_step_idx]["voices"][ref_voice_idx]
+        except Exception as e:
+            QMessageBox.warning(self, "Reference Voice", f"Could not load reference voice: {e}")
+            return
+
+        ref_params = ref_voice.get("params", {})
+        amplitude_in_db = getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB"
+
+        for name, data in self.param_widgets.items():
+            if not name.startswith("end"):
+                continue
+
+            widget = data["widget"]
+            _prefix, base = self._split_name_prefix(name)
+            candidates = [base, base[0].lower() + base[1:] if base else base]
+            value_found = False
+            for cand in candidates:
+                if cand in ref_params:
+                    raw_val = ref_params[cand]
+                    value_found = True
+                    break
+                elif f"end{cand}" in ref_params:
+                    raw_val = ref_params[f"end{cand}"]
+                    value_found = True
+                    break
+                elif f"end_{cand}" in ref_params:
+                    raw_val = ref_params[f"end_{cand}"]
+                    value_found = True
+                    break
+            if not value_found:
+                continue
+
+            display_val = raw_val
+            if amplitude_in_db and isinstance(raw_val, (int, float)):
+                nlow = name.lower()
+                if any(s in nlow for s in ["amp", "gain", "level"]):
+                    from ..utils.amp_utils import amplitude_to_db
+                    display_val = amplitude_to_db(float(raw_val))
+
+            if isinstance(widget, QLineEdit):
+                widget.setText(str(display_val))
+            elif isinstance(widget, QComboBox):
+                widget.setCurrentText(str(display_val))
+            elif isinstance(widget, QCheckBox):
+                widget.setChecked(bool(display_val))
+
+            self.current_voice_data.setdefault("params", {})[name] = raw_val
+
 
     @pyqtSlot()
     def on_synth_function_change(self):
@@ -937,6 +1003,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
     def _update_swap_button_visibility(self):
         if hasattr(self, "swap_params_button"):
             self.swap_params_button.setVisible(self.transition_check.isChecked())
+        if hasattr(self, "set_ref_end_button"):
+            self.set_ref_end_button.setEnabled(self.transition_check.isChecked())
 
     @pyqtSlot()
     def swap_transition_parameters(self):
