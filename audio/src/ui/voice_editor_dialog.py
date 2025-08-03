@@ -713,7 +713,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 entry.setValidator(copy.deepcopy(validator_type))
                 val = current_env_params.get(param_name, default_val)
                 if isinstance(val, (int, float)) and getattr(self.app, "prefs", None) and getattr(self.app.prefs, "amplitude_display_mode", "absolute") == "dB" and "amp" in param_name:
-                    from ..utils.amp_utils import amplitude_to_db
+                    from utils.amp_utils import amplitude_to_db
                     val = amplitude_to_db(float(val))
                 entry.setText(str(val))
 
