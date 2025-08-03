@@ -1112,7 +1112,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 if param_type == 'float' and getattr(self.app, 'prefs', None) and getattr(self.app.prefs, 'amplitude_display_mode', 'absolute') == 'dB':
                     nlow = name.lower()
                     if any(s in nlow for s in ['amp', 'gain', 'level']):
-                        from ..utils.amp_utils import db_to_amplitude
+                        from utils.amp_utils import db_to_amplitude
                         value = db_to_amplitude(float(value))
                 synth_params[name] = value
         
@@ -1132,7 +1132,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                                 if getattr(self.app, 'prefs', None) and getattr(self.app.prefs, 'amplitude_display_mode', 'absolute') == 'dB':
                                     nlow = name.lower()
                                     if any(s in nlow for s in ['amp', 'gain', 'level']):
-                                        from ..utils.amp_utils import db_to_amplitude
+                                        from utils.amp_utils import db_to_amplitude
                                         val = db_to_amplitude(val)
                                 env_params[name] = val
                             elif param_type == 'int': 
