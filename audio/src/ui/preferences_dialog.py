@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt
 
 
 try:
-    from ..utils.preferences import Preferences
+    from utils.preferences import Preferences
 except ImportError:  # Running as a script without packages
     from utils.preferences import Preferences
 from . import themes  # reuse themes from audio package
@@ -71,7 +71,7 @@ class PreferencesDialog(QDialog):
         self.target_amp_spin = QDoubleSpinBox()
         self._amp_mode = getattr(prefs, "amplitude_display_mode", "absolute")
         if self._amp_mode == "dB":
-            from ..utils.amp_utils import amplitude_to_db, MIN_DB
+            from utils.amp_utils import amplitude_to_db, MIN_DB
             self.target_amp_spin.setRange(MIN_DB, 0.0)
             self.target_amp_spin.setDecimals(1)
             self.target_amp_spin.setSingleStep(1.0)
@@ -126,7 +126,7 @@ class PreferencesDialog(QDialog):
 
     def _on_amp_mode_change(self, mode: str):
         """Handle switching between absolute and dB amplitude display."""
-        from ..utils.amp_utils import db_to_amplitude, amplitude_to_db, MIN_DB
+        from utils.amp_utils import db_to_amplitude, amplitude_to_db, MIN_DB
         value = self.target_amp_spin.value()
         if self._amp_mode == "dB" and mode == "absolute":
             value = db_to_amplitude(value)
@@ -146,7 +146,7 @@ class PreferencesDialog(QDialog):
         self.target_amp_spin.setValue(value)
 
     def get_preferences(self) -> Preferences:
-        from ..utils.amp_utils import db_to_amplitude
+        from utils.amp_utils import db_to_amplitude
         amp_mode = self.amp_mode_combo.currentText()
         amp_value = self.target_amp_spin.value()
         if amp_mode == "dB":
