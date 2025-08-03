@@ -1125,6 +1125,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     value = None
             
             if value is not None:
+
                 if (
                     param_type == 'float'
                     and getattr(self.app, 'prefs', None)
@@ -1132,6 +1133,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     and is_amp_key(name)
                 ):
                     value = db_to_amplitude(float(value))
+
                 synth_params[name] = value
         
         # Collect envelope data
@@ -1147,12 +1149,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         try:
                             if param_type == 'float':
                                 val = float(value_str.replace(',', '.'))
+
                                 if (
                                     getattr(self.app, 'prefs', None)
                                     and getattr(self.app.prefs, 'amplitude_display_mode', 'absolute') == 'dB'
                                     and is_amp_key(name)
                                 ):
                                     val = db_to_amplitude(val)
+
                                 env_params[name] = val
                             elif param_type == 'int': 
                                 env_params[name] = int(value_str)
