@@ -162,7 +162,10 @@ class PreferencesDialog(QDialog):
         if parent and hasattr(parent, "track_data"):
             def convert_dict(d: dict):
                 for k, v in d.items():
-                    if isinstance(v, (int, float)) and "amp" in k.lower():
+                    if (
+                        isinstance(v, (int, float))
+                        and k.lower() in ("ampl", "ampr")
+                    ):
                         d[k] = amplitude_to_db(v)
 
             td = parent.track_data
@@ -185,7 +188,10 @@ class PreferencesDialog(QDialog):
             params = dv.get("params", {})
             if isinstance(params, dict):
                 for k, v in params.items():
-                    if isinstance(v, (int, float)) and "amp" in k.lower():
+                    if (
+                        isinstance(v, (int, float))
+                        and k.lower() in ("ampl", "ampr")
+                    ):
                         params[k] = amplitude_to_db(v)
 
     def get_preferences(self) -> Preferences:
