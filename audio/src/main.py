@@ -507,6 +507,13 @@ class TrackEditorApp(QMainWindow):
         self.generate_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.generate_button.clicked.connect(self.generate_audio_action)
         generate_layout.addWidget(self.generate_button)
+
+        self.generate_selected_button = QPushButton("Generate Selected Steps")
+        self.generate_selected_button.setStyleSheet(self.generate_button.styleSheet())
+        self.generate_selected_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.generate_selected_button.clicked.connect(self.generate_selected_audio_action)
+        generate_layout.addWidget(self.generate_selected_button)
+
         self.generate_progress_bar = QProgressBar()
         self.generate_progress_bar.setRange(0, 100)
         self.generate_progress_bar.setValue(0)
@@ -2001,6 +2008,96 @@ class TrackEditorApp(QMainWindow):
             traceback.print_exc()
         finally:
             self.generate_button.setEnabled(True)
+            self.generate_progress_bar.setVisible(False)
+            self.statusBar().clearMessage()
+            QApplication.processEvents()
+
+    @pyqtSlot()
+    def generate_selected_audio_action(self):
+        if not self._update_global_settings_from_ui():
+            return
+
+        selection = sorted({idx.row() for idx in self.steps_tree.selectionModel().selectedRows()})
+        if not selection:
+            QMessageBox.warning(self, "No Steps Selected", "Please select one or more steps to generate.")
+            return
+
+        selected_track = copy.deepcopy(self.track_data)
+        selected_track["steps"] = [copy.deepcopy(self.track_data["steps"][i]) for i in selection]
+
+        output_filepath = selected_track["global_settings"].get("output_filename")
+        if output_filepath and self.prefs.export_dir and not os.path.isabs(output_filepath):
+            final_output_path = os.path.join(self.prefs.export_dir, output_filepath)
+        else:
+            final_output_path = output_filepath
+        if not final_output_path:
+            QMessageBox.critical(self, "Output Error", "Output filename is not specified in global settings. Please set it and try again.")
+            return
+
+        base, ext = os.path.splitext(final_output_path)
+        final_output_path = f"{base}_selection{ext}"
+
+        if not hasattr(sound_creator, 'generate_audio'):
+            QMessageBox.critical(
+                self,
+                "Audio Engine Error",
+                "The 'generate_audio' function is missing from 'synth_functions.sound_creator'. Cannot generate the final track.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            'Confirm Generation',
+            f"This will generate the audio file: {os.path.basename(final_output_path)}\nUsing only the selected steps.\n\nProceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.No:
+            return
+
+        try:
+            self.generate_button.setEnabled(False)
+            self.generate_selected_button.setEnabled(False)
+            self.generate_progress_bar.setValue(0)
+            self.generate_progress_bar.setVisible(True)
+            self.statusBar().showMessage("Generating audio file, please wait...")
+            QApplication.processEvents()
+
+            def progress_cb(progress):
+                self.generate_progress_bar.setValue(int(progress * 100))
+                QApplication.processEvents()
+
+            print(f"Initiating audio generation for selected steps: {final_output_path}")
+            target_level = self.prefs.target_output_amplitude if getattr(self.prefs, "apply_target_amplitude", True) else 1.0
+            success = sound_creator.generate_audio(
+                selected_track,
+                output_filename=final_output_path,
+                target_level=target_level,
+                progress_callback=progress_cb,
+            )
+            if success:
+                abs_path = os.path.abspath(final_output_path)
+                QMessageBox.information(
+                    self,
+                    "Generation Complete",
+                    f"Audio file '{os.path.basename(final_output_path)}' generated successfully!\nFull path: {abs_path}",
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Generation Failed",
+                    "Failed to generate audio file. Please check the console output for more details and error messages from the sound engine.",
+                )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Audio Generation Error",
+                f"An unexpected error occurred during the audio generation process:\n{str(e)}\n\nPlease check the console for a detailed traceback.",
+            )
+            traceback.print_exc()
+        finally:
+            self.generate_button.setEnabled(True)
+            self.generate_selected_button.setEnabled(True)
             self.generate_progress_bar.setVisible(False)
             self.statusBar().clearMessage()
             QApplication.processEvents()
