@@ -150,7 +150,7 @@ class PreferencesDialog(QDialog):
 
     def convert_amplitudes_to_db(self):
         """Convert current amplitude values in the project to dB."""
-        from utils.amp_utils import amplitude_to_db, MIN_DB
+        from utils.amp_utils import amplitude_to_db, is_amp_key
 
         if self._amp_mode != "dB":
             self._on_amp_mode_change("dB")
@@ -162,7 +162,7 @@ class PreferencesDialog(QDialog):
         if parent and hasattr(parent, "track_data"):
             def convert_dict(d: dict):
                 for k, v in d.items():
-                    if isinstance(v, (int, float)) and "amp" in k.lower():
+                    if isinstance(v, (int, float)) and is_amp_key(k):
                         d[k] = amplitude_to_db(v)
 
             td = parent.track_data
@@ -185,7 +185,7 @@ class PreferencesDialog(QDialog):
             params = dv.get("params", {})
             if isinstance(params, dict):
                 for k, v in params.items():
-                    if isinstance(v, (int, float)) and "amp" in k.lower():
+                    if isinstance(v, (int, float)) and is_amp_key(k):
                         params[k] = amplitude_to_db(v)
 
     def get_preferences(self) -> Preferences:
