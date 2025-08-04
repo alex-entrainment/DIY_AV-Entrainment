@@ -458,28 +458,32 @@ def _binaural_beat_transition_core(
         freqOscPhaseOffsetL_arr[i] = startFreqOscPhaseOffsetL + (endFreqOscPhaseOffsetL - startFreqOscPhaseOffsetL) * alpha
         freqOscPhaseOffsetR_arr[i] = startFreqOscPhaseOffsetR + (endFreqOscPhaseOffsetR - startFreqOscPhaseOffsetR) * alpha
 
-        # Instantaneous frequencies
+    # Instantaneous frequencies with proper integration of LFO phase
+    phaseL_fo = 0.0
+    phaseR_fo = 0.0
+    for i in range(N):
         halfB_i = beatF_arr[i] * 0.5
         fL_base_i = baseF_arr[i] - halfB_i
         fR_base_i = baseF_arr[i] + halfB_i
 
-        phL_frac = _frac(fOFL_arr[i]*t_arr[i] + freqOscPhaseOffsetL_arr[i]/(2*np.pi))
-        phR_frac = _frac(fOFR_arr[i]*t_arr[i] + freqOscPhaseOffsetR_arr[i]/(2*np.pi))
-        vibL_i = (fORL_arr[i]/2.0) * skewed_sine_phase(phL_frac, freqOscSkewL_arr[i])
-        vibR_i = (fORR_arr[i]/2.0) * skewed_sine_phase(phR_frac, freqOscSkewR_arr[i])
-        
+        phaseL_fo += fOFL_arr[i] * dt
+        phaseR_fo += fOFR_arr[i] * dt
+        phL_frac = _frac(phaseL_fo + freqOscPhaseOffsetL_arr[i] / (2 * np.pi))
+        phR_frac = _frac(phaseR_fo + freqOscPhaseOffsetR_arr[i] / (2 * np.pi))
+        vibL_i = (fORL_arr[i] / 2.0) * skewed_sine_phase(phL_frac, freqOscSkewL_arr[i])
+        vibR_i = (fORR_arr[i] / 2.0) * skewed_sine_phase(phR_frac, freqOscSkewR_arr[i])
+
         instL_candidate = fL_base_i + vibL_i
         instR_candidate = fR_base_i + vibR_i
 
         instL[i] = instL_candidate if instL_candidate > 0.0 else 0.0
         instR[i] = instR_candidate if instR_candidate > 0.0 else 0.0
-        
-        # Previously the instantaneous frequencies were forced to the base
-        # value whenever `beatFreq` was zero.  This prevented any frequency
-        # oscillation from being applied when using a 0 Hz beat to create a
-        # monaural tone.  Removing that check allows the `freqOsc*` parameters
-        # to modulate the base frequency in both channels equally.
 
+    # Previously the instantaneous frequencies were forced to the base
+    # value whenever `beatFreq` was zero.  This prevented any frequency
+    # oscillation from being applied when using a 0 Hz beat to create a
+    # monaural tone.  Removing that check allows the `freqOsc*` parameters
+    # to modulate the base frequency in both channels equally.
 
     # Phase accumulation (sequential)
     phL = np.empty(N, np.float64)
