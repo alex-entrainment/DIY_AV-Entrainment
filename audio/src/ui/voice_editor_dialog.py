@@ -1436,7 +1436,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('freqOscPhaseOffsetL', 0.0), ('freqOscPhaseOffsetR', 0.0),
                     ('ampOscPhaseOffsetL', 0.0), ('ampOscPhaseOffsetR', 0.0),
                     ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
-                    ('rampPercent', 0.2), ('gapPercent', 0.15), ('pan', 0.0)
+                    ('rampPercent', 0.2), ('gapPercent', 0.15),
+                    ('harmonicSuppression', False), ('pan', 0.0)
                 ],
                 "transition": [
                     ('startAmpL', 0.5), ('endAmpL', 0.5),
@@ -1464,6 +1465,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
                     ('startRampPercent', 0.2), ('endRampPercent', 0.2),
                     ('startGapPercent', 0.15), ('endGapPercent', 0.15),
+                    ('startHarmonicSuppression', False), ('endHarmonicSuppression', False),
                     ('startPan', 0.0), ('endPan', 0.0),
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
