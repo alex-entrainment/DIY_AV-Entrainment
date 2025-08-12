@@ -132,7 +132,7 @@ Additional parameters:
 | `pan` | 0 | Extra stereo pan applied after modulation |
 
 The `_transition` variant accepts `start` and `end` forms of each parameter
-(`startAmp`/`endAmp`, `startBaseFreq`/`endBaseFreq`, etc.) to smoothly move
+(`startAmpL`/`endAmpL`, `startAmpR`/`endAmpR`, `startBaseFreq`/`endBaseFreq`, etc.) to smoothly move
 between settings over the step.
 
 ### monaural_beat_stereo_amps
