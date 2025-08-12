@@ -117,13 +117,12 @@ def _isochronic_tone_core(
 def isochronic_tone(duration, sample_rate=44100, **params):
     """Generate an isochronic tone with extended modulation options."""
 
-    # Legacy amplitude/pan parameters
-    base_amp = float(params.get('amp', 0.5))
+    # Legacy pan parameter
     pan = float(params.get('pan', 0.0))
 
     # Extended parameters matching ``binaural_beat`` (glitch parameters omitted)
-    ampL = float(params.get('ampL', base_amp))
-    ampR = float(params.get('ampR', base_amp))
+    ampL = float(params.get('ampL', 0.5))
+    ampR = float(params.get('ampR', 0.5))
     baseFreq = float(params.get('baseFreq', 200.0))
     beatFreq = float(params.get('beatFreq', 4.0))  # Pulse rate
     force_mono = bool(params.get('forceMono', False))
@@ -195,10 +194,9 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
 
     """Transitioning version of :func:`isochronic_tone`."""
 
-    base_amp = float(params.get('amp', 0.5))
-    startAmpL = float(params.get('startAmpL', params.get('ampL', base_amp)))
+    startAmpL = float(params.get('startAmpL', params.get('ampL', 0.5)))
     endAmpL = float(params.get('endAmpL', startAmpL))
-    startAmpR = float(params.get('startAmpR', params.get('ampR', base_amp)))
+    startAmpR = float(params.get('startAmpR', params.get('ampR', 0.5)))
     endAmpR = float(params.get('endAmpR', startAmpR))
 
     startBaseFreq = float(params.get('startBaseFreq', 200.0))

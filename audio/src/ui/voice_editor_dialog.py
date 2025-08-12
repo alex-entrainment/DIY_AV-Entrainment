@@ -1425,7 +1425,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
             },
             "isochronic_tone": {
                 "standard": [
-                    ('amp', 0.5), ('ampL', 0.5), ('ampR', 0.5),
+                    ('ampL', 0.5), ('ampR', 0.5),
                     ('baseFreq', 200.0), ('beatFreq', 4.0),
                     ('forceMono', False), ('startPhaseL', 0.0), ('startPhaseR', 0.0),
                     ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0),
