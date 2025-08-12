@@ -2,6 +2,7 @@
 
 import numpy as np
 import numba
+from scipy.signal import butter, filtfilt
 from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_alpha, skewed_sine_phase, _frac
 
 
@@ -150,6 +151,7 @@ def isochronic_tone(duration, sample_rate=44100, **params):
 
     rampPercent = float(params.get('rampPercent', 0.2))
     gapPercent = float(params.get('gapPercent', 0.15))
+    harmonic_suppression = bool(params.get('harmonicSuppression', False))
 
     N = int(sample_rate * duration)
     audio = _isochronic_tone_core(
@@ -187,6 +189,12 @@ def isochronic_tone(duration, sample_rate=44100, **params):
 
     if pan != 0.0:
         audio = pan2(audio.mean(axis=1), pan=pan)
+
+    if harmonic_suppression:
+        nyq = 0.5 * sample_rate
+        cutoff = min(baseFreq * 1.5, nyq - 1.0)
+        b, a = butter(4, cutoff / nyq, btype='low')
+        audio = filtfilt(b, a, audio, axis=0)
 
     return audio.astype(np.float32)
 
@@ -256,6 +264,9 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     endRampPercent = float(params.get('endRampPercent', startRampPercent))
     startGapPercent = float(params.get('startGapPercent', params.get('gapPercent', 0.15)))
     endGapPercent = float(params.get('endGapPercent', startGapPercent))
+    startHarmonicSuppression = float(params.get('startHarmonicSuppression', params.get('harmonicSuppression', 0.0)))
+    endHarmonicSuppression = float(params.get('endHarmonicSuppression', startHarmonicSuppression))
+    harmonic_suppression = (startHarmonicSuppression > 0.5) or (endHarmonicSuppression > 0.5)
     pan = float(params.get('pan', 0.0))
 
 
@@ -385,6 +396,13 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
         left, right = stereo[:, 0], stereo[:, 1]
 
     audio = np.column_stack((left, right))
+
+    if harmonic_suppression:
+        nyq = 0.5 * sample_rate
+        mean_base_freq = float(np.mean(instantaneous_carrier_freq_array))
+        cutoff = min(mean_base_freq * 1.5, nyq - 1.0)
+        b, a = butter(4, cutoff / nyq, btype='low')
+        audio = filtfilt(b, a, audio, axis=0)
 
     # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
 
