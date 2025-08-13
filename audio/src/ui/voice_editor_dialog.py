@@ -1342,9 +1342,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0), ('ampOscPhaseOffsetR', 0.0),
                     ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0), ('freqOscSkewL', 0.0), ('freqOscPhaseOffsetL', 0.0),
                     ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0), ('freqOscSkewR', 0.0), ('freqOscPhaseOffsetR', 0.0),
-                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
-                    ('glitchInterval', 0.0), ('glitchDur', 0.0),
-                    ('glitchNoiseLevel', 0.0), ('glitchFocusWidth', 0.0), ('glitchFocusExp', 0.0)
+                    ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0)
                 ],
                 "transition": [
                     ('startAmpL', 0.5), ('endAmpL', 0.5), ('startAmpR', 0.5), ('endAmpR', 0.5),
@@ -1355,9 +1353,6 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0), ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0), ('startFreqOscSkewL', 0.0), ('endFreqOscSkewL', 0.0), ('startFreqOscPhaseOffsetL', 0.0), ('endFreqOscPhaseOffsetL', 0.0),
                     ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0), ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0), ('startFreqOscSkewR', 0.0), ('endFreqOscSkewR', 0.0), ('startFreqOscPhaseOffsetR', 0.0), ('endFreqOscPhaseOffsetR', 0.0),
                     ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0), ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
-                    ('startGlitchInterval', 0.0), ('endGlitchInterval', 0.0), ('startGlitchDur', 0.0), ('endGlitchDur', 0.0),
-                    ('startGlitchNoiseLevel', 0.0), ('endGlitchNoiseLevel', 0.0), ('startGlitchFocusWidth', 0.0), ('endGlitchFocusWidth', 0.0),
-                    ('startGlitchFocusExp', 0.0), ('endGlitchFocusExp', 0.0),
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
