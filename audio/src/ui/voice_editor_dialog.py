@@ -820,6 +820,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 details += f"Transition: {'Yes' if current_ui_data.get('is_transition', False) else 'No'}\n"
                 details += "Parameters:\n"
                 params = current_ui_data.get("params", {})
+                func_name = current_ui_data.get('synth_function_name', '')
+                is_trans = current_ui_data.get('is_transition', False)
             else:
                 # Show saved data of the selected reference voice
                 try:
@@ -829,13 +831,32 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     details += f"Transition: {'Yes' if voice_data.get('is_transition', False) else 'No'}\n"
                     details += "Parameters:\n"
                     params = voice_data.get("params", {})
+                    func_name = voice_data.get('synth_function_name', '')
+                    is_trans = voice_data.get('is_transition', False)
                 except IndexError:
                     details = "Error: Invalid Step or Voice index for reference."
-                    params = {} # Ensure params is defined
+                    params = {}
+                    func_name = ''
+                    is_trans = False
             
             if params:
-                for k, v in sorted(params.items()):
-                    details += "  {}: {}\n".format(k, f"{v:.4g}" if isinstance(v, float) else v)
+                try:
+                    ordered = self._get_default_params(func_name, is_trans)
+                    ordered_keys = list(ordered.keys())
+                except Exception:
+                    ordered_keys = []
+                if ordered_keys:
+                    for k in ordered_keys:
+                        if k in params:
+                            v = params[k]
+                            details += "  {}: {}\n".format(k, f"{v:.4g}" if isinstance(v, float) else v)
+                    extra_keys = [k for k in params.keys() if k not in ordered_keys]
+                    for k in extra_keys:
+                        v = params[k]
+                        details += "  {}: {}\n".format(k, f"{v:.4g}" if isinstance(v, float) else v)
+                else:
+                    for k, v in sorted(params.items()):
+                        details += "  {}: {}\n".format(k, f"{v:.4g}" if isinstance(v, float) else v)
             else:
                 if "Function:" in details: # Only if not an error message
                     details += "  (No parameters defined)\n"
@@ -1312,48 +1333,30 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
-            "binaural_beat": { # This is an example, ensure it's correct
+            "binaural_beat": {
                 "standard": [
-                    ('ampL', 0.5), ('ampR', 0.5), ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('ampL', 0.5), ('ampR', 0.5),
+                    ('baseFreq', 200.0), ('beatFreq', 4.0),
                     ('startPhaseL', 0.0), ('startPhaseR', 0.0),
-                    ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0),
-                    ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0),
-                    ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0),
-                    ('freqOscSkewL', 0.0), ('freqOscSkewR', 0.0),
-                    ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0),
-                    ('freqOscPhaseOffsetL', 0.0), ('freqOscPhaseOffsetR', 0.0),
-                    ('ampOscPhaseOffsetL', 0.0), ('ampOscPhaseOffsetR', 0.0),
+                    ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0), ('ampOscPhaseOffsetL', 0.0),
+                    ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0), ('ampOscPhaseOffsetR', 0.0),
+                    ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0), ('freqOscSkewL', 0.0), ('freqOscPhaseOffsetL', 0.0),
+                    ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0), ('freqOscSkewR', 0.0), ('freqOscPhaseOffsetR', 0.0),
                     ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
-                    ('glitchInterval', 0.0), ('glitchDur', 0.0), 
+                    ('glitchInterval', 0.0), ('glitchDur', 0.0),
                     ('glitchNoiseLevel', 0.0), ('glitchFocusWidth', 0.0), ('glitchFocusExp', 0.0)
                 ],
                 "transition": [
-                    ('startAmpL', 0.5), ('endAmpL', 0.5),
-                    ('startAmpR', 0.5), ('endAmpR', 0.5),
-                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
-                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
-                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
-                    ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
-                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
-                    ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
-                    ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0),
-                    ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0),
-                    ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0),
-                    ('startAmpOscFreqR', 0.0), ('endAmpOscFreqR', 0.0),
-                    ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0),
-                    ('startAmpOscPhaseOffsetR', 0.0), ('endAmpOscPhaseOffsetR', 0.0),
-                    ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0),
-                    ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0),
-                    ('startFreqOscSkewL', 0.0), ('endFreqOscSkewL', 0.0),
-                    ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0),
-                    ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0),
-                    ('startFreqOscSkewR', 0.0), ('endFreqOscSkewR', 0.0),
-                    ('startFreqOscPhaseOffsetL', 0.0), ('endFreqOscPhaseOffsetL', 0.0),
-                    ('startFreqOscPhaseOffsetR', 0.0), ('endFreqOscPhaseOffsetR', 0.0),
-                    ('startGlitchInterval', 0.0), ('endGlitchInterval', 0.0),
-                    ('startGlitchDur', 0.0), ('endGlitchDur', 0.0),
-                    ('startGlitchNoiseLevel', 0.0), ('endGlitchNoiseLevel', 0.0),
-                    ('startGlitchFocusWidth', 0.0), ('endGlitchFocusWidth', 0.0),
+                    ('startAmpL', 0.5), ('endAmpL', 0.5), ('startAmpR', 0.5), ('endAmpR', 0.5),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0), ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
+                    ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0), ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0), ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0),
+                    ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0), ('startAmpOscFreqR', 0.0), ('endAmpOscFreqR', 0.0), ('startAmpOscPhaseOffsetR', 0.0), ('endAmpOscPhaseOffsetR', 0.0),
+                    ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0), ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0), ('startFreqOscSkewL', 0.0), ('endFreqOscSkewL', 0.0), ('startFreqOscPhaseOffsetL', 0.0), ('endFreqOscPhaseOffsetL', 0.0),
+                    ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0), ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0), ('startFreqOscSkewR', 0.0), ('endFreqOscSkewR', 0.0), ('startFreqOscPhaseOffsetR', 0.0), ('endFreqOscPhaseOffsetR', 0.0),
+                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0), ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
+                    ('startGlitchInterval', 0.0), ('endGlitchInterval', 0.0), ('startGlitchDur', 0.0), ('endGlitchDur', 0.0),
+                    ('startGlitchNoiseLevel', 0.0), ('endGlitchNoiseLevel', 0.0), ('startGlitchFocusWidth', 0.0), ('endGlitchFocusWidth', 0.0),
                     ('startGlitchFocusExp', 0.0), ('endGlitchFocusExp', 0.0),
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
@@ -1426,47 +1429,28 @@ class VoiceEditorDialog(QDialog): # Standard class name
             "isochronic_tone": {
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5),
-                    ('baseFreq', 200.0), ('beatFreq', 4.0),
-                    ('forceMono', False), ('startPhaseL', 0.0), ('startPhaseR', 0.0),
-                    ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0),
-                    ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0),
-                    ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0),
-                    ('freqOscSkewL', 0.0), ('freqOscSkewR', 0.0),
-                    ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0),
-                    ('freqOscPhaseOffsetL', 0.0), ('freqOscPhaseOffsetR', 0.0),
-                    ('ampOscPhaseOffsetL', 0.0), ('ampOscPhaseOffsetR', 0.0),
+                    ('baseFreq', 200.0), ('beatFreq', 4.0), ('forceMono', False),
+                    ('startPhaseL', 0.0), ('startPhaseR', 0.0),
+                    ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0), ('ampOscPhaseOffsetL', 0.0),
+                    ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0), ('ampOscPhaseOffsetR', 0.0),
+                    ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0), ('freqOscSkewL', 0.0), ('freqOscPhaseOffsetL', 0.0),
+                    ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0), ('freqOscSkewR', 0.0), ('freqOscPhaseOffsetR', 0.0),
                     ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0),
                     ('rampPercent', 0.2), ('gapPercent', 0.15),
                     ('harmonicSuppression', False), ('pan', 0.0)
                 ],
                 "transition": [
-                    ('startAmpL', 0.5), ('endAmpL', 0.5),
-                    ('startAmpR', 0.5), ('endAmpR', 0.5),
-                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0),
-                    ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startAmpL', 0.5), ('endAmpL', 0.5), ('startAmpR', 0.5), ('endAmpR', 0.5),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
                     ('startForceMono', 0.0), ('endForceMono', 0.0),
-                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0),
-                    ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
-                    ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0),
-                    ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0),
-                    ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0),
-                    ('startAmpOscFreqR', 0.0), ('endAmpOscFreqR', 0.0),
-                    ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0),
-                    ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0),
-                    ('startFreqOscSkewL', 0.0), ('endFreqOscSkewL', 0.0),
-                    ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0),
-                    ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0),
-                    ('startFreqOscSkewR', 0.0), ('endFreqOscSkewR', 0.0),
-                    ('startFreqOscPhaseOffsetL', 0.0), ('endFreqOscPhaseOffsetL', 0.0),
-                    ('startFreqOscPhaseOffsetR', 0.0), ('endFreqOscPhaseOffsetR', 0.0),
-                    ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0),
-                    ('startAmpOscPhaseOffsetR', 0.0), ('endAmpOscPhaseOffsetR', 0.0),
-                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0),
-                    ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
-                    ('startRampPercent', 0.2), ('endRampPercent', 0.2),
-                    ('startGapPercent', 0.15), ('endGapPercent', 0.15),
-                    ('startHarmonicSuppression', False), ('endHarmonicSuppression', False),
-                    ('startPan', 0.0), ('endPan', 0.0),
+                    ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0), ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
+                    ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0), ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0), ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0),
+                    ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0), ('startAmpOscFreqR', 0.0), ('endAmpOscFreqR', 0.0), ('startAmpOscPhaseOffsetR', 0.0), ('endAmpOscPhaseOffsetR', 0.0),
+                    ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0), ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0), ('startFreqOscSkewL', 0.0), ('endFreqOscSkewL', 0.0), ('startFreqOscPhaseOffsetL', 0.0), ('endFreqOscPhaseOffsetL', 0.0),
+                    ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0), ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0), ('startFreqOscSkewR', 0.0), ('endFreqOscSkewR', 0.0), ('startFreqOscPhaseOffsetR', 0.0), ('endFreqOscPhaseOffsetR', 0.0),
+                    ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0), ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0),
+                    ('startRampPercent', 0.2), ('endRampPercent', 0.2), ('startGapPercent', 0.15), ('endGapPercent', 0.15),
+                    ('startHarmonicSuppression', False), ('endHarmonicSuppression', False), ('startPan', 0.0), ('endPan', 0.0),
                     ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]
             },
