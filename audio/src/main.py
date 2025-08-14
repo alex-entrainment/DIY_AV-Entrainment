@@ -899,6 +899,8 @@ class TrackEditorApp(QMainWindow):
             cf = float(cf_str_safe)
             if cf < 0: raise ValueError("Crossfade duration cannot be negative.")
             self.track_data["global_settings"]["crossfade_duration"] = cf
+            # Ensure step start times reflect any change in crossfade duration
+            self._recalculate_step_start_times()
             if not outfile: raise ValueError("Output filename cannot be empty.")
             if any(c in outfile for c in '<>:"/\\|?*'):
                 raise ValueError("Output filename contains invalid characters.")
