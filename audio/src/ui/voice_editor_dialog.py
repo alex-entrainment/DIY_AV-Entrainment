@@ -548,6 +548,8 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         current_validator = QDoubleValidator(-999999.0, 999999.0, 6, self)
                         current_validator.setNotation(QDoubleValidator.StandardNotation)
                         param_storage_type = 'float'
+                    elif param_type_hint == 'bool':
+                        param_storage_type = 'bool'
                     else:
                         param_storage_type = 'str'
 
@@ -558,22 +560,40 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
                     start_label = QLabel("Start:")
                     row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
-                    start_entry = QLineEdit(str(display_start) if display_start is not None else "")
-                    if current_validator:
-                        start_entry.setValidator(current_validator)
-                    start_entry.setMinimumWidth(self.ENTRY_WIDTH)
-                    start_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                    row_layout.addWidget(start_entry, 0, 2)
+                    if param_type_hint == 'bool':
+                        start_entry = QCheckBox()
+                        if isinstance(display_start, str):
+                            checked = display_start.strip().lower() in ('1', 'true', 'yes', 'on')
+                        else:
+                            checked = bool(display_start)
+                        start_entry.setChecked(checked)
+                        row_layout.addWidget(start_entry, 0, 2, 1, 1, Qt.AlignLeft)
+                    else:
+                        start_entry = QLineEdit(str(display_start) if display_start is not None else "")
+                        if current_validator:
+                            start_entry.setValidator(current_validator)
+                        start_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                        start_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                        row_layout.addWidget(start_entry, 0, 2)
                     self.param_widgets[name] = {'widget': start_entry, 'type': param_storage_type}
 
                     end_label = QLabel("End:")
                     row_layout.addWidget(end_label, 0, 3, Qt.AlignRight)
-                    end_entry = QLineEdit(str(display_end) if display_end is not None else "")
-                    if current_validator:
-                        end_entry.setValidator(current_validator)
-                    end_entry.setMinimumWidth(self.ENTRY_WIDTH)
-                    end_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                    row_layout.addWidget(end_entry, 0, 4)
+                    if param_type_hint == 'bool':
+                        end_entry = QCheckBox()
+                        if isinstance(display_end, str):
+                            checked_e = display_end.strip().lower() in ('1', 'true', 'yes', 'on')
+                        else:
+                            checked_e = bool(display_end)
+                        end_entry.setChecked(checked_e)
+                        row_layout.addWidget(end_entry, 0, 4, 1, 1, Qt.AlignLeft)
+                    else:
+                        end_entry = QLineEdit(str(display_end) if display_end is not None else "")
+                        if current_validator:
+                            end_entry.setValidator(current_validator)
+                        end_entry.setMinimumWidth(self.ENTRY_WIDTH)
+                        end_entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                        row_layout.addWidget(end_entry, 0, 4)
                     self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
 
                     tooltip_base = self._get_param_tooltip(func_name, base_name_for_pair)
