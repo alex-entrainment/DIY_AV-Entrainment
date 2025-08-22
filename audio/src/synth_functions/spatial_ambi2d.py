@@ -292,12 +292,15 @@ def generate_azimuth_trajectory(
 ):
     """
     segments: list of dicts, each with:
-      - mode: "rotate" | "oscillate"
+      - mode: "rotate" | "oscillate" | "rotating_arc"
       - start_deg: starting azimuth (deg)
-      - extent_deg: for oscillate: peak ± from center; for rotate: total sweep (ignored if using speed)
+      - extent_deg: for oscillate: peak ± from center; for rotate: total sweep
+                    (ignored if using speed); for rotating_arc: arc width in degrees
       - center_deg: for oscillate only (center of arc)
       - speed_deg_per_s: rotate speed (deg/s), sign sets direction
       - period_s: for oscillate (alt to speed)
+      - rotate_freq_hz: for rotating_arc, rotation frequency of the entire arc
+                        (Hz, sign sets direction)
       - easing: "linear" | "sine" (optional)
       - distance_m: constant or (start,end)
       - seconds: duration of this segment
@@ -319,6 +322,7 @@ def generate_azimuth_trajectory(
         extent = float(seg.get("extent_deg", 180.0))
         speed = seg.get("speed_deg_per_s", None)
         period = seg.get("period_s", None)
+        rotate_freq = float(seg.get("rotate_freq_hz", 0.0))
         easing = seg.get("easing", "linear")
 
         dval = seg.get("distance_m", 1.0)
@@ -336,6 +340,14 @@ def generate_azimuth_trajectory(
             else:
                 sp = float(speed)
             th = start + sp * t
+        elif mode == "rotating_arc":
+            # Sweep across arc while rotating the arc around the listener
+            phase = 2 * np.pi * (t / sec if sec > 0 else 0.0)
+            arc_progress = (1 - np.cos(phase)) / 2.0  # 0 -> 1 -> 0
+            rotation = 360.0 * rotate_freq * t
+            arc_start = start + rotation
+            arc_end = arc_start + extent
+            th = arc_start + arc_progress * (arc_end - arc_start)
         else:  # oscillate
             if period is None or period <= 0:
                 period = sec

@@ -23,7 +23,7 @@ class SpatialTrajectorySegmentDialog(QDialog):
         form = QGridLayout()
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["rotate", "oscillate"])
+        self.mode_combo.addItems(["rotate", "oscillate", "rotating_arc"])
         self.mode_combo.currentTextChanged.connect(self._update_mode_fields)
         form.addWidget(QLabel("Mode:"), 0, 0)
         form.addWidget(self.mode_combo, 0, 1)
@@ -48,6 +48,10 @@ class SpatialTrajectorySegmentDialog(QDialog):
         form.addWidget(QLabel("Period (s):"), 5, 0)
         form.addWidget(self.period_spin, 5, 1)
 
+        self.rotate_freq_spin = QDoubleSpinBox(); self.rotate_freq_spin.setRange(-1000.0, 1000.0); self.rotate_freq_spin.setDecimals(3)
+        form.addWidget(QLabel("Rotate Freq (Hz):"), 6, 0)
+        form.addWidget(self.rotate_freq_spin, 6, 1)
+
         # Distance controls
         self.dist_start_spin = QDoubleSpinBox(); self.dist_start_spin.setRange(0.0, 1000.0); self.dist_start_spin.setDecimals(3)
         self.dist_end_spin = QDoubleSpinBox(); self.dist_end_spin.setRange(0.0, 1000.0); self.dist_end_spin.setDecimals(3)
@@ -57,16 +61,16 @@ class SpatialTrajectorySegmentDialog(QDialog):
         dist_layout.addWidget(QLabel("to"))
         dist_layout.addWidget(self.dist_end_spin)
         dist_layout.addWidget(self.dist_use_range)
-        form.addWidget(QLabel("Distance (m):"), 6, 0)
-        form.addLayout(dist_layout, 6, 1)
+        form.addWidget(QLabel("Distance (m):"), 7, 0)
+        form.addLayout(dist_layout, 7, 1)
 
         self.seconds_spin = QDoubleSpinBox(); self.seconds_spin.setRange(0.001, 10000.0); self.seconds_spin.setDecimals(3)
-        form.addWidget(QLabel("Duration (s):"), 7, 0)
-        form.addWidget(self.seconds_spin, 7, 1)
+        form.addWidget(QLabel("Duration (s):"), 8, 0)
+        form.addWidget(self.seconds_spin, 8, 1)
 
         self.easing_combo = QComboBox(); self.easing_combo.addItems(["linear", "sine"])
-        form.addWidget(QLabel("Easing:"), 8, 0)
-        form.addWidget(self.easing_combo, 8, 1)
+        form.addWidget(QLabel("Easing:"), 9, 0)
+        form.addWidget(self.easing_combo, 9, 1)
 
         layout.addLayout(form)
 
@@ -84,6 +88,7 @@ class SpatialTrajectorySegmentDialog(QDialog):
         self.center_spin.setValue(float(seg.get("center_deg", 0.0)))
         self.extent_spin.setValue(float(seg.get("extent_deg", 0.0)))
         self.period_spin.setValue(float(seg.get("period_s", 0.0)))
+        self.rotate_freq_spin.setValue(float(seg.get("rotate_freq_hz", 0.0)))
         d = seg.get("distance_m", 1.0)
         if isinstance(d, (list, tuple)) and len(d) == 2:
             self.dist_use_range.setChecked(True)
@@ -104,18 +109,31 @@ class SpatialTrajectorySegmentDialog(QDialog):
             self.center_spin.setEnabled(False)
             self.extent_spin.setEnabled(False)
             self.period_spin.setEnabled(False)
+            self.rotate_freq_spin.setEnabled(False)
+        elif mode == "rotating_arc":
+            self.start_spin.setEnabled(True)
+            self.speed_spin.setEnabled(False)
+            self.center_spin.setEnabled(False)
+            self.extent_spin.setEnabled(True)
+            self.period_spin.setEnabled(False)
+            self.rotate_freq_spin.setEnabled(True)
         else:
             self.start_spin.setEnabled(False)
             self.speed_spin.setEnabled(False)
             self.center_spin.setEnabled(True)
             self.extent_spin.setEnabled(True)
             self.period_spin.setEnabled(True)
+            self.rotate_freq_spin.setEnabled(False)
 
     def get_segment(self) -> dict:
         seg = {"mode": self.mode_combo.currentText()}
         if seg["mode"] == "rotate":
             seg["start_deg"] = float(self.start_spin.value())
             seg["speed_deg_per_s"] = float(self.speed_spin.value())
+        elif seg["mode"] == "rotating_arc":
+            seg["start_deg"] = float(self.start_spin.value())
+            seg["extent_deg"] = float(self.extent_spin.value())
+            seg["rotate_freq_hz"] = float(self.rotate_freq_spin.value())
         else:
             seg["center_deg"] = float(self.center_spin.value())
             seg["extent_deg"] = float(self.extent_spin.value())
@@ -172,6 +190,11 @@ class SpatialTrajectoryDialog(QDialog):
     def _format_segment(self, seg: dict) -> str:
         if seg.get("mode") == "rotate":
             desc = f"rotate start={seg.get('start_deg', 0)} speed={seg.get('speed_deg_per_s', 0)}"
+        elif seg.get("mode") == "rotating_arc":
+            desc = (
+                f"rotating_arc start={seg.get('start_deg', 0)} extent={seg.get('extent_deg', 0)}"
+                f" rot_freq={seg.get('rotate_freq_hz', 0)}"
+            )
         else:
             desc = (
                 f"oscillate center={seg.get('center_deg', 0)} extent={seg.get('extent_deg', 0)}"
