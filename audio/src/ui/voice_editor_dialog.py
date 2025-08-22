@@ -634,6 +634,42 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val_to_set = str(int(current_value)) if isinstance(current_value, (int, float)) and int(current_value) in [1,2,3] else '1'
                     widget.setCurrentText(val_to_set)
                     widget.setMaximumWidth(100); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                elif name == 'flangeShape' and param_type_hint == 'str':
+                    widget = QComboBox(); widget.addItems(['sine', 'triangle'])
+                    val_to_set = current_value if current_value in ['sine', 'triangle'] else 'sine'
+                    widget.setCurrentText(str(val_to_set))
+                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                elif name == 'flangeStereoMode' and param_type_hint == 'int':
+                    widget = QComboBox()
+                    widget.addItem('Linked', 0)
+                    widget.addItem('Spread', 1)
+                    widget.addItem('Mid-only', 2)
+                    widget.addItem('Side-only', 3)
+                    idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
+                    widget.setCurrentIndex(idx if idx >= 0 else 0)
+                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                elif name == 'flangeDelayLaw' and param_type_hint == 'int':
+                    widget = QComboBox()
+                    widget.addItem('τ-linear', 0)
+                    widget.addItem('1/τ-linear', 1)
+                    widget.addItem('exp-τ', 2)
+                    idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
+                    widget.setCurrentIndex(idx if idx >= 0 else 0)
+                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                elif name == 'flangeInterp' and param_type_hint == 'int':
+                    widget = QComboBox()
+                    widget.addItem('Linear', 0)
+                    widget.addItem('Lagrange3', 1)
+                    idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
+                    widget.setCurrentIndex(idx if idx >= 0 else 0)
+                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                elif name == 'flangeLoudnessMode' and param_type_hint == 'int':
+                    widget = QComboBox()
+                    widget.addItem('Off', 0)
+                    widget.addItem('Match Input RMS', 1)
+                    idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
+                    widget.setCurrentIndex(idx if idx >= 0 else 0)
+                    widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
                 elif name == 'transition_curve' and param_type_hint == 'str':
                     widget = QComboBox();
                     widget.addItems(['linear', 'logarithmic', 'exponential', 'Custom...'])
@@ -1662,10 +1698,22 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 value = widget.isChecked()
             elif isinstance(widget, QComboBox):
                 value_str = widget.currentText()
-                if name == 'noiseType' and param_type == 'int': # Specific handling
-                    try: value = int(value_str)
-                    except ValueError: error_occurred=True; validation_errors.append(f"Invalid int for '{name}': {value_str}"); widget.setStyleSheet("border: 1px solid red;")
-                else: # For other combos like pathShape (string)
+                data_val = widget.currentData()
+                if param_type == 'int':
+                    try:
+                        value = int(data_val if data_val is not None else value_str)
+                    except (ValueError, TypeError):
+                        error_occurred = True
+                        validation_errors.append(f"Invalid int for '{name}': {value_str}")
+                        widget.setStyleSheet("border: 1px solid red;")
+                elif param_type == 'float':
+                    try:
+                        value = float(data_val if data_val is not None else value_str)
+                    except (ValueError, TypeError):
+                        error_occurred = True
+                        validation_errors.append(f"Invalid float for '{name}': {value_str}")
+                        widget.setStyleSheet("border: 1px solid red;")
+                else:
                     value = value_str
             elif isinstance(widget, QLineEdit):
                 value_str = widget.text().strip()
