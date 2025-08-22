@@ -228,12 +228,16 @@ class NoiseGeneratorDialog(QDialog):
         self.generate_btn.clicked.connect(self.on_generate)
         self.test_btn = QPushButton("Test")
         self.test_btn.clicked.connect(self.on_test)
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.clicked.connect(self.on_stop)
+        self.stop_btn.setEnabled(False)
         self.audio_output = None
         self.audio_buffer = None
         button_row.addWidget(self.load_btn)
         button_row.addWidget(self.save_btn)
         button_row.addStretch(1)
         button_row.addWidget(self.test_btn)
+        button_row.addWidget(self.stop_btn)
         button_row.addWidget(self.generate_btn)
         layout.addLayout(button_row)
 
@@ -512,14 +516,28 @@ class NoiseGeneratorDialog(QDialog):
                 return
 
             if self.audio_output:
-                self.audio_output.stop()
-                self.audio_output = None
+                self.on_stop()
 
             self.audio_output = QAudioOutput(fmt, self)
+            self.audio_output.stateChanged.connect(self.on_audio_state_changed)
             self.audio_buffer = QBuffer()
             self.audio_buffer.setData(audio_bytes)
             self.audio_buffer.open(QIODevice.ReadOnly)
             self.audio_output.start(self.audio_buffer)
+            self.stop_btn.setEnabled(True)
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
+
+    def on_stop(self):
+        if self.audio_output:
+            self.audio_output.stop()
+            self.audio_output = None
+        if self.audio_buffer:
+            self.audio_buffer.close()
+            self.audio_buffer = None
+        self.stop_btn.setEnabled(False)
+
+    def on_audio_state_changed(self, state):
+        if state in (QAudio.IdleState, QAudio.StoppedState):
+            self.on_stop()
 
