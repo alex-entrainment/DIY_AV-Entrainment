@@ -7,7 +7,7 @@ import numpy as np
 from scipy.signal import butter, lfilter, spectrogram
 import matplotlib.pyplot as plt
 
-from ..synth_functions.common import _powerlaw_noise
+from synth_functions.common import _powerlaw_noise
 
 
 @dataclass
