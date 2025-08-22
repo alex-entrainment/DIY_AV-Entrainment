@@ -20,6 +20,11 @@ def _one_pole_coef_ms(tau_ms: float, fs: float) -> float:
 def _smooth_step(state: float, target: float, a: float) -> float:
     return a * state + (1.0 - a) * target
 
+@numba.njit(cache=True, fastmath=True)
+def _smooth_angle(state: float, target: float, a: float) -> float:
+    diff = np.arctan2(np.sin(target - state), np.cos(target - state))
+    return state + (1.0 - a) * diff
+
 # -------------------------
 # FOA encode (2D, SN3D)
 # -------------------------
@@ -193,7 +198,7 @@ def spatialize_mono_ambi2d(
     for n in range(N):
         t_t = theta_deg[n] * np.pi/180.0
         d_t = max(0.1, distance_m[n])
-        th = _smooth_step(th, t_t, a_th)
+        th = _smooth_angle(th, t_t, a_th)
         di = _smooth_step(di, d_t, a_di)
         theta[n] = th
         dist[n]  = di
