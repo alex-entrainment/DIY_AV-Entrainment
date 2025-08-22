@@ -942,16 +942,16 @@ class VoiceEditorDialog(QDialog): # Standard class name
         if flange_enable_data:
             enable_widget = flange_enable_data['widget']
 
-            other_widgets = []
+            flange_widgets = []
             for n, data in self.param_widgets.items():
                 if 'flange' in n.lower() and n != 'flangeEnable':
                     row_widget = data['widget'].parentWidget()
-                    if row_widget and row_widget not in other_widgets:
-                        other_widgets.append(row_widget)
+                    if row_widget and row_widget not in flange_widgets:
+                        flange_widgets.append(row_widget)
 
             def _set_flange_enabled(state):
                 visible = bool(state)
-                for w in other_widgets:
+                for w in flange_widgets:
                     w.setVisible(visible)
                     w.setEnabled(visible)
 
@@ -968,16 +968,16 @@ class VoiceEditorDialog(QDialog): # Standard class name
         if spatial_enable_data:
             enable_widget = spatial_enable_data['widget']
 
-            other_widgets = []
+            spatial_widgets = []
             for n, data in self.param_widgets.items():
                 if n.lower().startswith('spatial') and n != 'spatialEnable':
                     row_widget = data['widget'].parentWidget()
-                    if row_widget and row_widget not in other_widgets:
-                        other_widgets.append(row_widget)
+                    if row_widget and row_widget not in spatial_widgets:
+                        spatial_widgets.append(row_widget)
 
             def _set_spatial_enabled(state):
                 visible = bool(state)
-                for w in other_widgets:
+                for w in spatial_widgets:
                     w.setVisible(visible)
                     w.setEnabled(visible)
 
