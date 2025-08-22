@@ -122,7 +122,7 @@ class SpatialTrajectorySegmentDialog(QDialog):
         set_vis(is_rotate, self.speed_label, self.speed_spin)
         set_vis(is_oscillate, self.center_label, self.center_spin)
         set_vis(is_rotating_arc or is_oscillate, self.extent_label, self.extent_spin)
-        set_vis(is_oscillate, self.period_label, self.period_spin)
+        set_vis(is_rotating_arc or is_oscillate, self.period_label, self.period_spin)
         set_vis(is_rotating_arc, self.rotate_freq_label, self.rotate_freq_spin)
 
     def get_segment(self) -> dict:
@@ -134,6 +134,7 @@ class SpatialTrajectorySegmentDialog(QDialog):
             seg["start_deg"] = float(self.start_spin.value())
             seg["extent_deg"] = float(self.extent_spin.value())
             seg["rotate_freq_hz"] = float(self.rotate_freq_spin.value())
+            seg["period_s"] = float(self.period_spin.value())
         else:
             seg["center_deg"] = float(self.center_spin.value())
             seg["extent_deg"] = float(self.extent_spin.value())
@@ -193,7 +194,7 @@ class SpatialTrajectoryDialog(QDialog):
         elif seg.get("mode") == "rotating_arc":
             desc = (
                 f"rotating_arc start={seg.get('start_deg', 0)} extent={seg.get('extent_deg', 0)}"
-                f" rot_freq={seg.get('rotate_freq_hz', 0)}"
+                f" rot_freq={seg.get('rotate_freq_hz', 0)} period={seg.get('period_s', 0)}"
             )
         else:
             desc = (

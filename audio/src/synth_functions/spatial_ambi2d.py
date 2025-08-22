@@ -313,7 +313,8 @@ def generate_azimuth_trajectory(
                     (ignored if using speed); for rotating_arc: arc width in degrees
       - center_deg: for oscillate only (center of arc)
       - speed_deg_per_s: rotate speed (deg/s), sign sets direction
-      - period_s: for oscillate (alt to speed)
+      - period_s: for oscillate (alt to speed); for rotating_arc: time for beat
+                   to sweep the arc start→end→start
       - rotate_freq_hz: for rotating_arc, rotation frequency of the entire arc
                         (Hz, sign sets direction)
       - easing: "linear" | "sine" (optional)
@@ -357,7 +358,9 @@ def generate_azimuth_trajectory(
             th = start + sp * t
         elif mode == "rotating_arc":
             # Sweep across arc while rotating the arc around the listener
-            phase = 2 * np.pi * (t / sec if sec > 0 else 0.0)
+            if period is None or period <= 0:
+                period = sec
+            phase = 2 * np.pi * (t / period)
             arc_progress = (1 - np.cos(phase)) / 2.0  # 0 -> 1 -> 0
             rotation = 360.0 * rotate_freq * t
             arc_start = start + rotation
