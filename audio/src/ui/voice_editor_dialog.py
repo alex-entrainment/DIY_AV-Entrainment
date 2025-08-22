@@ -117,6 +117,22 @@ FLANGE_TOOLTIPS = {
     'flangeLoudnessMaxGain': 'Maximum makeup gain when loudness mode is on.',
 }
 
+# Tooltips for 2D ambisonic spatialization parameters
+SPATIAL_TOOLTIPS = {
+    'spatialEnable': 'Enable or disable 2D ambisonic spatialization.',
+    'spatialUseItdIld': 'Apply interaural time and level differences (0 off, 1 on).',
+    'spatialEarAngleDeg': 'Virtual ear angle for stereo decode (degrees).',
+    'spatialHeadRadiusM': 'Assumed listener head radius in meters.',
+    'spatialItdScale': 'Scale factor for interaural time differences.',
+    'spatialIldMaxDb': 'Maximum interaural level difference in dB.',
+    'spatialIldXoverHz': 'Frequency where ILD shelf begins (Hz).',
+    'spatialRefDistanceM': 'Reference distance for distance attenuation (meters).',
+    'spatialRolloff': 'Distance rolloff exponent.',
+    'spatialHfRollDbPerM': 'High-frequency rolloff per meter (dB).',
+    'spatialDezipperThetaMs': 'Dezipper time constant for azimuth changes (ms).',
+    'spatialDezipperDistMs': 'Dezipper time constant for distance changes (ms).',
+}
+
 
 class VoiceEditorDialog(QDialog): # Standard class name
 
@@ -857,6 +873,32 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
             enable_widget.stateChanged.connect(_set_flange_enabled)
             _set_flange_enabled(enable_widget.isChecked())
+
+        # Apply tooltips to 2D ambisonic spatialization parameters
+        for fname, tip in SPATIAL_TOOLTIPS.items():
+            data = self.param_widgets.get(fname)
+            if data:
+                data['widget'].setToolTip(tip)
+
+        spatial_enable_data = self.param_widgets.get('spatialEnable')
+        if spatial_enable_data:
+            enable_widget = spatial_enable_data['widget']
+
+            other_widgets = []
+            for n, data in self.param_widgets.items():
+                if n.lower().startswith('spatial') and n != 'spatialEnable':
+                    row_widget = data['widget'].parentWidget()
+                    if row_widget and row_widget not in other_widgets:
+                        other_widgets.append(row_widget)
+
+            def _set_spatial_enabled(state):
+                visible = bool(state)
+                for w in other_widgets:
+                    w.setVisible(visible)
+                    w.setEnabled(visible)
+
+            enable_widget.stateChanged.connect(_set_spatial_enabled)
+            _set_spatial_enabled(enable_widget.isChecked())
 
     def _populate_envelope_controls(self):
         env_data = self.current_voice_data.get("volume_envelope") # main.py uses "volume_envelope"
@@ -1876,6 +1918,24 @@ class VoiceEditorDialog(QDialog): # Standard class name
             for fname, fdefault in flange_defaults:
                 if fname not in ordered_params:
                     ordered_params[fname] = fdefault
+
+        spatial_defaults = [
+            ('spatialEnable', False),
+            ('spatialUseItdIld', 1),
+            ('spatialEarAngleDeg', 30.0),
+            ('spatialHeadRadiusM', 0.0875),
+            ('spatialItdScale', 1.0),
+            ('spatialIldMaxDb', 3.0),
+            ('spatialIldXoverHz', 700.0),
+            ('spatialRefDistanceM', 1.0),
+            ('spatialRolloff', 1.0),
+            ('spatialHfRollDbPerM', 0.0),
+            ('spatialDezipperThetaMs', 25.0),
+            ('spatialDezipperDistMs', 60.0),
+        ]
+        for fname, fdefault in spatial_defaults:
+            if fname not in ordered_params:
+                ordered_params[fname] = fdefault
 
         return ordered_params
 
