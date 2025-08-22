@@ -1,6 +1,10 @@
 import numpy as np
 import numba
 
+# Decoder identifiers
+DECODER_ITD_HEAD = 0
+DECODER_FOA_CARDIOID = 1
+
 # -------------------------
 # Helpers / smoothing
 # -------------------------
@@ -180,10 +184,12 @@ def spatialize_mono_ambi2d(
     hf_roll_db_per_m: float = 0.0,
     # smoothing (anti-zipper)
     dz_theta_ms: float = 20.0,
-    dz_dist_ms: float = 50.0
+    dz_dist_ms: float = 50.0,
+    decoder: int = DECODER_ITD_HEAD
 ):
     """
     Encode mono source at azimuth theta, distance d; decode to stereo.
+    decoder: 0 = ITD-only head, 1 = FOA cardioid.
     """
     N = x.shape[0]
     # Smooth theta, distance
@@ -203,10 +209,6 @@ def spatialize_mono_ambi2d(
         theta[n] = th
         dist[n]  = di
 
-    # Distance amplitude
-    Ld = np.empty(N, np.float32)
-    Rd = np.empty(N, np.float32)
-
     # Simple distance gain (constant-power-ish)
     g = np.empty(N, np.float32)
     for n in range(N):
@@ -215,19 +217,31 @@ def spatialize_mono_ambi2d(
         if d < 0.1: d = 0.1
         g[n] = (ref_distance_m / max(ref_distance_m, d)) ** rolloff
 
-    # Apply encode/decode
-    W, X, Y = foa_encode_2d(x * g, theta)  # apply distance gain pre-encode
-    Lc, Rc  = foa_decode_stereo_cardioid(W, X, Y, ear_angle_deg)
-
-    if use_itd_ild != 0:
-        L, R = _apply_time_varying_itd_ild(
-            Lc, Rc, fs, theta,
-            head_radius_m=head_radius_m,
-            itd_scale=itd_scale, ild_max_db=ild_max_db,
-            ild_xover_hz=ild_xover_hz, dz_ms=dz_theta_ms
-        )
+    # Apply decode according to chosen model
+    if decoder == DECODER_FOA_CARDIOID:
+        W, X, Y = foa_encode_2d(x * g, theta)
+        Lc, Rc = foa_decode_stereo_cardioid(W, X, Y, ear_angle_deg)
+        if use_itd_ild != 0:
+            L, R = _apply_time_varying_itd_ild(
+                Lc, Rc, fs, theta,
+                head_radius_m=head_radius_m,
+                itd_scale=itd_scale, ild_max_db=ild_max_db,
+                ild_xover_hz=ild_xover_hz, dz_ms=dz_theta_ms
+            )
+        else:
+            L, R = Lc, Rc
     else:
-        L, R = Lc, Rc
+        mono = x * g
+        if use_itd_ild != 0:
+            L, R = _apply_time_varying_itd_ild(
+                mono, mono, fs, theta,
+                head_radius_m=head_radius_m,
+                itd_scale=itd_scale, ild_max_db=ild_max_db,
+                ild_xover_hz=ild_xover_hz, dz_ms=dz_theta_ms
+            )
+        else:
+            L = mono.copy()
+            R = mono.copy()
 
     # Optional HF rolloff with distance (very small for <1 kHz; we approximate via gain only)
     if hf_roll_db_per_m != 0.0:
@@ -261,7 +275,8 @@ def spatialize_binaural_mid_only(
     rolloff: float = 1.0,
     hf_roll_db_per_m: float = 0.0,
     dz_theta_ms: float = 20.0,
-    dz_dist_ms: float = 50.0
+    dz_dist_ms: float = 50.0,
+    decoder: int = DECODER_ITD_HEAD
 ):
     """
     Preserve Δf by spatializing Mid only.
@@ -275,7 +290,7 @@ def spatialize_binaural_mid_only(
         M.astype(np.float32), fs,
         theta_deg, distance_m,
         use_itd_ild, ear_angle_deg, head_radius_m, itd_scale, ild_max_db, ild_xover_hz,
-        ref_distance_m, rolloff, hf_roll_db_per_m, dz_theta_ms, dz_dist_ms
+        ref_distance_m, rolloff, hf_roll_db_per_m, dz_theta_ms, dz_dist_ms, decoder
     )
 
     out = np.empty_like(x_stereo)

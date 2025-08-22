@@ -127,6 +127,7 @@ SPATIAL_TOOLTIPS = {
     'spatialItdScale': 'Scale factor for interaural time differences.',
     'spatialIldMaxDb': 'Maximum interaural level difference in dB.',
     'spatialIldXoverHz': 'Frequency where ILD shelf begins (Hz).',
+    'spatialDecoder': 'Spatial decoder: "itd_head" (time-delay) or "foa_cardioid" (legacy).',
     'spatialRefDistanceM': 'Reference distance for distance attenuation (meters).',
     'spatialRolloff': 'Distance rolloff exponent.',
     'spatialHfRollDbPerM': 'High-frequency rolloff per meter (dB).',

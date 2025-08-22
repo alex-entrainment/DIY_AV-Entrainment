@@ -227,6 +227,7 @@ def isochronic_tone(duration, sample_rate=44100, **params):
             hf_roll_db_per_m=float(params.get("spatialHfRollDbPerM", 0.0)),
             dz_theta_ms=float(params.get("spatialDezipperThetaMs", 25.0)),
             dz_dist_ms=float(params.get("spatialDezipperDistMs", 60.0)),
+            decoder=0 if str(params.get("spatialDecoder", "itd_head")).lower() != "foa_cardioid" else 1,
         )
 
     return audio
@@ -467,6 +468,7 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
             hf_roll_db_per_m=float(params.get("spatialHfRollDbPerM", 0.0)),
             dz_theta_ms=float(params.get("spatialDezipperThetaMs", 25.0)),
             dz_dist_ms=float(params.get("spatialDezipperDistMs", 60.0)),
+            decoder=0 if str(params.get("spatialDecoder", "itd_head")).lower() != "foa_cardioid" else 1,
         )
 
     # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
