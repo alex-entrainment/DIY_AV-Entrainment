@@ -55,7 +55,8 @@ def _prepare_beats_and_angles(
     aOD: float, aOF: float, aOP: float,      # AM for this stage
     spatial_freq: float,
     path_radius: float,
-    spatial_phase_off: float                 # Initial phase offset for spatial rotation
+    spatial_phase_off: float,                # Initial phase offset for spatial rotation
+    clockwise: bool = True                  # Direction of rotation
 ):
     N = mono.shape[0]
     if N == 0:
@@ -84,7 +85,8 @@ def _prepare_beats_and_angles(
     for i in numba.prange(N):
         t_i = i * dt
         # Calculate phase at time t_i directly
-        current_spatial_phase_at_t = spatial_phase_off + (2 * math.pi * spatial_freq * t_i)
+        direction = 1.0 if clockwise else -1.0
+        current_spatial_phase_at_t = spatial_phase_off + direction * (2 * math.pi * spatial_freq * t_i)
         
         r = path_radius * (0.5 * (mod_beat[i] + 1.0)) # mod_beat is [-1, 1], so (mod_beat+1)/2 is [0,1]
         
@@ -95,7 +97,8 @@ def _prepare_beats_and_angles(
         x_coord = r * math.sin(current_spatial_phase_at_t)
         y_coord = r * math.cos(current_spatial_phase_at_t)
         
-        azimuth[i] = math.degrees(math.atan2(x_coord, y_coord))
+        deg = math.degrees(math.atan2(x_coord, y_coord))
+        azimuth[i] = (deg + 360.0) % 360.0
 
     return mod_beat, azimuth, elevation
 
@@ -109,7 +112,8 @@ def _prepare_beats_and_angles_transition_core(
     sAOP: float, eAOP: float,       # Start/End SAM Amplitude Osc Phase Offset
     sSpatialFreq: float, eSpatialFreq: float,
     sPathRadius: float, ePathRadius: float,
-    sSpatialPhaseOff: float, eSpatialPhaseOff: float # Start/End for initial spatial phase
+    sSpatialPhaseOff: float, eSpatialPhaseOff: float, # Start/End for initial spatial phase
+    clockwise: bool = True
 ):
     N = mono_input.shape[0]
     if N == 0:
@@ -145,7 +149,8 @@ def _prepare_beats_and_angles_transition_core(
     # The 'spatial_phase_off' transition is for the initial phase offset value.
     initial_phase_offset_val = sSpatialPhaseOff + (eSpatialPhaseOff - sSpatialPhaseOff) * 0.0 # Value at alpha=0
     
-    current_phase_val = initial_phase_offset_val 
+    direction = 1.0 if clockwise else -1.0
+    current_phase_val = initial_phase_offset_val
     if N > 0:
       actual_spatial_phase[0] = current_phase_val
 
@@ -154,7 +159,7 @@ def _prepare_beats_and_angles_transition_core(
         current_sf_i = sSpatialFreq + (eSpatialFreq - sSpatialFreq) * alpha
         
         if i > 0: # Accumulate phase
-            current_phase_val += (2 * math.pi * current_sf_i * dt)
+            current_phase_val += direction * (2 * math.pi * current_sf_i * dt)
             actual_spatial_phase[i] = current_phase_val
         elif i == 0: # Already set for i=0 if N>0
              actual_spatial_phase[i] = current_phase_val
@@ -168,7 +173,8 @@ def _prepare_beats_and_angles_transition_core(
         
         x_coord = r_factor * math.sin(actual_spatial_phase[i])
         y_coord = r_factor * math.cos(actual_spatial_phase[i])
-        azimuth_deg[i] = math.degrees(math.atan2(x_coord, y_coord))
+        deg = math.degrees(math.atan2(x_coord, y_coord))
+        azimuth_deg[i] = (deg + 360.0) % 360.0
         
     return mod_beat, azimuth_deg, elevation_deg
 
@@ -329,6 +335,8 @@ def spatial_angle_modulation_monaural_beat(duration, sample_rate=44100, **params
     beat_freq         = beat_params['beatFreq']
     spatial_freq      = float(params.get('spatialBeatFreq', beat_freq)) # Default to beatFreq
     spatial_phase_off = float(params.get('spatialPhaseOffset', 0.0)) # Radians
+    rotation_dir      = str(params.get('rotationDirection', 'cw')).lower()
+    clockwise         = rotation_dir != 'ccw'
 
     # --- SAM controls ---
     amp               = float(params.get('amp', 0.7)) # Overall amplitude for HRTF input
@@ -349,7 +357,8 @@ def spatial_angle_modulation_monaural_beat(duration, sample_rate=44100, **params
         mono_beat, float(sample_rate),
         sam_aOD, sam_aOF, sam_aOP, # SAM-specific AM params
         spatial_freq, path_radius,
-        spatial_phase_off
+        spatial_phase_off,
+        clockwise
     )
 
     # --- OLA + HRTF (assuming slab and HRTF are available and configured) ---
@@ -427,6 +436,9 @@ def spatial_angle_modulation_monaural_beat_transition(duration, sample_rate=4410
     sSpatialPhaseOff = float(params.get('startSpatialPhaseOffset', params.get('spatialPhaseOffset', 0.0)))
     eSpatialPhaseOff = float(params.get('endSpatialPhaseOffset', sSpatialPhaseOff))
 
+    rotation_dir = str(params.get('rotationDirection', 'cw')).lower()
+    clockwise     = rotation_dir != 'ccw'
+
     sPathRadius = float(params.get('startPathRadius', params.get('pathRadius', 1.0)))
     ePathRadius = float(params.get('endPathRadius', sPathRadius))
 
@@ -450,7 +462,8 @@ def spatial_angle_modulation_monaural_beat_transition(duration, sample_rate=4410
             sSamAOD, eSamAOD, sSamAOF, eSamAOF, sSamAOP, eSamAOP,
             sSpatialFreq, eSpatialFreq,
             sPathRadius, ePathRadius,
-            sSpatialPhaseOff, eSpatialPhaseOff
+            sSpatialPhaseOff, eSpatialPhaseOff,
+            clockwise
         )
     
     # 3. OLA + HRTF processing (using transitional mod_beat and azimuth)
