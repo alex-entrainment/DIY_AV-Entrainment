@@ -681,6 +681,20 @@ class VoiceEditorDialog(QDialog): # Standard class name
             self.params_scroll_layout.addWidget(frame)
         self.params_scroll_layout.addStretch(1)
 
+        flange_enable_data = self.param_widgets.get('flangeEnable')
+        if flange_enable_data:
+            enable_widget = flange_enable_data['widget']
+            other_widgets = [self.param_widgets[n]['widget']
+                             for n in self.param_widgets
+                             if n.startswith('flange') and n != 'flangeEnable']
+
+            def _set_flange_enabled(state):
+                for w in other_widgets:
+                    w.setEnabled(bool(state))
+
+            enable_widget.stateChanged.connect(_set_flange_enabled)
+            _set_flange_enabled(enable_widget.isChecked())
+
     def _populate_envelope_controls(self):
         env_data = self.current_voice_data.get("volume_envelope") # main.py uses "volume_envelope"
         env_type = ENVELOPE_TYPE_NONE
@@ -1598,7 +1612,38 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
         for name, default_val in params_list:
             ordered_params[name] = default_val
-            
+
+        flange_defaults = [
+            ('flangeEnable', False),
+            ('flangeDelayMs', 1.2),
+            ('flangeDepthMs', 0.6),
+            ('flangeRateHz', 0.12),
+            ('flangeShape', 'sine'),
+            ('flangeFeedback', 0.5),
+            ('flangeMix', 0.3),
+            ('flangeLoopLpfHz', 7000.0),
+            ('flangeLoopHpfHz', 0.0),
+            ('flangeStereoMode', 0),
+            ('flangeSpreadDeg', 0.0),
+            ('flangeDelayLaw', 0),
+            ('flangeInterp', 0),
+            ('flangeMinDelayMs', 0.25),
+            ('flangeMaxDelayMs', 8.0),
+            ('flangeDezipperDelayMs', 30.0),
+            ('flangeDezipperDepthMs', 30.0),
+            ('flangeDezipperRateMs', 200.0),
+            ('flangeDezipperFeedbackMs', 30.0),
+            ('flangeDezipperWetMs', 40.0),
+            ('flangeDezipperFilterMs', 60.0),
+            ('flangeLoudnessMode', 1),
+            ('flangeLoudnessTcMs', 80.0),
+            ('flangeLoudnessMinGain', 0.5),
+            ('flangeLoudnessMaxGain', 2.0),
+        ]
+        for fname, fdefault in flange_defaults:
+            if fname not in ordered_params:
+                ordered_params[fname] = fdefault
+
         return ordered_params
 
     @pyqtSlot()
