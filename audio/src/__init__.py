@@ -14,6 +14,10 @@ from .utils.voice_file import (
     load_voice_preset_list,
 )
 from .utils.timeline_visualizer import visualize_track_timeline
+from .utils.colored_noise import (
+    ColoredNoiseGenerator,
+    plot_spectrogram,
+)
 
 __all__ = [
     'NoiseParams',
@@ -28,4 +32,6 @@ __all__ = [
     'save_voice_preset_list',
     'load_voice_preset_list',
     'visualize_track_timeline',
+    'ColoredNoiseGenerator',
+    'plot_spectrogram',
 ]
