@@ -668,16 +668,19 @@ class TrackEditorApp(QMainWindow):
         self.add_voice_button = QPushButton("Add Voice")
         self.edit_voice_button = QPushButton("Edit Voice")
         self.group_edit_button = QPushButton("Group Edit")
+        self.group_swap_button = QPushButton("Group Swap Transitions")
         self.duplicate_voice_button = QPushButton("Duplicate Voice")
         self.remove_voice_button = QPushButton("Remove Voice(s)")
         self.add_voice_button.clicked.connect(self.add_voice)
         self.edit_voice_button.clicked.connect(self.edit_voice)
         self.group_edit_button.clicked.connect(self.group_edit_voices)
+        self.group_swap_button.clicked.connect(self.group_swap_transition_parameters)
         self.duplicate_voice_button.clicked.connect(self.duplicate_voice)
         self.remove_voice_button.clicked.connect(self.remove_voice)
         voices_buttons_layout.addWidget(self.add_voice_button)
         voices_buttons_layout.addWidget(self.edit_voice_button)
         voices_buttons_layout.addWidget(self.group_edit_button)
+        voices_buttons_layout.addWidget(self.group_swap_button)
         voices_buttons_layout.addWidget(self.duplicate_voice_button)
         voices_buttons_layout.addWidget(self.remove_voice_button)
         self.copy_voices_button = QPushButton("Copy Voice(s)")
@@ -836,8 +839,9 @@ class TrackEditorApp(QMainWindow):
         selected_voice_indices = self.get_selected_voice_indices()
         num_selected_voices = len(selected_voice_indices)
         current_voice_idx = self.get_selected_voice_index()
+        current_step_idx = self.get_selected_step_index()
 
-        is_single_step_selected = len(self.get_selected_step_indices()) == 1 and self.get_selected_step_index() is not None
+        is_single_step_selected = len(self.get_selected_step_indices()) == 1 and current_step_idx is not None
 
         # Always allow the button click when a single step is selected. If the
         # editor dialog failed to import, the handler will inform the user when
@@ -847,6 +851,7 @@ class TrackEditorApp(QMainWindow):
         if not is_single_step_selected:
             self.edit_voice_button.setEnabled(False)
             self.group_edit_button.setEnabled(False)
+            self.group_swap_button.setEnabled(False)
             self.duplicate_voice_button.setEnabled(False)
             self.remove_voice_button.setEnabled(False)
             self.save_voices_button.setEnabled(False)
@@ -864,10 +869,19 @@ class TrackEditorApp(QMainWindow):
         # will report an error if the dialog cannot be loaded.
         self.edit_voice_button.setEnabled(is_single_voice_selection)
         self.group_edit_button.setEnabled(num_selected_voices > 1)
+        has_transition_selection = False
+        if current_step_idx is not None and 0 <= current_step_idx < len(self.track_data["steps"]):
+            voices = self.track_data["steps"][current_step_idx].get("voices", [])
+            for vi in selected_voice_indices:
+                if 0 <= vi < len(voices) and voices[vi].get("is_transition"):
+                    has_transition_selection = True
+                    break
+        self.group_swap_button.setEnabled(has_transition_selection)
         self.duplicate_voice_button.setEnabled(is_single_voice_selection)
         self.remove_voice_button.setEnabled(has_voice_selection)
         self.save_voices_button.setEnabled(has_voice_selection)
         self.load_voices_button.setEnabled(True)
+
         self.copy_voices_button.setEnabled(has_voice_selection)
         self.paste_voices_button.setEnabled(bool(self._copied_voices))
 
@@ -875,6 +889,7 @@ class TrackEditorApp(QMainWindow):
         current_step_idx = self.get_selected_step_index()
         if current_step_idx is not None and 0 <= current_step_idx < len(self.track_data["steps"]):
             num_voices_in_current_step = len(self.track_data["steps"][current_step_idx].get("voices", []))
+
 
         can_move_voice_up = has_voice_selection and min(selected_voice_indices) > 0
         can_move_voice_down = has_voice_selection and max(selected_voice_indices) < (num_voices_in_current_step - 1)
@@ -1656,6 +1671,66 @@ class TrackEditorApp(QMainWindow):
                 self._push_history_state()
             except Exception as exc:
                 QMessageBox.critical(self, "Group Edit", f"Failed to apply changes: {exc}")
+
+    @pyqtSlot()
+    def group_swap_transition_parameters(self):
+        selected_step_idx = self.get_selected_step_index()
+        selected_voice_indices = self.get_selected_voice_indices()
+        if selected_step_idx is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Group Swap", "Please select exactly one step first.")
+            return
+        if not selected_voice_indices:
+            QMessageBox.warning(self, "Group Swap", "Select one or more voices to swap.")
+            return
+
+        try:
+            voices = self.track_data["steps"][selected_step_idx]["voices"]
+        except Exception as exc:
+            QMessageBox.critical(self, "Group Swap", f"Failed to load voices: {exc}")
+            return
+
+        swapped_any = False
+        for idx in selected_voice_indices:
+            if idx < 0 or idx >= len(voices):
+                continue
+            voice = voices[idx]
+            if not voice.get("is_transition"):
+                continue
+            params = voice.get("params", {})
+            for name in list(params.keys()):
+                if name.startswith("start_"):
+                    base = name[6:]
+                    end_name = "end_" + base
+                elif name.startswith("start"):
+                    base = name[5:]
+                    end_name = "end" + base
+                else:
+                    continue
+                if end_name in params:
+                    params[name], params[end_name] = params[end_name], params[name]
+                    swapped_any = True
+
+        if not swapped_any:
+            QMessageBox.warning(self, "Group Swap", "No transition voices selected.")
+            return
+
+        self.refresh_steps_tree()
+        if 0 <= selected_step_idx < self.step_model.rowCount():
+            step_idx = self.step_model.index(selected_step_idx, 0)
+            self.steps_tree.setCurrentIndex(step_idx)
+
+        sel_model = self.voices_tree.selectionModel()
+        sel_model.clearSelection()
+        for vi in selected_voice_indices:
+            if 0 <= vi < self.voice_model.rowCount():
+                idx_obj = self.voice_model.index(vi, 0)
+                sel_model.select(idx_obj, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+
+        if selected_voice_indices:
+            self.voices_tree.scrollTo(self.voice_model.index(selected_voice_indices[0], 0), QAbstractItemView.PositionAtCenter)
+
+        self._update_voice_actions_state()
+        self._push_history_state()
 
     @pyqtSlot()
     def duplicate_voice(self):
