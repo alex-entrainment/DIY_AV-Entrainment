@@ -56,6 +56,37 @@ UI_EXCLUDED_FUNCTION_NAMES = [
     'spatial_angle_modulation_monaural_beat_transition',
 ]
 
+# Human readable descriptions for synth parameters. These are used to provide
+# hover tooltips in the editor so users can quickly understand what each field
+# controls.  Only the `binaural_beat` voice is documented exhaustively for now;
+# other voices will fall back to generic hints.
+PARAM_TOOLTIPS = {
+    'binaural_beat': {
+        'ampL': 'Amplitude of left channel (0–1).',
+        'ampR': 'Amplitude of right channel (0–1).',
+        'baseFreq': 'Central frequency in Hz around which the binaural beat is generated.',
+        'beatFreq': 'Frequency difference between left and right channels in Hz.',
+        'startPhaseL': 'Initial phase offset of left channel in radians.',
+        'startPhaseR': 'Initial phase offset of right channel in radians.',
+        'ampOscDepthL': 'Depth of amplitude modulation applied to the left channel.',
+        'ampOscFreqL': 'Frequency of amplitude modulation for the left channel in Hz.',
+        'ampOscPhaseOffsetL': 'Phase offset for left channel amplitude modulation.',
+        'ampOscDepthR': 'Depth of amplitude modulation applied to the right channel.',
+        'ampOscFreqR': 'Frequency of amplitude modulation for the right channel in Hz.',
+        'ampOscPhaseOffsetR': 'Phase offset for right channel amplitude modulation.',
+        'freqOscRangeL': 'Range of frequency modulation for the left channel in Hz.',
+        'freqOscFreqL': 'Frequency of frequency modulation for the left channel in Hz.',
+        'freqOscSkewL': 'Skew factor for left channel frequency modulation waveform.',
+        'freqOscPhaseOffsetL': 'Phase offset for left channel frequency modulation.',
+        'freqOscRangeR': 'Range of frequency modulation for the right channel in Hz.',
+        'freqOscFreqR': 'Frequency of frequency modulation for the right channel in Hz.',
+        'freqOscSkewR': 'Skew factor for right channel frequency modulation waveform.',
+        'freqOscPhaseOffsetR': 'Phase offset for right channel frequency modulation.',
+        'phaseOscFreq': 'Frequency of phase modulation applied to both channels.',
+        'phaseOscRange': 'Range of phase modulation in radians.',
+    }
+}
+
 
 # Tooltips for flanger parameters
 FLANGE_TOOLTIPS = {
@@ -474,6 +505,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     row_layout.addWidget(end_entry, 0, 4)
                     self.param_widgets[end_name] = {'widget': end_entry, 'type': param_storage_type}
 
+                    tooltip_base = self._get_param_tooltip(func_name, base_name_for_pair)
+                    tooltip_start = self._get_param_tooltip(func_name, name)
+                    tooltip_end = self._get_param_tooltip(func_name, end_name)
+                    if tooltip_base:
+                        base_label.setToolTip(tooltip_base)
+                    if tooltip_start:
+                        start_label.setToolTip(tooltip_start)
+                        start_entry.setToolTip(tooltip_start)
+                    if tooltip_end:
+                        end_label.setToolTip(tooltip_end)
+                        end_entry.setToolTip(tooltip_end)
+
                     row_layout.addWidget(QLabel(hint_text), 0, 5, Qt.AlignLeft)
                     row_layout.setColumnStretch(0,1); row_layout.setColumnStretch(2,1)
                     row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
@@ -554,6 +597,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     # so no additional field is needed next to the swap button.
 
                     self.param_widgets[left_name] = {'widget': left_entry, 'type': param_storage_type}
+
+                    tooltip_left = self._get_param_tooltip(func_name, left_name)
+                    if tooltip_left:
+                        base_label.setToolTip(tooltip_left)
+                        l_label.setToolTip(tooltip_left)
+                        left_entry.setToolTip(tooltip_left)
 
                     self.params_scroll_layout.addWidget(frame)
                     processed_names.add(left_name)
@@ -642,6 +691,18 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 row_layout.setColumnStretch(4,1); row_layout.setColumnStretch(5,1)
                 processed_names.add(start_name)
                 processed_names.add(end_name)
+
+                tooltip_base = self._get_param_tooltip(func_name, base_name_for_pair)
+                tooltip_start = self._get_param_tooltip(func_name, start_name)
+                tooltip_end = self._get_param_tooltip(func_name, end_name)
+                if tooltip_base:
+                    base_label.setToolTip(tooltip_base)
+                if tooltip_start:
+                    start_label.setToolTip(tooltip_start)
+                    start_entry.setToolTip(tooltip_start)
+                if tooltip_end:
+                    end_label.setToolTip(tooltip_end)
+                    end_entry.setToolTip(tooltip_end)
             else: # Single parameter or right side of L/R pair
                 widget = None
                 sub_label_txt = ""
@@ -741,6 +802,11 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     row_layout.setColumnStretch(3,1)
 
                 if widget is not None:
+                    tooltip = self._get_param_tooltip(func_name, name)
+                    if tooltip:
+                        param_label.setToolTip(tooltip)
+                        sub_label.setToolTip(tooltip)
+                        widget.setToolTip(tooltip)
                     self.param_widgets[name] = {'widget': widget, 'type': param_storage_type}
                     processed_names.add(name)
             
@@ -1312,6 +1378,24 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
 
         return '' # No specific hint
+
+    def _get_param_tooltip(self, func_name, param_name):
+        """Return a tooltip description for a given parameter name."""
+        descriptions = PARAM_TOOLTIPS.get(func_name, {})
+        if param_name in descriptions:
+            return descriptions[param_name]
+
+        # Handle parameters with start/end prefixes used for transitions
+        if param_name.startswith('start') or param_name.startswith('end'):
+            prefix = 'Start' if param_name.startswith('start') else 'End'
+            base = param_name[5:] if param_name.startswith('start') else param_name[3:]
+            if base:
+                base = base[0].lower() + base[1:]
+            base_desc = descriptions.get(base)
+            if base_desc:
+                return f"{prefix} value for {base_desc.lower()}"
+
+        return None
 
     def _get_default_params(self, func_name_from_combo: str, is_transition_mode: bool) -> OrderedDict:
         """
