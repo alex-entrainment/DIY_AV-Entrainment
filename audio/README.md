@@ -142,10 +142,10 @@ and Overlay Clips – plus a test preview section and several helper tools.
 
 The bottom of the Steps panel features a preview player:
 
-- **Play/Pause** – load the currently selected step (up to 60&nbsp;s for long
-  steps) and start/stop playback.
+- **Play/Pause** – load the currently selected step and start/stop playback.
 - **Stop** – halt playback without clearing the loaded audio.
 - **Reset Tester** – unload the preview and reset the position slider.
+- **Duration** – set the preview length in seconds (0 up to the step's length).
 - **Time Slider** – scrub through the generated audio while previewing.
 
 ### Tool Buttons

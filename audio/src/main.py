@@ -29,6 +29,7 @@ from PyQt5.QtWidgets import (
     QInputDialog,
     QHeaderView,
     QSlider,
+    QDoubleSpinBox,
     QAbstractItemView,
     QAction,
     QProgressBar,
@@ -166,7 +167,6 @@ QLineEdit, QComboBox, QSlider {
 # --- Constants ---
 DEFAULT_SAMPLE_RATE = 44100
 DEFAULT_CROSSFADE = 1.0 # Ensure float for consistency
-TEST_AUDIO_DURATION_S = 30 # Duration for step test preview in seconds
 MAX_VOICES_PER_STEP = 100 # From previous version
 ENVELOPE_TYPE_NONE = "None" # From previous, useful if VoiceEditorDialog uses it
 ENVELOPE_TYPE_LINEAR = "linear_fade" # From previous
@@ -610,6 +610,15 @@ class TrackEditorApp(QMainWindow):
         self.test_step_reset_button = QPushButton("Reset Tester") # New button
         self.test_step_reset_button.clicked.connect(self.on_reset_step_test)
         test_controls_top_layout.addWidget(self.test_step_reset_button)
+
+        test_controls_top_layout.addWidget(QLabel("Duration (s):"))
+        self.test_step_duration_spin = QDoubleSpinBox()
+        self.test_step_duration_spin.setDecimals(2)
+        self.test_step_duration_spin.setRange(0.0, 9999.0)
+        self.test_step_duration_spin.setValue(self.test_step_duration)
+        self.test_step_duration_spin.setMaximumWidth(80)
+        self.test_step_duration_spin.valueChanged.connect(self.on_test_duration_changed)
+        test_controls_top_layout.addWidget(self.test_step_duration_spin)
         test_controls_top_layout.addStretch()
         test_step_main_layout.addLayout(test_controls_top_layout)
 
@@ -1126,6 +1135,15 @@ class TrackEditorApp(QMainWindow):
             if not self.is_step_test_playing and not self.is_step_test_paused and self.test_step_raw_audio is None:
                 try:
                     step_data = self.track_data["steps"][current_selected_idx]
+                    try:
+                        step_duration = float(step_data.get("duration", 0.0))
+                    except (TypeError, ValueError):
+                        step_duration = 0.0
+                    if hasattr(self, "test_step_duration_spin"):
+                        max_val = step_duration if step_duration > 0.0 else 9999.0
+                        self.test_step_duration_spin.setMaximum(max_val)
+                        if step_duration > 0.0 and self.test_step_duration_spin.value() > step_duration:
+                            self.test_step_duration_spin.setValue(step_duration)
                     step_desc = step_data.get("description", "N/A")
                     is_testable = len(step_data.get("voices", [])) > 0 and AUDIO_GENERATION_AVAILABLE
                     short_desc = f"{step_desc[:30]}{'...' if len(step_desc) > 30 else ''}"
@@ -1135,13 +1153,15 @@ class TrackEditorApp(QMainWindow):
                         self.test_step_loaded_label.setText(f"Info: {short_desc} (not testable)")
                 except IndexError:
                     self.test_step_loaded_label.setText("Error: Step not found.")
-        else: 
+        else:
             # No single step selected (0 or multiple)
             self.voice_model.refresh([])
             self.clear_voice_details()
             self.voices_groupbox.setTitle("Voices for Selected Step")
             if not self.is_step_test_playing and not self.is_step_test_paused and self.test_step_raw_audio is None:
                 self.test_step_loaded_label.setText("No step loaded for preview.")
+            if hasattr(self, "test_step_duration_spin"):
+                self.test_step_duration_spin.setMaximum(9999.0)
             self._update_voice_actions_state() # Update voice buttons if step selection changes to non-single
 
         self._update_step_actions_state() # Update all step and test preview button states
@@ -2257,10 +2277,7 @@ class TrackEditorApp(QMainWindow):
                 step_duration = 0.0
 
             if step_duration > 0.0:
-                if step_duration < 180.0:
-                    test_duration = step_duration
-                else:
-                    test_duration = 60.0
+                test_duration = min(self.test_step_duration, step_duration)
             else:
                 test_duration = self.test_step_duration
 
@@ -2377,6 +2394,33 @@ class TrackEditorApp(QMainWindow):
             self.test_step_loaded_label.setText("No step loaded for preview.")
         
         self._update_step_actions_state()
+
+
+    @pyqtSlot(float)
+    def on_test_duration_changed(self, value: float):
+        """Update test preview duration ensuring it does not exceed step length."""
+        step_idx = self.current_test_step_index
+        if step_idx < 0:
+            step_idx = self.get_selected_step_index()
+
+        max_dur = float('inf')
+        if step_idx is not None and 0 <= step_idx < len(self.track_data.get("steps", [])):
+            try:
+                step_dur = float(self.track_data["steps"][step_idx].get("duration", 0.0))
+                if step_dur > 0.0:
+                    max_dur = step_dur
+            except (TypeError, ValueError):
+                pass
+
+        clamped = max(0.0, min(value, max_dur))
+        if clamped != value:
+            self.test_step_duration_spin.blockSignals(True)
+            self.test_step_duration_spin.setValue(clamped)
+            self.test_step_duration_spin.blockSignals(False)
+        self.test_step_duration = clamped
+        if hasattr(self, "prefs"):
+            self.prefs.test_step_duration = clamped
+            save_settings(self.prefs)
 
 
     @pyqtSlot()
