@@ -325,7 +325,7 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     )
     endHarmonicSuppression = _parse_bool(params.get('endHarmonicSuppression', startHarmonicSuppression))
     harmonic_suppression = startHarmonicSuppression or endHarmonicSuppression
-    pan = float(params.get('pan', 0.0))
+    pan = np.clip(float(params.get('pan', 0.0)), -1.0, 1.0)
 
 
     N = int(sample_rate * duration)
@@ -343,7 +343,6 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     beat_freq_array = startBeatFreq + (endBeatFreq - startBeatFreq) * alpha  # Pulse rate
     ramp_percent_array = startRampPercent + (endRampPercent - startRampPercent) * alpha
     gap_percent_array = startGapPercent + (endGapPercent - startGapPercent) * alpha
-    pan_array = np.full_like(alpha, pan)
 
 
     # Ensure frequencies are non-negative
@@ -351,7 +350,6 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     instantaneous_beat_freq_array = np.maximum(0.0, beat_freq_array)
     ramp_percent_array = np.clip(ramp_percent_array, 0.0, 1.0)
     gap_percent_array = np.clip(gap_percent_array, 0.0, 1.0)
-    pan_array = np.clip(pan_array, -1.0, 1.0)
 
     # --- Carrier Wave (Time-Varying Frequency with vibrato) ---
     dt = 1.0 / sample_rate if N > 1 else duration
@@ -449,9 +447,11 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     right = carrier_R * iso_env * env_amp_R * ampR_arr
 
     if pan != 0.0:
-        stereo = np.column_stack((left, right))
-        stereo = pan2(stereo.mean(axis=1), pan=pan)
-        left, right = stereo[:, 0], stereo[:, 1]
+        angle = (pan + 1.0) * np.pi / 4.0
+        left_gain = np.cos(angle)
+        right_gain = np.sin(angle)
+        left *= left_gain
+        right *= right_gain
 
     audio = np.column_stack((left, right))
 
