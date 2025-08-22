@@ -840,6 +840,15 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val_to_set = str(current_value) if current_value in sound_creator.VALID_SAM_PATHS else sound_creator.VALID_SAM_PATHS[0]
                     widget.setCurrentText(val_to_set)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                elif name == 'spatialDecoder' and param_type_hint == 'str':
+                    widget = QComboBox()
+                    widget.addItem('ITD Head (time-delay)', 'itd_head')
+                    widget.addItem('FOA Cardioid (legacy)', 'foa_cardioid')
+                    val_to_set = str(current_value) if current_value in ['itd_head', 'foa_cardioid'] else 'itd_head'
+                    idx = widget.findData(val_to_set)
+                    widget.setCurrentIndex(idx if idx >= 0 else 0)
+                    widget.setMinimumWidth(120)
+                    row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
                 else:
                     widget = QLineEdit(str(display_current) if display_current is not None else "")
                     current_validator_instance = None # Create a new validator for this specific widget
@@ -1953,6 +1962,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
         spatial_defaults = [
             ('spatialEnable', False),
             ('spatialUseItdIld', 1),
+            ('spatialDecoder', 'itd_head'),
             ('spatialEarAngleDeg', 30.0),
             ('spatialHeadRadiusM', 0.0875),
             ('spatialItdScale', 1.0),
@@ -2007,7 +2017,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         validation_errors.append(f"Invalid float for '{name}': {value_str}")
                         widget.setStyleSheet("border: 1px solid red;")
                 else:
-                    value = value_str
+                    value = data_val if data_val is not None else value_str
             elif isinstance(widget, QLineEdit):
                 value_str = widget.text().strip()
                 if not value_str and param_type != 'str': # Allow empty strings if type is str, otherwise might be error or None
