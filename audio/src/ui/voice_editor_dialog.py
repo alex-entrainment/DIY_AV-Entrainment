@@ -530,14 +530,15 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     param_storage_type = 'str'
                     param_type_hint = 'any'
                     range_hint = self._get_param_range_hint(base_name_for_pair)
-                    if isinstance(default_value, bool):
+                    value_for_hint = default_value if default_value is not None else current_value
+                    if isinstance(value_for_hint, bool):
                         param_type_hint = 'bool'
-                    elif isinstance(default_value, int):
-                        param_type_hint = 'int'
-                    elif isinstance(default_value, float):
+                    elif isinstance(value_for_hint, int):
+                        param_type_hint = 'bool' if value_for_hint in (0, 1) else 'int'
+                    elif isinstance(value_for_hint, float):
                         param_type_hint = 'float'
-                    elif isinstance(default_value, str):
-                        param_type_hint = 'str'
+                    elif isinstance(value_for_hint, str):
+                        param_type_hint = 'bool' if value_for_hint.lower() in ('true', 'false') else 'str'
 
                     current_validator = None
                     if param_type_hint == 'int':
@@ -627,14 +628,15 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     row_layout.setContentsMargins(2,2,2,2)
 
                     param_type_hint = 'any'
-                    if isinstance(left_def, bool):
+                    value_for_hint = left_def if left_def is not None else left_cur
+                    if isinstance(value_for_hint, bool):
                         param_type_hint = 'bool'
-                    elif isinstance(left_def, int):
-                        param_type_hint = 'int'
-                    elif isinstance(left_def, float):
+                    elif isinstance(value_for_hint, int):
+                        param_type_hint = 'bool' if value_for_hint in (0, 1) else 'int'
+                    elif isinstance(value_for_hint, float):
                         param_type_hint = 'float'
-                    elif isinstance(left_def, str):
-                        param_type_hint = 'str'
+                    elif isinstance(value_for_hint, str):
+                        param_type_hint = 'bool' if value_for_hint.lower() in ('true', 'false') else 'str'
 
                     param_storage_type = param_type_hint if param_type_hint in ['int','float','bool','str'] else 'str'
                     range_hint = self._get_param_range_hint(base_lr)
@@ -694,17 +696,26 @@ class VoiceEditorDialog(QDialog): # Standard class name
             param_type_hint = "any"
             range_hint = self._get_param_range_hint(name if not is_pair_start else base_name_for_pair)
 
-            if default_value is not None:
-                if isinstance(default_value, bool): param_type_hint = 'bool'
-                elif isinstance(default_value, int): param_type_hint = 'int'
-                elif isinstance(default_value, float): param_type_hint = 'float'
-                elif isinstance(default_value, str): param_type_hint = 'str'
+            value_for_hint = default_value if default_value is not None else current_value
+            if value_for_hint is not None:
+                if isinstance(value_for_hint, bool):
+                    param_type_hint = 'bool'
+                elif isinstance(value_for_hint, int):
+                    param_type_hint = 'bool' if value_for_hint in (0, 1) else 'int'
+                elif isinstance(value_for_hint, float):
+                    param_type_hint = 'float'
+                elif isinstance(value_for_hint, str):
+                    param_type_hint = 'bool' if value_for_hint.lower() in ('true', 'false') else 'str'
             else:
                 name_lower = name.lower()
-                if 'bool' in name_lower or 'enable' in name_lower: param_type_hint = 'bool'
-                elif any(s in name_lower for s in ['freq', 'depth', 'dur', 'amp', 'pan', 'rate', 'gain', 'level', 'radius', 'width', 'ratio', 'amount', 'offset', 'range', 'interval']): param_type_hint = 'float'
-                elif any(s in name_lower for s in ['count', 'factor', 'index', 'type']): param_type_hint = 'int'
-                else: param_type_hint = 'str'
+                if 'bool' in name_lower or 'enable' in name_lower:
+                    param_type_hint = 'bool'
+                elif any(s in name_lower for s in ['freq', 'depth', 'dur', 'amp', 'pan', 'rate', 'gain', 'level', 'radius', 'width', 'ratio', 'amount', 'offset', 'range', 'interval']):
+                    param_type_hint = 'float'
+                elif any(s in name_lower for s in ['count', 'factor', 'index', 'type']):
+                    param_type_hint = 'int'
+                else:
+                    param_type_hint = 'str'
 
             if is_pair_start:
                 start_name = name
@@ -788,7 +799,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 row_layout.addWidget(sub_label, 0, 1, Qt.AlignRight)
 
                 if param_type_hint == 'bool':
-                    widget = QCheckBox(); widget.setChecked(bool(current_value) if current_value is not None else False)
+                    widget = QCheckBox()
+                    if isinstance(current_value, str):
+                        checked = current_value.strip().lower() in ('1', 'true', 'yes', 'on')
+                    else:
+                        checked = bool(current_value)
+                    widget.setChecked(checked)
                     row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'bool'
                 elif name == 'noiseType' and param_type_hint == 'int':
                     widget = QComboBox(); widget.addItems(['1', '2', '3'])
@@ -1220,7 +1236,11 @@ class VoiceEditorDialog(QDialog): # Standard class name
             elif isinstance(widget, QComboBox):
                 widget.setCurrentText(str(display_val))
             elif isinstance(widget, QCheckBox):
-                widget.setChecked(bool(display_val))
+                if isinstance(display_val, str):
+                    checked = display_val.strip().lower() in ('1', 'true', 'yes', 'on')
+                else:
+                    checked = bool(display_val)
+                widget.setChecked(checked)
 
             self.current_voice_data.setdefault("params", {})[name] = raw_val
 
