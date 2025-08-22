@@ -369,6 +369,11 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     func_name = voice_data.get("synth_function_name")
     params = voice_data.get("params", {})
     flange_params = {k: params.get(k) for k in list(params.keys()) if "flange" in k.lower()}
+    # If the flanger enable flag is absent or false, ignore all flanger parameters
+    if not any(bool(flange_params.get(k)) for k in (
+        "flangeEnable", "startFlangeEnable", "endFlangeEnable"
+    )):
+        flange_params = {}
     core_params = {k: v for k, v in params.items() if "flange" not in k.lower()}
     is_transition = voice_data.get("is_transition", False) # Check if this step IS a transition
 
