@@ -7,6 +7,25 @@ from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_al
 from .spatial_ambi2d import spatialize_binaural_mid_only, generate_azimuth_trajectory
 
 
+def _parse_bool(value, default=False):
+    """Convert various representations to bool.
+
+    Accepts booleans, numeric values, and common string forms such as
+    "true"/"false". Any unrecognised value returns ``default``.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in {"true", "1", "yes", "on"}:
+            return True
+        if v in {"false", "0", "no", "off"}:
+            return False
+    return default
+
+
 @numba.njit(fastmath=True)
 def _trapezoid_envelope_scalar(t_in_cycle, cycle_len, ramp_percent, gap_percent):
     """Scalar version of the trapezoidal envelope generator."""
@@ -151,7 +170,7 @@ def isochronic_tone(duration, sample_rate=44100, **params):
 
     rampPercent = float(params.get('rampPercent', 0.2))
     gapPercent = float(params.get('gapPercent', 0.15))
-    harmonic_suppression = bool(params.get('harmonicSuppression', False))
+    harmonic_suppression = _parse_bool(params.get('harmonicSuppression', False))
 
     N = int(sample_rate * duration)
     audio = _isochronic_tone_core(
@@ -301,9 +320,11 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     endRampPercent = float(params.get('endRampPercent', startRampPercent))
     startGapPercent = float(params.get('startGapPercent', params.get('gapPercent', 0.15)))
     endGapPercent = float(params.get('endGapPercent', startGapPercent))
-    startHarmonicSuppression = float(params.get('startHarmonicSuppression', params.get('harmonicSuppression', 0.0)))
-    endHarmonicSuppression = float(params.get('endHarmonicSuppression', startHarmonicSuppression))
-    harmonic_suppression = (startHarmonicSuppression > 0.5) or (endHarmonicSuppression > 0.5)
+    startHarmonicSuppression = _parse_bool(
+        params.get('startHarmonicSuppression', params.get('harmonicSuppression', False))
+    )
+    endHarmonicSuppression = _parse_bool(params.get('endHarmonicSuppression', startHarmonicSuppression))
+    harmonic_suppression = startHarmonicSuppression or endHarmonicSuppression
     pan = float(params.get('pan', 0.0))
 
 
