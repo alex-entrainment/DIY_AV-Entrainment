@@ -3,6 +3,7 @@
 import numpy as np
 import numba
 from .common import skewed_sine_phase, _frac
+from .spatial_ambi2d import spatialize_binaural_mid_only, generate_azimuth_trajectory
 
 
 def binaural_beat(duration, sample_rate=44100, **params):
@@ -98,7 +99,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
     pos_arr   = np.empty(0, dtype=np.int32)
     burst_arr = np.empty(0, dtype=np.float32)
 
-    return _binaural_beat_core(
+    audio = _binaural_beat_core(
         N,
         float(duration),
         float(sample_rate),
@@ -112,6 +113,39 @@ def binaural_beat(duration, sample_rate=44100, **params):
         freqOscPhaseOffsetL, freqOscPhaseOffsetR,
         pos_arr, burst_arr
     )
+
+    if bool(params.get("spatialEnable", False)):
+        theta_deg, distance_m = generate_azimuth_trajectory(
+            duration, sample_rate,
+            segments=params.get(
+                "spatialTrajectory",
+                [{
+                    "mode": "oscillate",
+                    "center_deg": 0,
+                    "extent_deg": 75,
+                    "period_s": 20.0,
+                    "distance_m": [1.0, 1.4],
+                    "seconds": duration,
+                }],
+            ),
+        )
+        audio = spatialize_binaural_mid_only(
+            audio.astype(np.float32), float(sample_rate),
+            theta_deg, distance_m,
+            use_itd_ild=int(params.get("spatialUseItdIld", 1)),
+            ear_angle_deg=float(params.get("spatialEarAngleDeg", 30.0)),
+            head_radius_m=float(params.get("spatialHeadRadiusM", 0.0875)),
+            itd_scale=float(params.get("spatialItdScale", 1.0)),
+            ild_max_db=float(params.get("spatialIldMaxDb", 3.0)),
+            ild_xover_hz=float(params.get("spatialIldXoverHz", 700.0)),
+            ref_distance_m=float(params.get("spatialRefDistanceM", 1.0)),
+            rolloff=float(params.get("spatialRolloff", 1.0)),
+            hf_roll_db_per_m=float(params.get("spatialHfRollDbPerM", 0.0)),
+            dz_theta_ms=float(params.get("spatialDezipperThetaMs", 25.0)),
+            dz_dist_ms=float(params.get("spatialDezipperDistMs", 60.0)),
+        )
+
+    return audio
 
 
 @numba.njit(parallel=True, fastmath=True)
@@ -351,7 +385,7 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     curve = params.get('transition_curve', 'linear')
     alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
 
-    return _binaural_beat_transition_core(
+    audio = _binaural_beat_transition_core(
         N, float(duration), float(sample_rate),
         startAmpL, endAmpL, startAmpR, endAmpR,
         startBaseF, endBaseF, startBeatF, endBeatF,
@@ -372,6 +406,39 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
         pos_arr, burst_arr, # Pass pre-calculated glitches
         alpha_arr
     )
+
+    if bool(params.get("spatialEnable", False)):
+        theta_deg, distance_m = generate_azimuth_trajectory(
+            duration, sample_rate,
+            segments=params.get(
+                "spatialTrajectory",
+                [{
+                    "mode": "oscillate",
+                    "center_deg": 0,
+                    "extent_deg": 75,
+                    "period_s": 20.0,
+                    "distance_m": [1.0, 1.4],
+                    "seconds": duration,
+                }],
+            ),
+        )
+        audio = spatialize_binaural_mid_only(
+            audio.astype(np.float32), float(sample_rate),
+            theta_deg, distance_m,
+            use_itd_ild=int(params.get("spatialUseItdIld", 1)),
+            ear_angle_deg=float(params.get("spatialEarAngleDeg", 30.0)),
+            head_radius_m=float(params.get("spatialHeadRadiusM", 0.0875)),
+            itd_scale=float(params.get("spatialItdScale", 1.0)),
+            ild_max_db=float(params.get("spatialIldMaxDb", 3.0)),
+            ild_xover_hz=float(params.get("spatialIldXoverHz", 700.0)),
+            ref_distance_m=float(params.get("spatialRefDistanceM", 1.0)),
+            rolloff=float(params.get("spatialRolloff", 1.0)),
+            hf_roll_db_per_m=float(params.get("spatialHfRollDbPerM", 0.0)),
+            dz_theta_ms=float(params.get("spatialDezipperThetaMs", 25.0)),
+            dz_dist_ms=float(params.get("spatialDezipperDistMs", 60.0)),
+        )
+
+    return audio
 
 
 @numba.njit(parallel=True, fastmath=True)
