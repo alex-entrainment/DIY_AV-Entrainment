@@ -156,6 +156,21 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.envelope_param_widgets = {} # Similar for envelope params
 
         self._load_initial_data() # Loads or creates self.current_voice_data
+
+        # Maintain separate parameter sets for transition and non-transition modes
+        self._standard_params = OrderedDict()
+        self._transition_params = OrderedDict()
+        initial_params = OrderedDict(self.current_voice_data.get("params", {}))
+        func_name = self.current_voice_data.get("synth_function_name", "")
+        if self.current_voice_data.get("is_transition", False):
+            self._transition_params = copy.deepcopy(initial_params)
+            # Derive non-transition params without overwriting transition state
+            self._standard_params = self._convert_params_to_standard(initial_params, func_name)
+        else:
+            self._standard_params = copy.deepcopy(initial_params)
+            # Prepare initial transition params so they can be restored if toggled
+            self._transition_params = self._convert_params_to_transition(initial_params, func_name)
+
         self._setup_ui()          # Creates UI elements
 
         # Initial population after UI setup
@@ -1117,7 +1132,15 @@ class VoiceEditorDialog(QDialog): # Standard class name
     @pyqtSlot()
     def on_synth_function_change(self):
         selected_func = self.synth_func_combo.currentText()
-        if not selected_func or selected_func.startswith("Error:"): return
+        if not selected_func or selected_func.startswith("Error:"):
+            return
+
+        # Preserve current parameter values before switching function
+        current_params = self._collect_data_from_ui().get("params", {})
+        if self.current_voice_data.get("is_transition", False):
+            self._transition_params = OrderedDict(current_params)
+        else:
+            self._standard_params = OrderedDict(current_params)
 
         # Auto-update transition checkbox based on function name convention
         is_transition_by_name = selected_func.endswith("_transition")
@@ -1125,70 +1148,47 @@ class VoiceEditorDialog(QDialog): # Standard class name
         self.transition_check.setChecked(is_transition_by_name)
         self.transition_check.blockSignals(False)
 
-        # Update current_voice_data to reflect selection and new defaults
+        # Update current_voice_data to reflect selection
         self.current_voice_data["synth_function_name"] = selected_func
-        self.current_voice_data["is_transition"] = is_transition_by_name # Reflect UI
-        
-        new_default_params = self._get_default_params(selected_func, is_transition_by_name)
-        # Keep existing param values if they exist for the new set of params, otherwise use new defaults
-        updated_params = OrderedDict()
-        current_params_in_data = self.current_voice_data.get("params",{})
-        for name, default_val in new_default_params.items():
-            updated_params[name] = current_params_in_data.get(name, default_val)
-        self.current_voice_data["params"] = updated_params
+        self.current_voice_data["is_transition"] = is_transition_by_name
 
-        self.populate_parameters() # Rebuild UI with (potentially new) params and (potentially updated) values
+        # Merge existing stored params with defaults for the new function
+        new_std_defaults = self._get_default_params(selected_func, False)
+        new_trans_defaults = self._get_default_params(selected_func, True)
+        self._standard_params = self._merge_params(self._standard_params, new_std_defaults)
+        self._transition_params = self._merge_params(self._transition_params, new_trans_defaults)
+
+        # Display appropriate parameter set
+        self.current_voice_data["params"] = OrderedDict(
+            self._transition_params if is_transition_by_name else self._standard_params
+        )
+
+        self.populate_parameters()
         self._update_swap_button_visibility()
 
     @pyqtSlot(int)
     def on_transition_toggle(self, state):
+        # Preserve parameters from current mode
+        current_params = self._collect_data_from_ui().get("params", {})
+        if self.current_voice_data.get("is_transition", False):
+            self._transition_params = OrderedDict(current_params)
+        else:
+            self._standard_params = OrderedDict(current_params)
+
         is_transition = bool(state == Qt.Checked)
         self.current_voice_data["is_transition"] = is_transition
 
-        # Refresh parameters UI as the set of params might change (e.g. startX/endX vs X)
         func_name = self.synth_func_combo.currentText()
-        new_default_params = self._get_default_params(func_name, is_transition)
-        current_params_in_data = self.current_voice_data.get("params", {})
-
-        def _norm(key: str) -> str:
-            return key.replace("_", "").lower()
-
-        updated_params = OrderedDict()
         if is_transition:
-            base_map = {_norm(k): v for k, v in current_params_in_data.items()}
-            for name, default_val in new_default_params.items():
-                if name.startswith("start"):
-                    base_key = _norm(name[len("start"):])
-                    if name in current_params_in_data:
-                        updated_params[name] = current_params_in_data[name]
-                    elif base_key in base_map:
-                        updated_params[name] = base_map[base_key]
-                    else:
-                        updated_params[name] = default_val
-                elif name.startswith("end"):
-                    base_key = _norm(name[len("end"):])
-                    if name in current_params_in_data:
-                        updated_params[name] = current_params_in_data[name]
-                    elif base_key in base_map:
-                        updated_params[name] = base_map[base_key]
-                    else:
-                        start_name = "start" + name[len("end"):]
-                        if start_name in current_params_in_data:
-                            updated_params[name] = current_params_in_data[start_name]
-                        else:
-                            updated_params[name] = default_val
-                else:
-                    updated_params[name] = current_params_in_data.get(name, default_val)
+            if not self._transition_params:
+                source = self._standard_params if self._standard_params else current_params
+                self._transition_params = self._convert_params_to_transition(source, func_name)
+            self.current_voice_data["params"] = OrderedDict(self._transition_params)
         else:
-            start_map = { _norm(k[len("start"):]): v for k, v in current_params_in_data.items() if k.startswith("start") }
-            for name, default_val in new_default_params.items():
-                base_key = _norm(name)
-                if base_key in start_map:
-                    updated_params[name] = start_map[base_key]
-                else:
-                    updated_params[name] = current_params_in_data.get(name, default_val)
-
-        self.current_voice_data["params"] = updated_params
+            if not self._standard_params:
+                source = self._transition_params if self._transition_params else current_params
+                self._standard_params = self._convert_params_to_standard(source, func_name)
+            self.current_voice_data["params"] = OrderedDict(self._standard_params)
 
         self.populate_parameters()
         self._update_swap_button_visibility()
@@ -1198,6 +1198,62 @@ class VoiceEditorDialog(QDialog): # Standard class name
             self.swap_params_button.setVisible(self.transition_check.isChecked())
         if hasattr(self, "set_ref_end_button"):
             self.set_ref_end_button.setEnabled(self.transition_check.isChecked())
+
+    # ---- Internal helpers for parameter state management ----
+
+    def _merge_params(self, existing: OrderedDict, defaults: OrderedDict) -> OrderedDict:
+        """Merge ``existing`` with ``defaults`` keeping only keys in defaults."""
+        merged = OrderedDict()
+        for name, default_val in defaults.items():
+            merged[name] = existing.get(name, default_val)
+        return merged
+
+    def _convert_params_to_transition(self, params: OrderedDict, func_name: str) -> OrderedDict:
+        """Create a transition-param dict from non-transition ``params``."""
+        new_default_params = self._get_default_params(func_name, True)
+
+        def _norm(key: str) -> str:
+            return key.replace("_", "").lower()
+
+        base_map = {_norm(k): v for k, v in params.items()}
+        updated = OrderedDict()
+        for name, default_val in new_default_params.items():
+            if name in params:
+                updated[name] = params[name]
+            elif name.startswith("start"):
+                base_key = _norm(name[len("start"):])
+                updated[name] = base_map.get(base_key, default_val)
+            elif name.startswith("end"):
+                base_key = _norm(name[len("end"):])
+                if base_key in base_map:
+                    updated[name] = base_map[base_key]
+                else:
+                    start_name = "start" + name[len("end"):]
+                    updated[name] = params.get(start_name, default_val)
+            else:
+                updated[name] = params.get(name, default_val)
+        return updated
+
+    def _convert_params_to_standard(self, params: OrderedDict, func_name: str) -> OrderedDict:
+        """Create a non-transition param dict from transition ``params``."""
+        new_default_params = self._get_default_params(func_name, False)
+
+        def _norm(key: str) -> str:
+            return key.replace("_", "").lower()
+
+        start_map = {
+            _norm(k[len("start"):]): v
+            for k, v in params.items()
+            if k.startswith("start")
+        }
+        updated = OrderedDict()
+        for name, default_val in new_default_params.items():
+            base_key = _norm(name)
+            if base_key in start_map:
+                updated[name] = start_map[base_key]
+            else:
+                updated[name] = params.get(name, default_val)
+        return updated
 
     @pyqtSlot()
     def swap_transition_parameters(self):
