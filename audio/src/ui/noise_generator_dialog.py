@@ -86,7 +86,15 @@ class NoiseGeneratorDialog(QDialog):
 
         # Noise type
         self.noise_type_combo = QComboBox()
-        self.noise_type_combo.addItems(["Pink", "Brown"])
+        self.noise_type_combo.addItems([
+            "Pink",
+            "Brown",
+            "Green",
+            "Deep Brown",
+            "Purple",
+            "Red",
+            "Blue",
+        ])
         self.noise_type_combo.setToolTip("Base noise colour to generate")
         form.addRow("Noise Type:", self.noise_type_combo)
 
@@ -301,7 +309,7 @@ class NoiseGeneratorDialog(QDialog):
         """Apply ``params`` to the UI widgets."""
         self.duration_spin.setValue(params.duration_seconds)
         self.sample_rate_spin.setValue(params.sample_rate)
-        idx = self.noise_type_combo.findText(params.noise_type.capitalize())
+        idx = self.noise_type_combo.findText(params.noise_type.title())
         if idx != -1:
             self.noise_type_combo.setCurrentIndex(idx)
         idx = self.lfo_waveform_combo.findText(params.lfo_waveform.capitalize())

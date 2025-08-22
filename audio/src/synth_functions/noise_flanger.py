@@ -6,7 +6,13 @@ from scipy import signal
 from joblib import Parallel, delayed
 import time
 import tempfile
-from .common import calculate_transition_alpha
+from .common import (
+    calculate_transition_alpha,
+    blue_noise,
+    purple_noise,
+    green_noise,
+    deep_brown_noise,
+)
 
 # --- Parameters ---
 DEFAULT_SAMPLE_RATE = 44100  # Hz
@@ -62,6 +68,23 @@ def generate_brown_noise_samples(n_samples):
     brown = np.cumsum(white)
     max_abs = np.max(np.abs(brown)) + 1e-8
     return (brown / max_abs).astype(np.float32)
+
+
+def generate_noise_samples(n_samples, noise_type, sample_rate=DEFAULT_SAMPLE_RATE):
+    nt = noise_type.lower()
+    if nt == "pink":
+        return generate_pink_noise_samples(n_samples)
+    if nt in ("brown", "red"):
+        return generate_brown_noise_samples(n_samples)
+    if nt == "deep brown":
+        return deep_brown_noise(n_samples).astype(np.float32)
+    if nt == "blue":
+        return blue_noise(n_samples).astype(np.float32)
+    if nt == "purple":
+        return purple_noise(n_samples).astype(np.float32)
+    if nt == "green":
+        return green_noise(n_samples, fs=sample_rate).astype(np.float32)
+    return np.random.randn(n_samples).astype(np.float32)
 
 
 def triangle_wave_varying(freq_array, t, sample_rate=44100):
@@ -348,15 +371,9 @@ def _generate_swept_notch_arrays(
         if memory_efficient:
             tmp_input = tempfile.NamedTemporaryFile(delete=False)
             input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode='w+', shape=num_samples)
-            if noise_type.lower() == "brown":
-                input_signal[:] = generate_brown_noise_samples(num_samples)
-            else:
-                input_signal[:] = generate_pink_noise_samples(num_samples)
+            input_signal[:] = generate_noise_samples(num_samples, noise_type, sample_rate)
         else:
-            if noise_type.lower() == "brown":
-                input_signal = generate_brown_noise_samples(num_samples)
-            else:
-                input_signal = generate_pink_noise_samples(num_samples)
+            input_signal = generate_noise_samples(num_samples, noise_type, sample_rate)
     else:
         data, _ = sf.read(input_audio_path)
         input_signal = data[:, 0] if data.ndim > 1 else data
@@ -500,15 +517,9 @@ def _generate_swept_notch_arrays_transition(
         if memory_efficient:
             tmp_input = tempfile.NamedTemporaryFile(delete=False)
             input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode="w+", shape=num_samples)
-            if noise_type.lower() == "brown":
-                input_signal[:] = generate_brown_noise_samples(num_samples)
-            else:
-                input_signal[:] = generate_pink_noise_samples(num_samples)
+            input_signal[:] = generate_noise_samples(num_samples, noise_type, sample_rate)
         else:
-            if noise_type.lower() == "brown":
-                input_signal = generate_brown_noise_samples(num_samples)
-            else:
-                input_signal = generate_pink_noise_samples(num_samples)
+            input_signal = generate_noise_samples(num_samples, noise_type, sample_rate)
     else:
         data, _ = sf.read(input_audio_path)
         input_signal = data[:, 0] if data.ndim > 1 else data
