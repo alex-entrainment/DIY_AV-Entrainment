@@ -1,5 +1,6 @@
 import numpy as np
 import numba
+from .spatial_itd_stable import stereo_itd_headmodel_stable
 
 # Decoder identifiers
 DECODER_ITD_HEAD = 0
@@ -265,7 +266,7 @@ def spatialize_binaural_mid_only(
     x_stereo: np.ndarray, fs: float,
     theta_deg: np.ndarray,
     distance_m: np.ndarray,
-    use_itd_ild: int = 1,
+    ild_enable: int = 1,
     ear_angle_deg: float = 30.0,
     head_radius_m: float = 0.0875,
     itd_scale: float = 1.0,
@@ -276,26 +277,52 @@ def spatialize_binaural_mid_only(
     hf_roll_db_per_m: float = 0.0,
     dz_theta_ms: float = 20.0,
     dz_dist_ms: float = 50.0,
-    decoder: int = DECODER_ITD_HEAD
+    decoder: int = DECODER_ITD_HEAD,
+    min_distance_m: float = 0.1,
+    max_deg_per_s: float = 90.0,
+    max_delay_step_samples: float = 0.02,
+    interp_mode: int = 1
 ):
-    """
-    Preserve Δf by spatializing Mid only.
-    """
+    """Preserve Δf by spatializing Mid only."""
     N = x_stereo.shape[0]
     inv_sqrt2 = 1.0 / np.sqrt(2.0)
-    M = (x_stereo[:,0] + x_stereo[:,1]) * inv_sqrt2
-    S = (x_stereo[:,0] - x_stereo[:,1]) * inv_sqrt2
+    M = np.empty(N, np.float32)
+    S = np.empty(N, np.float32)
+    for n in range(N):
+        l = x_stereo[n,0]
+        r = x_stereo[n,1]
+        M[n] = (l + r) * inv_sqrt2
+        S[n] = (l - r) * inv_sqrt2
 
-    Ms = spatialize_mono_ambi2d(
-        M.astype(np.float32), fs,
-        theta_deg, distance_m,
-        use_itd_ild, ear_angle_deg, head_radius_m, itd_scale, ild_max_db, ild_xover_hz,
-        ref_distance_m, rolloff, hf_roll_db_per_m, dz_theta_ms, dz_dist_ms, decoder
-    )
+    if decoder == DECODER_ITD_HEAD:
+        Ms = stereo_itd_headmodel_stable(
+            M, fs,
+            theta_deg, distance_m,
+            head_radius_m=head_radius_m,
+            itd_scale=itd_scale,
+            ild_max_db=ild_max_db,
+            ild_enable=ild_enable,
+            ref_distance_m=ref_distance_m,
+            rolloff=rolloff,
+            min_distance_m=min_distance_m,
+            dz_theta_ms=dz_theta_ms,
+            dz_dist_ms=dz_dist_ms,
+            max_deg_per_s=max_deg_per_s,
+            max_delay_step_samples=max_delay_step_samples,
+            interp_mode=interp_mode
+        )
+    else:
+        Ms = spatialize_mono_ambi2d(
+            M, fs,
+            theta_deg, distance_m,
+            ild_enable, ear_angle_deg, head_radius_m, itd_scale, ild_max_db, ild_xover_hz,
+            ref_distance_m, rolloff, hf_roll_db_per_m, dz_theta_ms, dz_dist_ms, decoder
+        )
 
     out = np.empty_like(x_stereo)
-    out[:,0] = (Ms[:,0] + S) * inv_sqrt2
-    out[:,1] = (Ms[:,1] - S) * inv_sqrt2
+    for n in range(N):
+        out[n,0] = (Ms[n,0] + S[n]) * inv_sqrt2
+        out[n,1] = (Ms[n,1] - S[n]) * inv_sqrt2
     return out
 
 # -------------------------
