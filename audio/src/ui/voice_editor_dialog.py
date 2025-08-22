@@ -57,6 +57,36 @@ UI_EXCLUDED_FUNCTION_NAMES = [
 ]
 
 
+# Tooltips for flanger parameters
+FLANGE_TOOLTIPS = {
+    'flangeEnable': 'Enable or disable the flanger effect.',
+    'flangeDelayMs': 'Base delay time in milliseconds.',
+    'flangeDepthMs': 'Depth of delay modulation in milliseconds.',
+    'flangeRateHz': 'LFO rate controlling the delay modulation (Hz).',
+    'flangeShape': 'LFO waveform shape (sine or triangle).',
+    'flangeFeedback': 'Amount of output fed back into the input (-1 to +1).',
+    'flangeMix': 'Wet/dry mix of the flanged signal (0-1).',
+    'flangeLoopLpfHz': 'Low-pass filter cutoff in the feedback loop (Hz).',
+    'flangeLoopHpfHz': 'High-pass filter cutoff in the feedback loop (Hz).',
+    'flangeStereoMode': 'Stereo mode: 0 linked, 1 spread, 2 mid-only, 3 side-only.',
+    'flangeSpreadDeg': 'LFO phase offset between channels in spread mode (degrees).',
+    'flangeDelayLaw': 'Sweep law for delay modulation: 0 \u03c4-linear, 1 1/\u03c4-linear, 2 exp-\u03c4.',
+    'flangeInterp': 'Delay-line interpolation: 0 linear, 1 Lagrange3.',
+    'flangeMinDelayMs': 'Minimum allowed delay time (ms).',
+    'flangeMaxDelayMs': 'Maximum allowed delay time (ms).',
+    'flangeDezipperDelayMs': 'Dezipper time constant for delay parameter (ms).',
+    'flangeDezipperDepthMs': 'Dezipper time constant for depth parameter (ms).',
+    'flangeDezipperRateMs': 'Dezipper time constant for LFO rate (ms).',
+    'flangeDezipperFeedbackMs': 'Dezipper time constant for feedback (ms).',
+    'flangeDezipperWetMs': 'Dezipper time constant for wet mix (ms).',
+    'flangeDezipperFilterMs': 'Dezipper time constant for loop filters (ms).',
+    'flangeLoudnessMode': 'Loudness compensation: 0 off, 1 match input RMS.',
+    'flangeLoudnessTcMs': 'RMS detector time constant (ms).',
+    'flangeLoudnessMinGain': 'Minimum makeup gain when loudness mode is on.',
+    'flangeLoudnessMaxGain': 'Maximum makeup gain when loudness mode is on.',
+}
+
+
 class VoiceEditorDialog(QDialog): # Standard class name
 
     DEFAULT_WIDTH = 900
@@ -716,6 +746,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
             
             self.params_scroll_layout.addWidget(frame)
         self.params_scroll_layout.addStretch(1)
+
+        # Apply tooltips to flanger parameters
+        for fname, tip in FLANGE_TOOLTIPS.items():
+            data = self.param_widgets.get(fname)
+            if data:
+                data['widget'].setToolTip(tip)
 
         flange_enable_data = self.param_widgets.get('flangeEnable')
         if flange_enable_data:
