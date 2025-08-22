@@ -4,6 +4,7 @@ import numpy as np
 import numba
 from scipy.signal import butter, filtfilt
 from .common import pan2, trapezoid_envelope_vectorized, calculate_transition_alpha, skewed_sine_phase, _frac
+from .spatial_ambi2d import spatialize_binaural_mid_only, generate_azimuth_trajectory
 
 
 @numba.njit(fastmath=True)
@@ -195,7 +196,40 @@ def isochronic_tone(duration, sample_rate=44100, **params):
         b, a = butter(4, cutoff / nyq, btype='low')
         audio = filtfilt(b, a, audio, axis=0)
 
-    return audio.astype(np.float32)
+    audio = audio.astype(np.float32)
+
+    if bool(params.get("spatialEnable", False)):
+        theta_deg, distance_m = generate_azimuth_trajectory(
+            duration, sample_rate,
+            segments=params.get(
+                "spatialTrajectory",
+                [{
+                    "mode": "oscillate",
+                    "center_deg": 0,
+                    "extent_deg": 75,
+                    "period_s": 20.0,
+                    "distance_m": [1.0, 1.4],
+                    "seconds": duration,
+                }],
+            ),
+        )
+        audio = spatialize_binaural_mid_only(
+            audio, float(sample_rate),
+            theta_deg, distance_m,
+            use_itd_ild=int(params.get("spatialUseItdIld", 1)),
+            ear_angle_deg=float(params.get("spatialEarAngleDeg", 30.0)),
+            head_radius_m=float(params.get("spatialHeadRadiusM", 0.0875)),
+            itd_scale=float(params.get("spatialItdScale", 1.0)),
+            ild_max_db=float(params.get("spatialIldMaxDb", 3.0)),
+            ild_xover_hz=float(params.get("spatialIldXoverHz", 700.0)),
+            ref_distance_m=float(params.get("spatialRefDistanceM", 1.0)),
+            rolloff=float(params.get("spatialRolloff", 1.0)),
+            hf_roll_db_per_m=float(params.get("spatialHfRollDbPerM", 0.0)),
+            dz_theta_ms=float(params.get("spatialDezipperThetaMs", 25.0)),
+            dz_dist_ms=float(params.get("spatialDezipperDistMs", 60.0)),
+        )
+
+    return audio
 
 
 def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
@@ -402,6 +436,39 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
         b, a = butter(4, cutoff / nyq, btype='low')
         audio = filtfilt(b, a, audio, axis=0)
 
+    audio = audio.astype(np.float32)
+
+    if bool(params.get("spatialEnable", False)):
+        theta_deg, distance_m = generate_azimuth_trajectory(
+            duration, sample_rate,
+            segments=params.get(
+                "spatialTrajectory",
+                [{
+                    "mode": "oscillate",
+                    "center_deg": 0,
+                    "extent_deg": 75,
+                    "period_s": 20.0,
+                    "distance_m": [1.0, 1.4],
+                    "seconds": duration,
+                }],
+            ),
+        )
+        audio = spatialize_binaural_mid_only(
+            audio, float(sample_rate),
+            theta_deg, distance_m,
+            use_itd_ild=int(params.get("spatialUseItdIld", 1)),
+            ear_angle_deg=float(params.get("spatialEarAngleDeg", 30.0)),
+            head_radius_m=float(params.get("spatialHeadRadiusM", 0.0875)),
+            itd_scale=float(params.get("spatialItdScale", 1.0)),
+            ild_max_db=float(params.get("spatialIldMaxDb", 3.0)),
+            ild_xover_hz=float(params.get("spatialIldXoverHz", 700.0)),
+            ref_distance_m=float(params.get("spatialRefDistanceM", 1.0)),
+            rolloff=float(params.get("spatialRolloff", 1.0)),
+            hf_roll_db_per_m=float(params.get("spatialHfRollDbPerM", 0.0)),
+            dz_theta_ms=float(params.get("spatialDezipperThetaMs", 25.0)),
+            dz_dist_ms=float(params.get("spatialDezipperDistMs", 60.0)),
+        )
+
     # Note: Volume envelope (like ADSR/Linen) is applied *within* generate_voice_audio if specified there.
 
-    return audio.astype(np.float32)
+    return audio
