@@ -725,12 +725,12 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val_to_set = str(int(current_value)) if isinstance(current_value, (int, float)) and int(current_value) in [1,2,3] else '1'
                     widget.setCurrentText(val_to_set)
                     widget.setMaximumWidth(100); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name == 'flangeShape' and param_type_hint == 'str':
+                elif name.endswith('FlangeShape') and param_type_hint == 'str':
                     widget = QComboBox(); widget.addItems(['sine', 'triangle'])
                     val_to_set = current_value if current_value in ['sine', 'triangle'] else 'sine'
                     widget.setCurrentText(str(val_to_set))
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
-                elif name == 'flangeStereoMode' and param_type_hint == 'int':
+                elif name.endswith('FlangeStereoMode') and param_type_hint == 'int':
                     widget = QComboBox()
                     widget.addItem('Linked', 0)
                     widget.addItem('Spread', 1)
@@ -739,7 +739,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
                     widget.setCurrentIndex(idx if idx >= 0 else 0)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name == 'flangeDelayLaw' and param_type_hint == 'int':
+                elif name.endswith('FlangeDelayLaw') and param_type_hint == 'int':
                     widget = QComboBox()
                     widget.addItem('τ-linear', 0)
                     widget.addItem('1/τ-linear', 1)
@@ -747,14 +747,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
                     widget.setCurrentIndex(idx if idx >= 0 else 0)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name == 'flangeInterp' and param_type_hint == 'int':
+                elif name.endswith('FlangeInterp') and param_type_hint == 'int':
                     widget = QComboBox()
                     widget.addItem('Linear', 0)
                     widget.addItem('Lagrange3', 1)
                     idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
                     widget.setCurrentIndex(idx if idx >= 0 else 0)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name == 'flangeLoudnessMode' and param_type_hint == 'int':
+                elif name.endswith('FlangeLoudnessMode') and param_type_hint == 'int':
                     widget = QComboBox()
                     widget.addItem('Off', 0)
                     widget.addItem('Match Input RMS', 1)
@@ -815,16 +815,20 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
         # Apply tooltips to flanger parameters
         for fname, tip in FLANGE_TOOLTIPS.items():
-            data = self.param_widgets.get(fname)
-            if data:
-                data['widget'].setToolTip(tip)
+            variants = [fname,
+                        'start' + fname[0].upper() + fname[1:],
+                        'end' + fname[0].upper() + fname[1:]]
+            for var in variants:
+                data = self.param_widgets.get(var)
+                if data:
+                    data['widget'].setToolTip(tip)
 
         flange_enable_data = self.param_widgets.get('flangeEnable')
         if flange_enable_data:
             enable_widget = flange_enable_data['widget']
             other_widgets = [self.param_widgets[n]['widget']
                              for n in self.param_widgets
-                             if n.startswith('flange') and n != 'flangeEnable']
+                             if ('flange' in n.lower() and n != 'flangeEnable')]
 
             def _set_flange_enabled(state):
                 for w in other_widgets:
@@ -1796,9 +1800,20 @@ class VoiceEditorDialog(QDialog): # Standard class name
             ('flangeLoudnessMinGain', 0.5),
             ('flangeLoudnessMaxGain', 2.0),
         ]
-        for fname, fdefault in flange_defaults:
-            if fname not in ordered_params:
-                ordered_params[fname] = fdefault
+        if effective_is_transition:
+            for fname, fdefault in flange_defaults:
+                start_name = 'start' + fname[0].upper() + fname[1:]
+                end_name = 'end' + fname[0].upper() + fname[1:]
+                if fname not in ordered_params:
+                    ordered_params[fname] = fdefault
+                if start_name not in ordered_params:
+                    ordered_params[start_name] = fdefault
+                if end_name not in ordered_params:
+                    ordered_params[end_name] = fdefault
+        else:
+            for fname, fdefault in flange_defaults:
+                if fname not in ordered_params:
+                    ordered_params[fname] = fdefault
 
         return ordered_params
 
