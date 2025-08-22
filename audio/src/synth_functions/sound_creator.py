@@ -367,9 +367,12 @@ def steps_have_continuous_voices(prev_step, next_step):
 def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     """Generates audio for a single voice based on its definition."""
     func_name = voice_data.get("synth_function_name")
-    params = voice_data.get("params", {})
+    params = dict(voice_data.get("params", {}))
+    if not params.get("flangeEnable"):
+        for k in list(params.keys()):
+            if "flange" in k.lower():
+                params[k] = False if k.lower().endswith("enable") else 0
     flange_params = {k: params.get(k) for k in list(params.keys()) if "flange" in k.lower()}
-    # If the flanger enable flag is absent or false, ignore all flanger parameters
     if not any(bool(flange_params.get(k)) for k in (
         "flangeEnable", "startFlangeEnable", "endFlangeEnable"
     )):
