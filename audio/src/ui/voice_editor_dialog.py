@@ -555,7 +555,61 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
                     start_label = QLabel("Start:")
                     row_layout.addWidget(start_label, 0, 1, Qt.AlignRight)
-                    if param_type_hint == 'bool':
+                    if base_name_for_pair == 'noiseType' and param_type_hint in ('int', 'bool'):
+                        start_entry = QComboBox(); start_entry.addItems(['1', '2', '3'])
+                        val_to_set = str(int(display_start)) if isinstance(display_start, (int, float)) and int(display_start) in [1,2,3] else '1'
+                        start_entry.setCurrentText(val_to_set)
+                        start_entry.setMaximumWidth(100); row_layout.addWidget(start_entry, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                    elif base_name_for_pair.endswith('FlangeShape') and param_type_hint == 'str':
+                        start_entry = QComboBox(); start_entry.addItems(['sine', 'triangle'])
+                        val_to_set = display_start if display_start in ['sine', 'triangle'] else 'sine'
+                        start_entry.setCurrentText(str(val_to_set))
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                    elif base_name_for_pair.endswith('FlangeStereoMode') and param_type_hint in ('int', 'bool'):
+                        start_entry = QComboBox()
+                        start_entry.addItem('Linked', 0)
+                        start_entry.addItem('Spread', 1)
+                        start_entry.addItem('Mid-only', 2)
+                        start_entry.addItem('Side-only', 3)
+                        idx = start_entry.findData(int(display_start)) if isinstance(display_start, (int, float)) else 0
+                        start_entry.setCurrentIndex(idx if idx >= 0 else 0)
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                    elif base_name_for_pair.endswith('FlangeDelayLaw') and param_type_hint in ('int', 'bool'):
+                        start_entry = QComboBox()
+                        start_entry.addItem('\u03c4-linear', 0)
+                        start_entry.addItem('1/\u03c4-linear', 1)
+                        start_entry.addItem('exp-\u03c4', 2)
+                        idx = start_entry.findData(int(display_start)) if isinstance(display_start, (int, float)) else 0
+                        start_entry.setCurrentIndex(idx if idx >= 0 else 0)
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                    elif base_name_for_pair.endswith('FlangeInterp') and param_type_hint in ('int', 'bool'):
+                        start_entry = QComboBox()
+                        start_entry.addItem('Linear', 0)
+                        start_entry.addItem('Lagrange3', 1)
+                        idx = start_entry.findData(int(display_start)) if isinstance(display_start, (int, float)) else 0
+                        start_entry.setCurrentIndex(idx if idx >= 0 else 0)
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                    elif base_name_for_pair.endswith('FlangeLoudnessMode') and param_type_hint in ('int', 'bool'):
+                        start_entry = QComboBox()
+                        start_entry.addItem('Off', 0)
+                        start_entry.addItem('Match Input RMS', 1)
+                        idx = start_entry.findData(int(display_start)) if isinstance(display_start, (int, float)) else 0
+                        start_entry.setCurrentIndex(idx if idx >= 0 else 0)
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
+                    elif base_name_for_pair == 'pathShape' and param_type_hint == 'str' and hasattr(sound_creator, 'VALID_SAM_PATHS'):
+                        start_entry = QComboBox(); start_entry.addItems(sound_creator.VALID_SAM_PATHS)
+                        val_to_set = display_start if display_start in sound_creator.VALID_SAM_PATHS else sound_creator.VALID_SAM_PATHS[0]
+                        start_entry.setCurrentText(str(val_to_set))
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                    elif base_name_for_pair == 'spatialDecoder' and param_type_hint == 'str':
+                        start_entry = QComboBox()
+                        start_entry.addItem('ITD Head (time-delay)', 'itd_head')
+                        start_entry.addItem('FOA Cardioid (legacy)', 'foa_cardioid')
+                        val_to_set = display_start if display_start in ['itd_head', 'foa_cardioid'] else 'itd_head'
+                        idx = start_entry.findData(val_to_set)
+                        start_entry.setCurrentIndex(idx if idx >= 0 else 0)
+                        start_entry.setMinimumWidth(120); row_layout.addWidget(start_entry, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
+                    elif param_type_hint == 'bool':
                         start_entry = QCheckBox()
                         if isinstance(display_start, str):
                             checked = display_start.strip().lower() in ('1', 'true', 'yes', 'on')
@@ -574,7 +628,51 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
                     end_label = QLabel("End:")
                     row_layout.addWidget(end_label, 0, 3, Qt.AlignRight)
-                    if param_type_hint == 'bool':
+                    if base_name_for_pair == 'noiseType' and param_type_hint in ('int', 'bool'):
+                        end_entry = QComboBox(); end_entry.addItems(['1','2','3'])
+                        val_to_set_e = str(int(display_end)) if isinstance(display_end, (int, float)) and int(display_end) in [1,2,3] else '1'
+                        end_entry.setCurrentText(val_to_set_e)
+                        end_entry.setMaximumWidth(100); row_layout.addWidget(end_entry, 0, 4, 1, 1, Qt.AlignLeft)
+                    elif base_name_for_pair.endswith('FlangeShape') and param_type_hint == 'str':
+                        end_entry = QComboBox(); end_entry.addItems(['sine','triangle'])
+                        val_to_set_e = display_end if display_end in ['sine','triangle'] else 'sine'
+                        end_entry.setCurrentText(str(val_to_set_e))
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry, 0, 4, 1, 2, Qt.AlignLeft)
+                    elif base_name_for_pair.endswith('FlangeStereoMode') and param_type_hint in ('int', 'bool'):
+                        end_entry = QComboBox()
+                        end_entry.addItem('Linked',0); end_entry.addItem('Spread',1); end_entry.addItem('Mid-only',2); end_entry.addItem('Side-only',3)
+                        idx_e = end_entry.findData(int(display_end)) if isinstance(display_end,(int,float)) else 0
+                        end_entry.setCurrentIndex(idx_e if idx_e >=0 else 0)
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry,0,4,1,1,Qt.AlignLeft)
+                    elif base_name_for_pair.endswith('FlangeDelayLaw') and param_type_hint in ('int', 'bool'):
+                        end_entry = QComboBox(); end_entry.addItem('\u03c4-linear',0); end_entry.addItem('1/\u03c4-linear',1); end_entry.addItem('exp-\u03c4',2)
+                        idx_e = end_entry.findData(int(display_end)) if isinstance(display_end,(int,float)) else 0
+                        end_entry.setCurrentIndex(idx_e if idx_e >=0 else 0)
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry,0,4,1,1,Qt.AlignLeft)
+                    elif base_name_for_pair.endswith('FlangeInterp') and param_type_hint in ('int', 'bool'):
+                        end_entry = QComboBox(); end_entry.addItem('Linear',0); end_entry.addItem('Lagrange3',1)
+                        idx_e = end_entry.findData(int(display_end)) if isinstance(display_end,(int,float)) else 0
+                        end_entry.setCurrentIndex(idx_e if idx_e >=0 else 0)
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry,0,4,1,1,Qt.AlignLeft)
+                    elif base_name_for_pair.endswith('FlangeLoudnessMode') and param_type_hint in ('int', 'bool'):
+                        end_entry = QComboBox(); end_entry.addItem('Off',0); end_entry.addItem('Match Input RMS',1)
+                        idx_e = end_entry.findData(int(display_end)) if isinstance(display_end,(int,float)) else 0
+                        end_entry.setCurrentIndex(idx_e if idx_e >=0 else 0)
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry,0,4,1,1,Qt.AlignLeft)
+                    elif base_name_for_pair == 'pathShape' and param_type_hint == 'str' and hasattr(sound_creator, 'VALID_SAM_PATHS'):
+                        end_entry = QComboBox(); end_entry.addItems(sound_creator.VALID_SAM_PATHS)
+                        val_to_set_e = display_end if display_end in sound_creator.VALID_SAM_PATHS else sound_creator.VALID_SAM_PATHS[0]
+                        end_entry.setCurrentText(str(val_to_set_e))
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry,0,4,1,2,Qt.AlignLeft)
+                    elif base_name_for_pair == 'spatialDecoder' and param_type_hint == 'str':
+                        end_entry = QComboBox()
+                        end_entry.addItem('ITD Head (time-delay)', 'itd_head')
+                        end_entry.addItem('FOA Cardioid (legacy)', 'foa_cardioid')
+                        val_to_set_e = display_end if display_end in ['itd_head','foa_cardioid'] else 'itd_head'
+                        idx_e = end_entry.findData(val_to_set_e)
+                        end_entry.setCurrentIndex(idx_e if idx_e >=0 else 0)
+                        end_entry.setMinimumWidth(120); row_layout.addWidget(end_entry,0,4,1,2,Qt.AlignLeft)
+                    elif param_type_hint == 'bool':
                         end_entry = QCheckBox()
                         if isinstance(display_end, str):
                             checked_e = display_end.strip().lower() in ('1', 'true', 'yes', 'on')
@@ -821,7 +919,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                         checked = bool(current_value)
                     widget.setChecked(checked)
                     row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'bool'
-                elif name == 'noiseType' and param_type_hint == 'int':
+                elif name == 'noiseType' and param_type_hint in ('int', 'bool'):
                     widget = QComboBox(); widget.addItems(['1', '2', '3'])
                     val_to_set = str(int(current_value)) if isinstance(current_value, (int, float)) and int(current_value) in [1,2,3] else '1'
                     widget.setCurrentText(val_to_set)
@@ -831,7 +929,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     val_to_set = current_value if current_value in ['sine', 'triangle'] else 'sine'
                     widget.setCurrentText(str(val_to_set))
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 2, Qt.AlignLeft); param_storage_type = 'str'
-                elif name.endswith('FlangeStereoMode') and param_type_hint == 'int':
+                elif name.endswith('FlangeStereoMode') and param_type_hint in ('int', 'bool'):
                     widget = QComboBox()
                     widget.addItem('Linked', 0)
                     widget.addItem('Spread', 1)
@@ -840,7 +938,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
                     widget.setCurrentIndex(idx if idx >= 0 else 0)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name.endswith('FlangeDelayLaw') and param_type_hint == 'int':
+                elif name.endswith('FlangeDelayLaw') and param_type_hint in ('int', 'bool'):
                     widget = QComboBox()
                     widget.addItem('τ-linear', 0)
                     widget.addItem('1/τ-linear', 1)
@@ -848,14 +946,14 @@ class VoiceEditorDialog(QDialog): # Standard class name
                     idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
                     widget.setCurrentIndex(idx if idx >= 0 else 0)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name.endswith('FlangeInterp') and param_type_hint == 'int':
+                elif name.endswith('FlangeInterp') and param_type_hint in ('int', 'bool'):
                     widget = QComboBox()
                     widget.addItem('Linear', 0)
                     widget.addItem('Lagrange3', 1)
                     idx = widget.findData(int(current_value)) if isinstance(current_value, (int, float)) else 0
                     widget.setCurrentIndex(idx if idx >= 0 else 0)
                     widget.setMinimumWidth(120); row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft); param_storage_type = 'int'
-                elif name.endswith('FlangeLoudnessMode') and param_type_hint == 'int':
+                elif name.endswith('FlangeLoudnessMode') and param_type_hint in ('int', 'bool'):
                     widget = QComboBox()
                     widget.addItem('Off', 0)
                     widget.addItem('Match Input RMS', 1)
@@ -1249,7 +1347,11 @@ class VoiceEditorDialog(QDialog): # Standard class name
             if isinstance(widget, QLineEdit):
                 widget.setText(str(display_val))
             elif isinstance(widget, QComboBox):
-                widget.setCurrentText(str(display_val))
+                idx = widget.findData(display_val)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+                else:
+                    widget.setCurrentText(str(display_val))
             elif isinstance(widget, QCheckBox):
                 if isinstance(display_val, str):
                     checked = display_val.strip().lower() in ('1', 'true', 'yes', 'on')
@@ -1466,18 +1568,21 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 value = widget.isChecked()
             elif isinstance(widget, QComboBox):
                 value_str = widget.currentText()
-                if name == 'noiseType' and param_type == 'int':
-                    try: 
-                        value = int(value_str)
-                    except ValueError: 
-                        value = 1  # Default fallback
-                else:
-                    value = value_str
+                data_val = widget.currentData()
+                try:
+                    if param_type == 'int':
+                        value = int(data_val if data_val is not None else value_str)
+                    elif param_type == 'float':
+                        value = float(data_val if data_val is not None else value_str)
+                    else:
+                        value = data_val if data_val is not None else value_str
+                except (ValueError, TypeError):
+                    value = None
             elif isinstance(widget, QLineEdit):
                 value_str = widget.text().strip()
                 if value_str:
                     try:
-                        if param_type == 'int': 
+                        if param_type == 'int':
                             value = int(value_str)
                         elif param_type == 'float': 
                             value = float(value_str.replace(',', '.'))
