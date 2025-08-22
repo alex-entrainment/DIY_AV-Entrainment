@@ -2182,6 +2182,18 @@ class TrackEditorApp(QMainWindow):
         selected_track = copy.deepcopy(self.track_data)
         selected_track["steps"] = [copy.deepcopy(self.track_data["steps"][i]) for i in selection]
 
+        # Re-base start times so the earliest selected step begins at 0.
+        # This prevents leading silence when generating a subset of steps.
+        first_start = float(
+            selected_track["steps"][0].get(
+                "start", selected_track["steps"][0].get("start_time", 0)
+            )
+        )
+        for step in selected_track["steps"]:
+            step_start = float(step.get("start", step.get("start_time", 0))) - first_start
+            step["start"] = max(0.0, step_start)
+            step.pop("start_time", None)
+
         output_filepath = selected_track["global_settings"].get("output_filename")
         if output_filepath and self.prefs.export_dir and not os.path.isabs(output_filepath):
             final_output_path = os.path.join(self.prefs.export_dir, output_filepath)
