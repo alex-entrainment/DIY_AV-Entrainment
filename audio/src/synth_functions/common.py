@@ -420,6 +420,62 @@ def brown_noise(n):
     max_abs = np.max(np.abs(brown))
     return brown / max_abs if max_abs > 1e-9 else brown
 
+
+def _powerlaw_noise(beta, n):
+    """Generate noise with power spectral density proportional to 1/f**beta."""
+    n = int(n)
+    if n <= 0:
+        return np.array([])
+    try:
+        import colorednoise as cn
+        noise = cn.powerlaw_psd_gaussian(beta, n)
+    except ImportError:
+        white = np.random.randn(n)
+        fft_white = np.fft.rfft(white)
+        freqs = np.fft.rfftfreq(n, d=1.0 / 44100)
+        scale = np.ones_like(freqs)
+        nz = freqs > 0
+        scale[nz] = freqs[nz] ** (-beta / 2.0)
+        scale[0] = 0
+        noise = np.fft.irfft(fft_white * scale, n=n)
+    max_abs = np.max(np.abs(noise))
+    if max_abs > 1e-9:
+        noise = noise / max_abs
+    return noise
+
+
+def red_noise(n):
+    """Alias for brown noise (1/f^2 spectrum)."""
+    return _powerlaw_noise(2, n)
+
+
+def deep_brown_noise(n):
+    """Deeper variant of brown noise with 1/f^3 spectrum."""
+    return _powerlaw_noise(3, n)
+
+
+def blue_noise(n):
+    """Generate blue noise with rising spectrum (1/f^-1)."""
+    return _powerlaw_noise(-1, n)
+
+
+def purple_noise(n):
+    """Generate purple (violet) noise with 1/f^-2 spectrum."""
+    return _powerlaw_noise(-2, n)
+
+
+def green_noise(n, fs=44100):
+    """Generate green noise by emphasizing the mid-frequency band around 500 Hz."""
+    noise = _powerlaw_noise(1, n)
+    low = 100 / (fs * 0.5)
+    high = 1000 / (fs * 0.5)
+    b, a = butter(4, [low, high], btype="band")
+    filtered = lfilter(b, a, noise)
+    max_abs = np.max(np.abs(filtered))
+    if max_abs > 1e-9:
+        filtered = filtered / max_abs
+    return filtered
+
 # --- NEW: Helper for Isochronic Tones (Copied from audio_engine.py) ---
 def trapezoid_envelope_vectorized(t_in_cycle, cycle_len, ramp_percent, gap_percent):
     """Vectorized trapezoidal envelope generation."""
