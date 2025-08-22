@@ -34,6 +34,7 @@ from utils.voice_file import (
     VOICE_FILE_EXTENSION,
 )
 from utils.amp_utils import amplitude_to_db, db_to_amplitude, is_amp_key
+from .spatial_trajectory_dialog import SpatialTrajectoryDialog
 
 # Constants from your original dialog structure for envelopes
 ENVELOPE_TYPE_NONE = "None"
@@ -131,6 +132,7 @@ SPATIAL_TOOLTIPS = {
     'spatialHfRollDbPerM': 'High-frequency rolloff per meter (dB).',
     'spatialDezipperThetaMs': 'Dezipper time constant for azimuth changes (ms).',
     'spatialDezipperDistMs': 'Dezipper time constant for distance changes (ms).',
+    'spatialTrajectory': 'Array of movement segments (rotate or oscillate) defining azimuth and distance over time.',
 }
 
 
@@ -457,6 +459,34 @@ class VoiceEditorDialog(QDialog): # Standard class name
 
             default_value = default_params_ordered[name]
             current_value = params_to_display.get(name, default_value)
+
+            if name == 'spatialTrajectory':
+                frame = QWidget()
+                row_layout = QHBoxLayout(frame)
+                row_layout.setContentsMargins(2, 2, 2, 2)
+                param_label = QLabel('spatialTrajectory:')
+                row_layout.addWidget(param_label)
+                summary_label = QLabel(
+                    f"{len(current_value) if isinstance(current_value, list) else 0} segments"
+                )
+                edit_btn = QPushButton('Edit...')
+                row_layout.addWidget(summary_label)
+                row_layout.addWidget(edit_btn)
+                row_layout.addStretch(1)
+                value_list = current_value if isinstance(current_value, list) else []
+                self.param_widgets[name] = {'widget': summary_label, 'type': 'json', 'value': value_list}
+                def _edit_traj():
+                    dlg = SpatialTrajectoryDialog(self, self.param_widgets[name]['value'])
+                    if dlg.exec_() == QDialog.Accepted:
+                        self.param_widgets[name]['value'] = dlg.get_segments()
+                        summary_label.setText(
+                            f"{len(self.param_widgets[name]['value'])} segments"
+                        )
+                edit_btn.clicked.connect(_edit_traj)
+                self.params_scroll_layout.addWidget(frame)
+                processed_names.add(name)
+                continue
+
             display_current = current_value
             if (
                 isinstance(current_value, (int, float))
@@ -1932,6 +1962,7 @@ class VoiceEditorDialog(QDialog): # Standard class name
             ('spatialHfRollDbPerM', 0.0),
             ('spatialDezipperThetaMs', 25.0),
             ('spatialDezipperDistMs', 60.0),
+            ('spatialTrajectory', []),
         ]
         for fname, fdefault in spatial_defaults:
             if fname not in ordered_params:
@@ -1950,6 +1981,10 @@ class VoiceEditorDialog(QDialog): # Standard class name
             widget, param_type = data['widget'], data['type']
             value = None
             widget.setStyleSheet("") # Clear previous error styles
+
+            if param_type == 'json':
+                new_synth_params[name] = data.get('value', [])
+                continue
 
             if isinstance(widget, QCheckBox):
                 value = widget.isChecked()
