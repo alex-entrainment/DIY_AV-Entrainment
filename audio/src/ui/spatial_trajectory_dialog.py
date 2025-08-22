@@ -28,28 +28,34 @@ class SpatialTrajectorySegmentDialog(QDialog):
         form.addWidget(QLabel("Mode:"), 0, 0)
         form.addWidget(self.mode_combo, 0, 1)
 
+        self.start_label = QLabel("Start Deg:")
         self.start_spin = QDoubleSpinBox(); self.start_spin.setRange(-360.0, 360.0); self.start_spin.setDecimals(3)
-        form.addWidget(QLabel("Start Deg:"), 1, 0)
+        form.addWidget(self.start_label, 1, 0)
         form.addWidget(self.start_spin, 1, 1)
 
+        self.speed_label = QLabel("Speed (deg/s):")
         self.speed_spin = QDoubleSpinBox(); self.speed_spin.setRange(-3600.0, 3600.0); self.speed_spin.setDecimals(3)
-        form.addWidget(QLabel("Speed (deg/s):"), 2, 0)
+        form.addWidget(self.speed_label, 2, 0)
         form.addWidget(self.speed_spin, 2, 1)
 
+        self.center_label = QLabel("Center Deg:")
         self.center_spin = QDoubleSpinBox(); self.center_spin.setRange(-360.0, 360.0); self.center_spin.setDecimals(3)
-        form.addWidget(QLabel("Center Deg:"), 3, 0)
+        form.addWidget(self.center_label, 3, 0)
         form.addWidget(self.center_spin, 3, 1)
 
+        self.extent_label = QLabel("Extent Deg:")
         self.extent_spin = QDoubleSpinBox(); self.extent_spin.setRange(0.0, 360.0); self.extent_spin.setDecimals(3)
-        form.addWidget(QLabel("Extent Deg:"), 4, 0)
+        form.addWidget(self.extent_label, 4, 0)
         form.addWidget(self.extent_spin, 4, 1)
 
+        self.period_label = QLabel("Period (s):")
         self.period_spin = QDoubleSpinBox(); self.period_spin.setRange(0.001, 10000.0); self.period_spin.setDecimals(3)
-        form.addWidget(QLabel("Period (s):"), 5, 0)
+        form.addWidget(self.period_label, 5, 0)
         form.addWidget(self.period_spin, 5, 1)
 
+        self.rotate_freq_label = QLabel("Rotate Freq (Hz):")
         self.rotate_freq_spin = QDoubleSpinBox(); self.rotate_freq_spin.setRange(-1000.0, 1000.0); self.rotate_freq_spin.setDecimals(3)
-        form.addWidget(QLabel("Rotate Freq (Hz):"), 6, 0)
+        form.addWidget(self.rotate_freq_label, 6, 0)
         form.addWidget(self.rotate_freq_spin, 6, 1)
 
         # Distance controls
@@ -103,27 +109,21 @@ class SpatialTrajectorySegmentDialog(QDialog):
         self._update_mode_fields(self.mode_combo.currentText())
 
     def _update_mode_fields(self, mode: str):
-        if mode == "rotate":
-            self.start_spin.setEnabled(True)
-            self.speed_spin.setEnabled(True)
-            self.center_spin.setEnabled(False)
-            self.extent_spin.setEnabled(False)
-            self.period_spin.setEnabled(False)
-            self.rotate_freq_spin.setEnabled(False)
-        elif mode == "rotating_arc":
-            self.start_spin.setEnabled(True)
-            self.speed_spin.setEnabled(False)
-            self.center_spin.setEnabled(False)
-            self.extent_spin.setEnabled(True)
-            self.period_spin.setEnabled(False)
-            self.rotate_freq_spin.setEnabled(True)
-        else:
-            self.start_spin.setEnabled(False)
-            self.speed_spin.setEnabled(False)
-            self.center_spin.setEnabled(True)
-            self.extent_spin.setEnabled(True)
-            self.period_spin.setEnabled(True)
-            self.rotate_freq_spin.setEnabled(False)
+        def set_vis(show, *widgets):
+            for w in widgets:
+                w.setVisible(show)
+                w.setEnabled(show)
+
+        is_rotate = mode == "rotate"
+        is_rotating_arc = mode == "rotating_arc"
+        is_oscillate = not (is_rotate or is_rotating_arc)
+
+        set_vis(is_rotate or is_rotating_arc, self.start_label, self.start_spin)
+        set_vis(is_rotate, self.speed_label, self.speed_spin)
+        set_vis(is_oscillate, self.center_label, self.center_spin)
+        set_vis(is_rotating_arc or is_oscillate, self.extent_label, self.extent_spin)
+        set_vis(is_oscillate, self.period_label, self.period_spin)
+        set_vis(is_rotating_arc, self.rotate_freq_label, self.rotate_freq_spin)
 
     def get_segment(self) -> dict:
         seg = {"mode": self.mode_combo.currentText()}
