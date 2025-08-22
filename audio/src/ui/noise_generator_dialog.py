@@ -47,6 +47,7 @@ from utils.noise_file import (
     load_noise_params,
     NOISE_FILE_EXTENSION,
 )
+from .colored_noise_dialog import ColoredNoiseDialog
 
 
 class NoiseGeneratorDialog(QDialog):
@@ -232,6 +233,8 @@ class NoiseGeneratorDialog(QDialog):
         self.save_btn = QPushButton("Save")
         self.save_btn.setDefault(True)
         self.save_btn.clicked.connect(self.save_settings)
+        self.colored_btn = QPushButton("Colored Noise...")
+        self.colored_btn.clicked.connect(self.open_colored_noise_dialog)
         self.generate_btn = QPushButton("Generate")
         self.generate_btn.clicked.connect(self.on_generate)
         self.test_btn = QPushButton("Test")
@@ -243,6 +246,7 @@ class NoiseGeneratorDialog(QDialog):
         self.audio_buffer = None
         button_row.addWidget(self.load_btn)
         button_row.addWidget(self.save_btn)
+        button_row.addWidget(self.colored_btn)
         button_row.addStretch(1)
         button_row.addWidget(self.test_btn)
         button_row.addWidget(self.stop_btn)
@@ -251,6 +255,10 @@ class NoiseGeneratorDialog(QDialog):
 
         if not QT_MULTIMEDIA_AVAILABLE:
             self.test_btn.setEnabled(False)
+
+    def open_colored_noise_dialog(self) -> None:
+        dialog = ColoredNoiseDialog(self)
+        dialog.exec_()
 
     def update_sweep_visibility(self, count):
         for i, (row_widget, *_rest) in enumerate(self.sweep_rows):
