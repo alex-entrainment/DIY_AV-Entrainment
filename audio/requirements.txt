@@ -9,3 +9,4 @@ pandas
 plotly>=5.20
 slab==1.8.0
 soundfile
+matplotlib
