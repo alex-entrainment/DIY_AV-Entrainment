@@ -161,6 +161,63 @@ def phase_align_signal(prev_tail, next_audio, max_search_samples=2048):
     return np.roll(next_audio, offset, axis=0)
 
 
+def _flanger_effect_stereo_continuous(
+    audio: np.ndarray,
+    sample_rate: float,
+    duration: float,
+    initial_offset: float,
+    post_offset: float,
+    curve: str,
+    start_params: dict,
+    end_params: dict,
+    enable_start: bool,
+    enable_end: bool,
+):
+    """Apply a stereo flanger where parameters transition from ``start_params``
+    to ``end_params`` over the voice's duration.
+
+    Parameters
+    ----------
+    audio : np.ndarray
+        Stereo audio array to process.
+    sample_rate : float
+        Sample rate of the audio.
+    duration : float
+        Duration of the voice in seconds.
+    initial_offset, post_offset : float
+        Silence durations before and after the active transition portion. These
+        mirror the semantics used by :func:`calculate_transition_alpha`.
+    curve : str
+        Name of the interpolation curve (e.g. ``"linear"``).
+    start_params, end_params : dict
+        Dictionaries containing flanger parameters compatible with
+        :func:`flanger_stereo`.
+    enable_start, enable_end : bool
+        Whether the flanger is enabled at the start and end of the transition.
+    """
+
+    from .common import calculate_transition_alpha
+
+    N = audio.shape[0]
+    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    if len(alpha) != N:
+        alpha = np.interp(np.linspace(0, 1, N), np.linspace(0, 1, len(alpha)), alpha)
+
+    dry_audio = audio.astype(np.float32)
+    if enable_start:
+        start_audio = flanger_stereo(dry_audio, sample_rate, **start_params)
+    else:
+        start_audio = dry_audio
+
+    if enable_end:
+        end_audio = flanger_stereo(dry_audio, sample_rate, **end_params)
+    else:
+        end_audio = dry_audio
+
+    alpha = alpha[:, None]
+    return (start_audio * (1.0 - alpha) + end_audio * alpha).astype(np.float32)
+
+
 def load_audio_clip(file_path, sample_rate):
     """Load an audio clip as stereo ``float32`` at ``sample_rate``.
 
@@ -311,8 +368,8 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     """Generates audio for a single voice based on its definition."""
     func_name = voice_data.get("synth_function_name")
     params = voice_data.get("params", {})
-    flange_params = {k: params.get(k) for k in list(params.keys()) if k.startswith("flange")}
-    core_params = {k: v for k, v in params.items() if not k.startswith("flange")}
+    flange_params = {k: params.get(k) for k in list(params.keys()) if "flange" in k.lower()}
+    core_params = {k: v for k, v in params.items() if "flange" not in k.lower()}
     is_transition = voice_data.get("is_transition", False) # Check if this step IS a transition
 
     # --- Select the correct function (static or transition) ---
@@ -454,34 +511,66 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
                 N_expected = int(duration * sample_rate)
                 return np.zeros((N_expected, 2))
     # Apply flanger effect if requested
-    if bool(flange_params.get('flangeEnable', False)):
-        audio = flanger_stereo(
-            audio.astype(np.float32), float(sample_rate),
-            delay_ms=float(flange_params.get('flangeDelayMs', 1.2)),
-            depth_ms=float(flange_params.get('flangeDepthMs', 0.6)),
-            rate_hz=float(flange_params.get('flangeRateHz', 0.12)),
-            lfo_shape=0 if str(flange_params.get('flangeShape', 'sine')) == 'sine' else 1,
-            feedback=float(flange_params.get('flangeFeedback', 0.5)),
-            wet=float(flange_params.get('flangeMix', 0.3)),
-            loop_lpf_hz=float(flange_params.get('flangeLoopLpfHz', 7000.0)),
-            loop_hpf_hz=float(flange_params.get('flangeLoopHpfHz', 0.0)),
-            stereo_mode=int(flange_params.get('flangeStereoMode', 0)),
-            spread_deg=float(flange_params.get('flangeSpreadDeg', 0.0)),
-            law=int(flange_params.get('flangeDelayLaw', 0)),
-            interp_mode=int(flange_params.get('flangeInterp', 0)),
-            min_delay_ms=float(flange_params.get('flangeMinDelayMs', 0.25)),
-            max_delay_ms=float(flange_params.get('flangeMaxDelayMs', 8.0)),
-            dz_delay_ms=float(flange_params.get('flangeDezipperDelayMs', 30.0)),
-            dz_depth_ms=float(flange_params.get('flangeDezipperDepthMs', 30.0)),
-            dz_rate_ms=float(flange_params.get('flangeDezipperRateMs', 200.0)),
-            dz_feedback_ms=float(flange_params.get('flangeDezipperFeedbackMs', 30.0)),
-            dz_wet_ms=float(flange_params.get('flangeDezipperWetMs', 40.0)),
-            dz_filter_ms=float(flange_params.get('flangeDezipperFilterMs', 60.0)),
-            loud_mode=int(flange_params.get('flangeLoudnessMode', 1)),
-            loud_tc_ms=float(flange_params.get('flangeLoudnessTcMs', 80.0)),
-            loud_min_gain=float(flange_params.get('flangeLoudnessMinGain', 0.5)),
-            loud_max_gain=float(flange_params.get('flangeLoudnessMaxGain', 2.0)),
-        ).astype(np.float32)
+    if flange_params:
+        def _collect(prefix: str) -> dict:
+            pfx_len = len(prefix)
+            return {'flange' + k[pfx_len:]: v for k, v in flange_params.items() if k.startswith(prefix)}
+
+        def _parse(raw: dict) -> dict:
+            mapping = {
+                'flangeDelayMs': ('delay_ms', float),
+                'flangeDepthMs': ('depth_ms', float),
+                'flangeRateHz': ('rate_hz', float),
+                'flangeShape': ('lfo_shape', lambda x: 0 if str(x) == 'sine' else 1),
+                'flangeFeedback': ('feedback', float),
+                'flangeMix': ('wet', float),
+                'flangeLoopLpfHz': ('loop_lpf_hz', float),
+                'flangeLoopHpfHz': ('loop_hpf_hz', float),
+                'flangeStereoMode': ('stereo_mode', int),
+                'flangeSpreadDeg': ('spread_deg', float),
+                'flangeDelayLaw': ('law', int),
+                'flangeInterp': ('interp_mode', int),
+                'flangeMinDelayMs': ('min_delay_ms', float),
+                'flangeMaxDelayMs': ('max_delay_ms', float),
+                'flangeDezipperDelayMs': ('dz_delay_ms', float),
+                'flangeDezipperDepthMs': ('dz_depth_ms', float),
+                'flangeDezipperRateMs': ('dz_rate_ms', float),
+                'flangeDezipperFeedbackMs': ('dz_feedback_ms', float),
+                'flangeDezipperWetMs': ('dz_wet_ms', float),
+                'flangeDezipperFilterMs': ('dz_filter_ms', float),
+                'flangeLoudnessMode': ('loud_mode', int),
+                'flangeLoudnessTcMs': ('loud_tc_ms', float),
+                'flangeLoudnessMinGain': ('loud_min_gain', float),
+                'flangeLoudnessMaxGain': ('loud_max_gain', float),
+                'flangeEnable': ('enable', bool),
+            }
+            out = {}
+            for k, v in raw.items():
+                if k in mapping:
+                    tgt, cast = mapping[k]
+                    out[tgt] = cast(v)
+            return out
+
+        base_raw = {k: v for k, v in flange_params.items() if not (k.startswith('startFlange') or k.startswith('endFlange'))}
+        start_raw = {**base_raw, **_collect('startFlange')}
+        end_raw = {**base_raw, **_collect('endFlange')}
+
+        start_conf = _parse(start_raw)
+        end_conf = _parse(end_raw)
+        enable_start = start_conf.pop('enable', False)
+        enable_end = end_conf.pop('enable', False)
+
+        if is_transition and (start_conf != end_conf or enable_start != enable_end):
+            audio = _flanger_effect_stereo_continuous(
+                audio, float(sample_rate), duration,
+                float(core_params.get('initial_offset', 0.0)),
+                float(core_params.get('post_offset', 0.0)),
+                str(core_params.get('transition_curve', 'linear')),
+                start_conf, end_conf, enable_start, enable_end,
+            )
+        elif enable_start or enable_end:
+            params_to_use = start_conf
+            audio = flanger_stereo(audio.astype(np.float32), float(sample_rate), **params_to_use).astype(np.float32)
 
     # Add a small default fade if no specific envelope was requested and audio exists
     # This helps prevent clicks when steps are concatenated without crossfade
