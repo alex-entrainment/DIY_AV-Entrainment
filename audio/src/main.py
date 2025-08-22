@@ -231,6 +231,7 @@ class TrackEditorApp(QMainWindow):
         self._voices_tree_updating = False
         self._steps_tree_updating = False
         self._clips_tree_updating = False
+        self._copied_voices = []
 
         self._setup_ui()
         self.setStyleSheet(GLOBAL_STYLE_SHEET)
@@ -679,6 +680,12 @@ class TrackEditorApp(QMainWindow):
         voices_buttons_layout.addWidget(self.group_edit_button)
         voices_buttons_layout.addWidget(self.duplicate_voice_button)
         voices_buttons_layout.addWidget(self.remove_voice_button)
+        self.copy_voices_button = QPushButton("Copy Voice(s)")
+        self.paste_voices_button = QPushButton("Paste Voice(s)")
+        self.copy_voices_button.clicked.connect(self.copy_selected_voices)
+        self.paste_voices_button.clicked.connect(self.paste_copied_voices)
+        voices_buttons_layout.addWidget(self.copy_voices_button)
+        voices_buttons_layout.addWidget(self.paste_voices_button)
         self.save_voices_button = QPushButton("Save Voices")
         self.load_voices_button = QPushButton("Load Voices")
         self.save_voices_button.clicked.connect(self.save_selected_voices)
@@ -846,6 +853,8 @@ class TrackEditorApp(QMainWindow):
             self.load_voices_button.setEnabled(False)
             self.move_voice_up_button.setEnabled(False)
             self.move_voice_down_button.setEnabled(False)
+            self.copy_voices_button.setEnabled(False)
+            self.paste_voices_button.setEnabled(False)
             return
 
         has_voice_selection = num_selected_voices > 0
@@ -859,6 +868,8 @@ class TrackEditorApp(QMainWindow):
         self.remove_voice_button.setEnabled(has_voice_selection)
         self.save_voices_button.setEnabled(has_voice_selection)
         self.load_voices_button.setEnabled(True)
+        self.copy_voices_button.setEnabled(has_voice_selection)
+        self.paste_voices_button.setEnabled(bool(self._copied_voices))
 
         num_voices_in_current_step = 0
         current_step_idx = self.get_selected_step_index()
@@ -1706,6 +1717,55 @@ class TrackEditorApp(QMainWindow):
                 self._push_history_state()
         except IndexError: QMessageBox.critical(self, "Error", "Failed to remove voice(s) (step index out of range).")
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to remove voice(s):\n{e}"); traceback.print_exc()
+
+    @pyqtSlot()
+    def copy_selected_voices(self):
+        selected_step_idx = self.get_selected_step_index()
+        selected_voice_indices = self.get_selected_voice_indices()
+        if selected_step_idx is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Copy Voice(s)", "Please select exactly one step first.")
+            return
+        if not selected_voice_indices:
+            QMessageBox.warning(self, "Copy Voice(s)", "Please select one or more voices to copy.")
+            return
+        try:
+            voices_list = self.track_data["steps"][selected_step_idx]["voices"]
+            self._copied_voices = [copy.deepcopy(voices_list[i]) for i in selected_voice_indices if 0 <= i < len(voices_list)]
+        except Exception as e:
+            QMessageBox.critical(self, "Copy Voice(s)", f"Failed to copy voices:\n{e}")
+            self._copied_voices = []
+        self._update_voice_actions_state()
+
+    @pyqtSlot()
+    def paste_copied_voices(self):
+        if not self._copied_voices:
+            QMessageBox.warning(self, "Paste Voice(s)", "No voices have been copied.")
+            return
+        selected_step_idx = self.get_selected_step_index()
+        selected_voice_indices = self.get_selected_voice_indices()
+        if selected_step_idx is None or len(self.get_selected_step_indices()) != 1:
+            QMessageBox.warning(self, "Paste Voice(s)", "Please select exactly one step to paste into.")
+            return
+        try:
+            voices_list = self.track_data["steps"][selected_step_idx].setdefault("voices", [])
+            insert_idx = max(selected_voice_indices) + 1 if selected_voice_indices else len(voices_list)
+            for voice in self._copied_voices:
+                voices_list.insert(insert_idx, copy.deepcopy(voice))
+                insert_idx += 1
+            self.refresh_voices_tree()
+            sel_model = self.voices_tree.selectionModel()
+            sel_model.clearSelection()
+            start_idx = insert_idx - len(self._copied_voices)
+            for i in range(start_idx, insert_idx):
+                if 0 <= i < self.voice_model.rowCount():
+                    idx = self.voice_model.index(i, 0)
+                    sel_model.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+            if 0 <= insert_idx - 1 < self.voice_model.rowCount():
+                self.voices_tree.scrollTo(self.voice_model.index(insert_idx - 1, 0), QAbstractItemView.PositionAtCenter)
+            self._push_history_state()
+        except Exception as e:
+            QMessageBox.critical(self, "Paste Voice(s)", f"Failed to paste voices:\n{e}")
+        self._update_voice_actions_state()
 
     @pyqtSlot(int)
     def move_voice(self, direction):
