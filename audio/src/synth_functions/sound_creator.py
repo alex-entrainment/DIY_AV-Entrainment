@@ -13,6 +13,7 @@ from synth_functions.noise_flanger import (
     _generate_swept_notch_arrays,
     _generate_swept_notch_arrays_transition,
 )
+from .fx_flanger import flanger_stereo
 
 
 # Import all synth functions from the synth_functions package
@@ -310,6 +311,8 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     """Generates audio for a single voice based on its definition."""
     func_name = voice_data.get("synth_function_name")
     params = voice_data.get("params", {})
+    flange_params = {k: params.get(k) for k in list(params.keys()) if k.startswith("flange")}
+    core_params = {k: v for k, v in params.items() if not k.startswith("flange")}
     is_transition = voice_data.get("is_transition", False) # Check if this step IS a transition
 
     # --- Select the correct function (static or transition) ---
@@ -344,7 +347,7 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
     synth_func = SYNTH_FUNCTIONS[actual_func_name]
 
     # Clean params: remove None values before passing to function, as functions use .get() with defaults
-    cleaned_params = {k: v for k, v in params.items() if v is not None}
+    cleaned_params = {k: v for k, v in core_params.items() if v is not None}
 
     # --- Generate base audio ---
     try:
@@ -450,7 +453,35 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
                 print(f"Error: Final audio shape for voice is incorrect ({audio.shape}). Returning silence.")
                 N_expected = int(duration * sample_rate)
                 return np.zeros((N_expected, 2))
-
+    # Apply flanger effect if requested
+    if bool(flange_params.get('flangeEnable', False)):
+        audio = flanger_stereo(
+            audio.astype(np.float32), float(sample_rate),
+            delay_ms=float(flange_params.get('flangeDelayMs', 1.2)),
+            depth_ms=float(flange_params.get('flangeDepthMs', 0.6)),
+            rate_hz=float(flange_params.get('flangeRateHz', 0.12)),
+            lfo_shape=0 if str(flange_params.get('flangeShape', 'sine')) == 'sine' else 1,
+            feedback=float(flange_params.get('flangeFeedback', 0.5)),
+            wet=float(flange_params.get('flangeMix', 0.3)),
+            loop_lpf_hz=float(flange_params.get('flangeLoopLpfHz', 7000.0)),
+            loop_hpf_hz=float(flange_params.get('flangeLoopHpfHz', 0.0)),
+            stereo_mode=int(flange_params.get('flangeStereoMode', 0)),
+            spread_deg=float(flange_params.get('flangeSpreadDeg', 0.0)),
+            law=int(flange_params.get('flangeDelayLaw', 0)),
+            interp_mode=int(flange_params.get('flangeInterp', 0)),
+            min_delay_ms=float(flange_params.get('flangeMinDelayMs', 0.25)),
+            max_delay_ms=float(flange_params.get('flangeMaxDelayMs', 8.0)),
+            dz_delay_ms=float(flange_params.get('flangeDezipperDelayMs', 30.0)),
+            dz_depth_ms=float(flange_params.get('flangeDezipperDepthMs', 30.0)),
+            dz_rate_ms=float(flange_params.get('flangeDezipperRateMs', 200.0)),
+            dz_feedback_ms=float(flange_params.get('flangeDezipperFeedbackMs', 30.0)),
+            dz_wet_ms=float(flange_params.get('flangeDezipperWetMs', 40.0)),
+            dz_filter_ms=float(flange_params.get('flangeDezipperFilterMs', 60.0)),
+            loud_mode=int(flange_params.get('flangeLoudnessMode', 1)),
+            loud_tc_ms=float(flange_params.get('flangeLoudnessTcMs', 80.0)),
+            loud_min_gain=float(flange_params.get('flangeLoudnessMinGain', 0.5)),
+            loud_max_gain=float(flange_params.get('flangeLoudnessMaxGain', 2.0)),
+        ).astype(np.float32)
 
     # Add a small default fade if no specific envelope was requested and audio exists
     # This helps prevent clicks when steps are concatenated without crossfade
