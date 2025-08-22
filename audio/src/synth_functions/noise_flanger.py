@@ -113,7 +113,9 @@ def _apply_deep_swept_notches_varying(
 
     if use_memmap:
         tmp_output = tempfile.NamedTemporaryFile(delete=False)
-        output = np.memmap(tmp_output.name, dtype=np.float32, mode="w+", shape=n_samples)
+        tmp_output_name = tmp_output.name
+        tmp_output.close()
+        output = np.memmap(tmp_output_name, dtype=np.float32, mode="w+", shape=n_samples)
         output[:] = input_signal[:]
     else:
         output = input_signal.copy()
@@ -125,8 +127,12 @@ def _apply_deep_swept_notches_varying(
     if use_memmap:
         tmp_out_acc = tempfile.NamedTemporaryFile(delete=False)
         tmp_win_acc = tempfile.NamedTemporaryFile(delete=False)
-        output_accumulator = np.memmap(tmp_out_acc.name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
-        window_accumulator = np.memmap(tmp_win_acc.name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+        out_acc_name = tmp_out_acc.name
+        win_acc_name = tmp_win_acc.name
+        tmp_out_acc.close()
+        tmp_win_acc.close()
+        output_accumulator = np.memmap(out_acc_name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+        window_accumulator = np.memmap(win_acc_name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
     else:
         output_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
         window_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
@@ -197,7 +203,9 @@ def _apply_deep_swept_notches_single_phase(
 
     if use_memmap:
         tmp_output = tempfile.NamedTemporaryFile(delete=False)
-        output = np.memmap(tmp_output.name, dtype=np.float32, mode='w+', shape=n_samples)
+        tmp_output_name = tmp_output.name
+        tmp_output.close()
+        output = np.memmap(tmp_output_name, dtype=np.float32, mode='w+', shape=n_samples)
         output[:] = input_signal[:]
     else:
         output = input_signal.copy()
@@ -239,8 +247,12 @@ def _apply_deep_swept_notches_single_phase(
     if use_memmap:
         tmp_out_acc = tempfile.NamedTemporaryFile(delete=False)
         tmp_win_acc = tempfile.NamedTemporaryFile(delete=False)
-        output_accumulator = np.memmap(tmp_out_acc.name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
-        window_accumulator = np.memmap(tmp_win_acc.name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
+        out_acc_name = tmp_out_acc.name
+        win_acc_name = tmp_win_acc.name
+        tmp_out_acc.close()
+        tmp_win_acc.close()
+        output_accumulator = np.memmap(out_acc_name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
+        window_accumulator = np.memmap(win_acc_name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
     else:
         output_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
         window_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
@@ -370,7 +382,9 @@ def _generate_swept_notch_arrays(
         num_samples = int(duration_seconds * sample_rate)
         if memory_efficient:
             tmp_input = tempfile.NamedTemporaryFile(delete=False)
-            input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode='w+', shape=num_samples)
+            tmp_input_name = tmp_input.name
+            tmp_input.close()
+            input_signal = np.memmap(tmp_input_name, dtype=np.float32, mode='w+', shape=num_samples)
             input_signal[:] = generate_noise_samples(num_samples, noise_type, sample_rate)
         else:
             input_signal = generate_noise_samples(num_samples, noise_type, sample_rate)
@@ -516,7 +530,9 @@ def _generate_swept_notch_arrays_transition(
         num_samples = int(duration_seconds * sample_rate)
         if memory_efficient:
             tmp_input = tempfile.NamedTemporaryFile(delete=False)
-            input_signal = np.memmap(tmp_input.name, dtype=np.float32, mode="w+", shape=num_samples)
+            tmp_input_name = tmp_input.name
+            tmp_input.close()
+            input_signal = np.memmap(tmp_input_name, dtype=np.float32, mode="w+", shape=num_samples)
             input_signal[:] = generate_noise_samples(num_samples, noise_type, sample_rate)
         else:
             input_signal = generate_noise_samples(num_samples, noise_type, sample_rate)
