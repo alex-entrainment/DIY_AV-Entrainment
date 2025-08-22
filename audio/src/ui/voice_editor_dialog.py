@@ -841,13 +841,19 @@ class VoiceEditorDialog(QDialog): # Standard class name
         flange_enable_data = self.param_widgets.get('flangeEnable')
         if flange_enable_data:
             enable_widget = flange_enable_data['widget']
-            other_widgets = [self.param_widgets[n]['widget']
-                             for n in self.param_widgets
-                             if ('flange' in n.lower() and n != 'flangeEnable')]
+
+            other_widgets = []
+            for n, data in self.param_widgets.items():
+                if 'flange' in n.lower() and n != 'flangeEnable':
+                    row_widget = data['widget'].parentWidget()
+                    if row_widget and row_widget not in other_widgets:
+                        other_widgets.append(row_widget)
 
             def _set_flange_enabled(state):
+                visible = bool(state)
                 for w in other_widgets:
-                    w.setEnabled(bool(state))
+                    w.setVisible(visible)
+                    w.setEnabled(visible)
 
             enable_widget.stateChanged.connect(_set_flange_enabled)
             _set_flange_enabled(enable_widget.isChecked())
