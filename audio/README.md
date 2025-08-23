@@ -52,7 +52,7 @@ Available Synth Functions:
 `sound_creator.py` also includes essential DSP building blocks:
 
 * Sine wave generation (constant and varying frequency via phase accumulation).
-* Noise generation (white, pink via filtering/colorednoise lib, brown via integration, plus blue, purple, red, deep brown and green variants).
+* Noise generation (white, pink via filtering, brown via integration, plus blue, purple, red, deep brown and green variants).
 * Butterworth filters (bandpass, band-reject, lowpass).
 * Envelope generators (ADSR, Linen, Linear Fade).
 * Stereo Panning (`pan2` using equal power law).

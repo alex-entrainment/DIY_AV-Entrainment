@@ -398,45 +398,36 @@ def pink_noise(n):
     Filters white noise with a filter whose magnitude response is proportional to 1/sqrt(f).
     """
     n = int(n)
-    if n <= 0: return np.array([])
-    # Voss-McCartney algorithm approximation (simpler than FFT filtering)
-    # Or use a library if available: pip install colorednoise
-    try:
-        import colorednoise as cn
-        # Generate noise with exponent 1 for pink noise
-        pink = cn.powerlaw_psd_gaussian(1, n)
-        # Normalize to approx [-1, 1] range (optional, depends on desired amplitude)
-        max_abs = np.max(np.abs(pink))
-        if max_abs > 1e-9:
-           pink = pink / max_abs
-        return pink
-    except ImportError:
-        # FFT filtering method
-        white_noise = np.random.randn(n)
-        fft_white = np.fft.rfft(white_noise)
-        frequencies = np.fft.rfftfreq(n, d=1.0/44100) # Use sample rate if known, else d=1.0
+    if n <= 0:
+        return np.array([])
 
-        # Create filter: amplitude proportional to 1/sqrt(f)
-        # Handle f=0 case (DC component)
-        scale = np.ones_like(frequencies)
-        non_zero_freq_indices = frequencies > 0
-        # Avoid division by zero or sqrt of zero
-        valid_freqs = frequencies[non_zero_freq_indices]
-        scale[non_zero_freq_indices] = 1.0 / np.sqrt(np.maximum(valid_freqs, 1e-9)) # Ensure positive sqrt argument
-        # Optional: Set DC component to 0 or a small value
-        scale[0] = 0 # Typically remove DC
+    # Generate white noise and shape it in the frequency domain so that the
+    # magnitude response is proportional to 1/sqrt(f).
+    white_noise = np.random.randn(n)
+    fft_white = np.fft.rfft(white_noise)
+    frequencies = np.fft.rfftfreq(n, d=1.0 / 44100)  # Use sample rate if known, else d=1.0
 
-        # Apply filter in frequency domain
-        pink_spectrum = fft_white * scale
+    # Create filter: amplitude proportional to 1/sqrt(f)
+    # Handle f=0 case (DC component)
+    scale = np.ones_like(frequencies)
+    non_zero_freq_indices = frequencies > 0
+    # Avoid division by zero or sqrt of zero
+    valid_freqs = frequencies[non_zero_freq_indices]
+    scale[non_zero_freq_indices] = 1.0 / np.sqrt(np.maximum(valid_freqs, 1e-9))
+    # Remove DC component
+    scale[0] = 0
 
-        # Inverse FFT to get time domain signal
-        pink = np.fft.irfft(pink_spectrum, n=n)
+    # Apply filter in frequency domain
+    pink_spectrum = fft_white * scale
 
-        # Normalize
-        max_abs = np.max(np.abs(pink))
-        if max_abs > 1e-9:
-           pink = pink / max_abs
-        return pink
+    # Inverse FFT to get time domain signal
+    pink = np.fft.irfft(pink_spectrum, n=n)
+
+    # Normalize to approx [-1, 1]
+    max_abs = np.max(np.abs(pink))
+    if max_abs > 1e-9:
+        pink = pink / max_abs
+    return pink
 
 def brown_noise(n):
     """
@@ -456,18 +447,14 @@ def _powerlaw_noise(beta, n):
     n = int(n)
     if n <= 0:
         return np.array([])
-    try:
-        import colorednoise as cn
-        noise = cn.powerlaw_psd_gaussian(beta, n)
-    except ImportError:
-        white = np.random.randn(n)
-        fft_white = np.fft.rfft(white)
-        freqs = np.fft.rfftfreq(n, d=1.0 / 44100)
-        scale = np.ones_like(freqs)
-        nz = freqs > 0
-        scale[nz] = freqs[nz] ** (-beta / 2.0)
-        scale[0] = 0
-        noise = np.fft.irfft(fft_white * scale, n=n)
+    white = np.random.randn(n)
+    fft_white = np.fft.rfft(white)
+    freqs = np.fft.rfftfreq(n, d=1.0 / 44100)
+    scale = np.ones_like(freqs)
+    nz = freqs > 0
+    scale[nz] = freqs[nz] ** (-beta / 2.0)
+    scale[0] = 0
+    noise = np.fft.irfft(fft_white * scale, n=n)
     max_abs = np.max(np.abs(noise))
     if max_abs > 1e-9:
         noise = noise / max_abs
