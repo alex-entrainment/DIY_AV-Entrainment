@@ -1,7 +1,8 @@
 colorednoise==2.2.0
 librosa==0.11.0
 numpy==2.2.5
-numba
+# numba provides optional JIT acceleration but isn't required on Windows
+numba; platform_system != "Windows"
 
 pyqt5==5.15.11
 scipy==1.15.2
