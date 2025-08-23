@@ -2,7 +2,8 @@ soundfile
 pygame
 adafruit-blinka
 adafruit-circuitpython-pca9685
-colorednoise==2.2.0
+# numba provides optional JIT acceleration but isn't required on Windows
+numba; platform_system != "Windows"
 librosa==0.11.0
 numpy==2.2.5
 pyqt5==5.15.11
