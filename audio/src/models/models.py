@@ -134,24 +134,8 @@ class VoiceModel(QAbstractTableModel):
             if index.column() == 0:
                 return func_name
             if index.column() == 1:
-                carrier = None
-                if 'baseFreq' in params:
-                    carrier = params['baseFreq']
-                elif 'frequency' in params:
-                    carrier = params['frequency']
-                elif 'carrierFreq' in params:
-                    carrier = params['carrierFreq']
-                else:
-                    freq_keys = [k for k in params if ('Freq' in k or 'Frequency' in k) and not k.startswith(('start','end','target'))]
-                    if is_transition:
-                        freq_keys = [k for k in params if k.startswith('start') and ('Freq' in k or 'Frequency' in k)] or freq_keys
-                    carrier = params.get(freq_keys[0]) if freq_keys else 'N/A'
-                try:
-                    if carrier is not None and carrier != 'N/A':
-                        return f"{float(carrier):.2f}"
-                    return str(carrier)
-                except (ValueError, TypeError):
-                    return str(carrier)
+                carrier_val = self._get_carrier_frequency(params, is_transition)
+                return carrier_val
             if index.column() == 2:
                 beat_val = self._get_beat_frequency(params, is_transition)
                 return beat_val
@@ -171,6 +155,55 @@ class VoiceModel(QAbstractTableModel):
             return f"{float(value):.2f}"
         except (ValueError, TypeError):
             return str(value)
+
+    def _get_carrier_frequency(self, params, is_transition):
+        """Return formatted carrier frequency for display."""
+        # Collect keys related to frequency but excluding beat frequencies
+        freq_keys = [
+            k
+            for k in params
+            if ("freq" in k.lower() or "frequency" in k.lower())
+            and "beat" not in k.lower()
+        ]
+
+        start_keys = [k for k in freq_keys if k.lower().startswith("start")]
+        end_keys = [k for k in freq_keys if k.lower().startswith("end")]
+        normal_keys = [
+            k
+            for k in freq_keys
+            if not k.lower().startswith(("start", "end", "target"))
+        ]
+
+        if is_transition:
+            # Attempt to match each start key with a corresponding end key
+            for sk in start_keys:
+                base = sk[5:]  # remove 'start'
+                ek = "end" + base
+                if ek in params:
+                    s_val = params.get(sk)
+                    e_val = params.get(ek)
+                    try:
+                        s_f = float(s_val)
+                        e_f = float(e_val)
+                        if abs(s_f - e_f) < 1e-6:
+                            return f"{s_f:.2f}"
+                        return f"{s_f:.2f}->{e_f:.2f}"
+                    except (ValueError, TypeError):
+                        if s_val == e_val:
+                            return str(s_val)
+                        return f"{s_val}->{e_val}"
+            if start_keys:
+                return self._format_number(params.get(start_keys[0]))
+            if end_keys:
+                return self._format_number(params.get(end_keys[0]))
+
+        # Non-transition or fallback
+        for key in ("baseFreq", "frequency", "carrierFreq"):
+            if key in params:
+                return self._format_number(params.get(key))
+        if normal_keys:
+            return self._format_number(params.get(normal_keys[0]))
+        return "N/A"
 
     def _get_beat_frequency(self, params, is_transition):
         """Return formatted beat frequency for display."""
