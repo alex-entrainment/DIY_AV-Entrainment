@@ -3,8 +3,12 @@ Common utilities and helper functions used by synth functions.
 """
 import numpy as np
 import math
-import numba
 from scipy.signal import butter, lfilter, sosfiltfilt
+
+try:  # numba is optional and may be unavailable on some platforms (e.g. Windows)
+    import numba
+except Exception:  # pragma: no cover
+    numba = None
 
 def sine_wave(freq, t, phase: float=0):
     """Generate a sine wave at a constant frequency using an absolute time base."""
@@ -40,32 +44,58 @@ def sine_wave_varying(freq_array, t, sample_rate=44100):
     return np.sin(phase)
 
 
-@numba.njit(fastmath=True, inline='always')
-def _frac(x):
-    """Return the fractional part of x."""
-    return x - np.floor(x)
+if numba is not None:
+    @numba.njit(fastmath=True, inline="always")
+    def _frac(x):
+        """Return the fractional part of x."""
+        return x - np.floor(x)
 
 
-@numba.njit(fastmath=True, inline='always')
-def skewed_sine_phase(phase_fraction, skew):
-    """Sine wave with adjustable up/down symmetry.
+    @numba.njit(fastmath=True, inline="always")
+    def skewed_sine_phase(phase_fraction, skew):
+        """Sine wave with adjustable up/down symmetry.
 
-    ``phase_fraction`` should be in the range ``[0, 1)`` representing the
-    position within one cycle. ``skew`` ranges from -1.0 (long upswing) to
-    1.0 (short upswing). A value of 0.0 yields a standard sine shape.
-    """
-    frac = 0.5 + 0.5 * skew
-    if frac <= 0.0:
-        frac = 1e-9
-    if frac >= 1.0:
-        frac = 1.0 - 1e-9
+        ``phase_fraction`` should be in the range ``[0, 1)`` representing the
+        position within one cycle. ``skew`` ranges from -1.0 (long upswing) to
+        1.0 (short upswing). A value of 0.0 yields a standard sine shape.
+        """
+        frac = 0.5 + 0.5 * skew
+        if frac <= 0.0:
+            frac = 1e-9
+        if frac >= 1.0:
+            frac = 1.0 - 1e-9
 
-    if phase_fraction < frac:
-        local = phase_fraction / frac
-        return math.sin(math.pi * local)
-    else:
-        local = (phase_fraction - frac) / (1.0 - frac)
-        return math.sin(math.pi * (1.0 + local))
+        if phase_fraction < frac:
+            local = phase_fraction / frac
+            return math.sin(math.pi * local)
+        else:
+            local = (phase_fraction - frac) / (1.0 - frac)
+            return math.sin(math.pi * (1.0 + local))
+else:
+    def _frac(x):
+        """Return the fractional part of x."""
+        return x - math.floor(x)
+
+
+    def skewed_sine_phase(phase_fraction, skew):
+        """Sine wave with adjustable up/down symmetry.
+
+        ``phase_fraction`` should be in the range ``[0, 1)`` representing the
+        position within one cycle. ``skew`` ranges from -1.0 (long upswing) to
+        1.0 (short upswing). A value of 0.0 yields a standard sine shape.
+        """
+        frac = 0.5 + 0.5 * skew
+        if frac <= 0.0:
+            frac = 1e-9
+        if frac >= 1.0:
+            frac = 1.0 - 1e-9
+
+        if phase_fraction < frac:
+            local = phase_fraction / frac
+            return math.sin(math.pi * local)
+        else:
+            local = (phase_fraction - frac) / (1.0 - frac)
+            return math.sin(math.pi * (1.0 + local))
 
 def adsr_envelope(t, attack=0.01, decay=0.1, sustain_level=0.8, release=0.1):
     """
