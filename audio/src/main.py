@@ -593,6 +593,8 @@ class TrackEditorApp(QMainWindow):
         steps_content_layout.addWidget(self.steps_tree, 1)
 
         steps_groupbox_layout.addLayout(steps_content_layout)
+        self.total_duration_label = QLabel("Total Duration: 0.00 s")
+        steps_groupbox_layout.addWidget(self.total_duration_label)
 
         # --- Test Step Preview Section ---
         test_step_groupbox = QGroupBox("Test Step Preview")
@@ -987,6 +989,15 @@ class TrackEditorApp(QMainWindow):
                 advance = max(0.0, advance - crossfade)
             current_time += advance
 
+    def _update_total_duration_label(self):
+        total = 0.0
+        for step in self.track_data.get("steps", []):
+            try:
+                total += float(step.get("duration", 0.0))
+            except (TypeError, ValueError):
+                continue
+        self.total_duration_label.setText(f"Total Duration: {total:.2f} s")
+
     # --- UI Refresh Functions ---
     def refresh_steps_tree(self):
         self._steps_tree_updating = True
@@ -1005,6 +1016,7 @@ class TrackEditorApp(QMainWindow):
             self.steps_tree.setCurrentIndex(idx)
             self.steps_tree.scrollTo(idx, QAbstractItemView.PositionAtCenter)
         self.on_step_select()
+        self._update_total_duration_label()
         self._steps_tree_updating = False
 
     def refresh_voices_tree(self):
