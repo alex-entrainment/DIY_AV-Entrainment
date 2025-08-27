@@ -367,6 +367,13 @@ class TrackEditorApp(QMainWindow):
         dialog = FrequencyTesterDialog(self, self.prefs)
         dialog.exec_()
 
+    def open_audio_thresholder(self):
+        from ui.audio_thresholder_dialog import AudioThresholderDialog
+        dialog = AudioThresholderDialog(self.prefs, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.prefs.target_output_amplitude = dialog.get_target_amplitude()
+            save_settings(self.prefs)
+
     def open_subliminal_dialog(self):
         selected_step_index = self.get_selected_step_index()
         if selected_step_index is None or len(self.get_selected_step_indices()) != 1:
@@ -433,6 +440,10 @@ class TrackEditorApp(QMainWindow):
         self.open_freq_tester_button = QPushButton("Frequency Tester")
         self.open_freq_tester_button.clicked.connect(self.open_frequency_tester)
         tools_left_layout.addWidget(self.open_freq_tester_button)
+
+        self.open_thresholder_button = QPushButton("Audio Thresholder")
+        self.open_thresholder_button.clicked.connect(self.open_audio_thresholder)
+        tools_left_layout.addWidget(self.open_thresholder_button)
 
         self.open_subliminal_button = QPushButton("Add Subliminal Voice")
         self.open_subliminal_button.clicked.connect(self.open_subliminal_dialog)
