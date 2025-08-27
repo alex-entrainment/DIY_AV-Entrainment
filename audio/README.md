@@ -155,6 +155,7 @@ The Controls area exposes additional dialogs:
 - **Open Noise Generator** – create swept-notch noise presets or export noise
   files via `NoiseGeneratorDialog`.
 - **Frequency Tester** – audition up to ten binaural beat pairs in real time.
+- **Audio Thresholder** – find your hearing threshold and set the track's output level.
 - **Add Subliminal Voice** – encode external audio as an ultrasonic subliminal
   and insert it into the selected step.
 - **View Timeline** – render an interactive Plotly timeline showing all steps,
