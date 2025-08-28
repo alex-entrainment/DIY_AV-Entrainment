@@ -12,6 +12,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
     ampR = float(params.get('ampR', 0.5))
     baseF = float(params.get('baseFreq', 200.0))
     beatF = float(params.get('beatFreq', 4.0))
+    leftHigh = bool(params.get('leftHigh', False))
     startL = float(params.get('startPhaseL', 0.0)) # in radians
     startR = float(params.get('startPhaseR', 0.0)) # in radians
     aODL = float(params.get('ampOscDepthL', 0.0))
@@ -105,6 +106,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
         N,
         float(duration),
         float(sample_rate),
+        leftHigh,
         ampL, ampR, baseF, beatF,
         startL, startR, pOF, pOR,
         aODL, aOFL, aODR, aOFR,
@@ -159,6 +161,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
 @numba.njit(parallel=True, fastmath=True)
 def _binaural_beat_core(
     N, duration, sample_rate,
+    leftHigh,
     ampL, ampR, baseF, beatF,
     startL, startR, pOF, pOR,
     aODL, aOFL, aODR, aOFR,
@@ -180,8 +183,12 @@ def _binaural_beat_core(
         t[i] = i * dt
 
     halfB = beatF / 2.0
-    fL_base = baseF - halfB
-    fR_base = baseF + halfB
+    if leftHigh:
+        fL_base = baseF + halfB
+        fR_base = baseF - halfB
+    else:
+        fL_base = baseF - halfB
+        fR_base = baseF + halfB
     instL = np.empty(N, dtype=np.float64)
     instR = np.empty(N, dtype=np.float64)
     for i in numba.prange(N): # Use prange
@@ -270,6 +277,7 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     endBaseF = float(params.get('endBaseFreq', startBaseF))
     startBeatF = float(params.get('startBeatFreq', params.get('beatFreq', 4.0)))
     endBeatF = float(params.get('endBeatFreq', startBeatF))
+    leftHigh = bool(params.get('leftHigh', False))
 
     startStartPhaseL = float(params.get('startStartPhaseL', params.get('startPhaseL', 0.0)))
     endStartPhaseL = float(params.get('endStartPhaseL', startStartPhaseL))
@@ -404,7 +412,7 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     audio = _binaural_beat_transition_core(
         N, float(duration), float(sample_rate),
         startAmpL, endAmpL, startAmpR, endAmpR,
-        startBaseF, endBaseF, startBeatF, endBeatF,
+        startBaseF, endBaseF, startBeatF, endBeatF, leftHigh,
         startStartPhaseL, endStartPhaseL, startStartPhaseR, endStartPhaseR,
         startPOF, endPOF, startPOR, endPOR,
         startAODL, endAODL, startAOFL, endAOFL,
@@ -467,7 +475,7 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
 def _binaural_beat_transition_core(
     N, duration, sample_rate,
     startAmpL, endAmpL, startAmpR, endAmpR,
-    startBaseF, endBaseF, startBeatF, endBeatF,
+    startBaseF, endBaseF, startBeatF, endBeatF, leftHigh,
     startStartPhaseL, endStartPhaseL, startStartPhaseR, endStartPhaseR,
     startPOF, endPOF, startPOR, endPOR,
     startAODL, endAODL, startAOFL, endAOFL,
@@ -553,8 +561,12 @@ def _binaural_beat_transition_core(
     phaseR_fo = 0.0
     for i in range(N):
         halfB_i = beatF_arr[i] * 0.5
-        fL_base_i = baseF_arr[i] - halfB_i
-        fR_base_i = baseF_arr[i] + halfB_i
+        if leftHigh:
+            fL_base_i = baseF_arr[i] + halfB_i
+            fR_base_i = baseF_arr[i] - halfB_i
+        else:
+            fL_base_i = baseF_arr[i] - halfB_i
+            fR_base_i = baseF_arr[i] + halfB_i
 
         phaseL_fo += fOFL_arr[i] * dt
         phaseR_fo += fOFR_arr[i] * dt

@@ -67,6 +67,7 @@ PARAM_TOOLTIPS = {
         'ampR': 'Amplitude of right channel (0–1).',
         'baseFreq': 'Central frequency in Hz around which the binaural beat is generated.',
         'beatFreq': 'Frequency difference between left and right channels in Hz.',
+        'leftHigh': 'If checked, left channel is higher in frequency than right.',
         'startPhaseL': 'Initial phase offset of left channel in radians.',
         'startPhaseR': 'Initial phase offset of right channel in radians.',
         'ampOscDepthL': 'Depth of amplitude modulation applied to the left channel.',
@@ -1803,13 +1804,13 @@ class VoiceEditorDialog(QDialog): # Standard class name
             "binaural_beat": {
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5),
-                    ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('baseFreq', 200.0), ('beatFreq', 4.0), ('leftHigh', False),
                     ('startPhaseL', 0.0), ('startPhaseR', 0.0),
                     ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0), ('ampOscPhaseOffsetL', 0.0), ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0), ('ampOscPhaseOffsetR', 0.0), ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0), ('freqOscSkewL', 0.0), ('freqOscPhaseOffsetL', 0.0), ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0), ('freqOscSkewR', 0.0), ('freqOscPhaseOffsetR', 0.0), ('freqOscShape', 'sine'), ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0)
                 ],
                 "transition": [
                     ('startAmpL', 0.5), ('endAmpL', 0.5), ('startAmpR', 0.5), ('endAmpR', 0.5),
-                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), ('startBeatFreq', 4.0), ('endBeatFreq', 4.0), ('leftHigh', False),
                     ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0), ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
                     ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0), ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0),
                     ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0), ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0),
