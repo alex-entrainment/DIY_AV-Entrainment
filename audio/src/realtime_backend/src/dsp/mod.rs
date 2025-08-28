@@ -142,6 +142,28 @@ pub fn skewed_sine_phase(phase_fraction: f32, skew: f32) -> f32 {
     }
 }
 
+/// Triangle wave with adjustable up/down symmetry.
+/// `phase_fraction` should be in the range `[0, 1)` representing the
+/// position within one cycle. `skew` ranges from -1.0 (long upswing) to
+/// 1.0 (short upswing). A value of 0.0 yields a standard triangle shape.
+pub fn skewed_triangle_phase(phase_fraction: f32, skew: f32) -> f32 {
+    let mut frac = 0.5 + 0.5 * skew;
+    if frac <= 0.0 {
+        frac = 1e-9;
+    }
+    if frac >= 1.0 {
+        frac = 1.0 - 1e-9;
+    }
+
+    if phase_fraction < frac {
+        let local = phase_fraction / frac;
+        -1.0 + 2.0 * local
+    } else {
+        let local = (phase_fraction - frac) / (1.0 - frac);
+        1.0 - 2.0 * local
+    }
+}
+
 pub fn sine_wave_varying(freq_array: &[f32], t: &[f32], _sample_rate: f32) -> Vec<f32> {
     if t.len() == 0 || freq_array.len() != t.len() {
         return Vec::new();
