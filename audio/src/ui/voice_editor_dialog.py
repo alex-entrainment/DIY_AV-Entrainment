@@ -85,6 +85,7 @@ PARAM_TOOLTIPS = {
         'freqOscPhaseOffsetR': 'Phase offset for right channel frequency modulation.',
         'phaseOscFreq': 'Frequency of phase modulation applied to both channels.',
         'phaseOscRange': 'Range of phase modulation in radians.',
+        'leftHigh': 'Toggle which ear receives the higher frequency (checked = left, unchecked = right).',
     }
 }
 
@@ -911,7 +912,17 @@ class VoiceEditorDialog(QDialog): # Standard class name
                 sub_label = QLabel(sub_label_txt)
                 row_layout.addWidget(sub_label, 0, 1, Qt.AlignRight)
 
-                if param_type_hint == 'bool':
+                if name == 'leftHigh' and param_type_hint in ('int', 'bool'):
+                    param_label.setText("Left/Right High:")
+                    widget = QComboBox()
+                    widget.addItem('Right High', False)
+                    widget.addItem('Left High', True)
+                    idx = widget.findData(bool(current_value)) if isinstance(current_value, bool) else (1 if str(current_value).strip().lower() in ('1', 'true', 'yes', 'on') else 0)
+                    widget.setCurrentIndex(idx if idx >= 0 else 0)
+                    widget.setMinimumWidth(120)
+                    row_layout.addWidget(widget, 0, 2, 1, 1, Qt.AlignLeft)
+                    param_storage_type = 'bool'
+                elif param_type_hint == 'bool':
                     widget = QCheckBox()
                     if isinstance(current_value, str):
                         checked = current_value.strip().lower() in ('1', 'true', 'yes', 'on')
@@ -1802,13 +1813,13 @@ class VoiceEditorDialog(QDialog): # Standard class name
             "binaural_beat": {
                 "standard": [
                     ('ampL', 0.5), ('ampR', 0.5),
-                    ('baseFreq', 200.0), ('beatFreq', 4.0),
+                    ('baseFreq', 200.0), ('beatFreq', 4.0), ('leftHigh', 0),
                     ('startPhaseL', 0.0), ('startPhaseR', 0.0),
                     ('ampOscDepthL', 0.0), ('ampOscFreqL', 0.0), ('ampOscPhaseOffsetL', 0.0), ('ampOscDepthR', 0.0), ('ampOscFreqR', 0.0), ('ampOscPhaseOffsetR', 0.0), ('freqOscRangeL', 0.0), ('freqOscFreqL', 0.0), ('freqOscSkewL', 0.0), ('freqOscPhaseOffsetL', 0.0), ('freqOscRangeR', 0.0), ('freqOscFreqR', 0.0), ('freqOscSkewR', 0.0), ('freqOscPhaseOffsetR', 0.0), ('phaseOscFreq', 0.0), ('phaseOscRange', 0.0)
                 ],
                 "transition": [
                     ('startAmpL', 0.5), ('endAmpL', 0.5), ('startAmpR', 0.5), ('endAmpR', 0.5),
-                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), ('startBeatFreq', 4.0), ('endBeatFreq', 4.0),
+                    ('startBaseFreq', 200.0), ('endBaseFreq', 200.0), ('startBeatFreq', 4.0), ('endBeatFreq', 4.0), ('leftHigh', 0),
                     ('startStartPhaseL', 0.0), ('endStartPhaseL', 0.0), ('startStartPhaseR', 0.0), ('endStartPhaseR', 0.0),
                     ('startAmpOscDepthL', 0.0), ('endAmpOscDepthL', 0.0), ('startAmpOscFreqL', 0.0), ('endAmpOscFreqL', 0.0), ('startAmpOscPhaseOffsetL', 0.0), ('endAmpOscPhaseOffsetL', 0.0), ('startAmpOscDepthR', 0.0), ('endAmpOscDepthR', 0.0), ('startAmpOscFreqR', 0.0), ('endAmpOscFreqR', 0.0), ('startAmpOscPhaseOffsetR', 0.0), ('endAmpOscPhaseOffsetR', 0.0), ('startFreqOscRangeL', 0.0), ('endFreqOscRangeL', 0.0), ('startFreqOscFreqL', 0.0), ('endFreqOscFreqL', 0.0), ('startFreqOscSkewL', 0.0), ('endFreqOscSkewL', 0.0), ('startFreqOscPhaseOffsetL', 0.0), ('endFreqOscPhaseOffsetL', 0.0), ('startFreqOscRangeR', 0.0), ('endFreqOscRangeR', 0.0), ('startFreqOscFreqR', 0.0), ('endFreqOscFreqR', 0.0), ('startFreqOscSkewR', 0.0), ('endFreqOscSkewR', 0.0), ('startFreqOscPhaseOffsetR', 0.0), ('endFreqOscPhaseOffsetR', 0.0), ('startPhaseOscFreq', 0.0), ('endPhaseOscFreq', 0.0), ('startPhaseOscRange', 0.0), ('endPhaseOscRange', 0.0), ('initial_offset', 0.0), ('post_offset', 0.0), ('transition_curve', 'linear')
                 ]

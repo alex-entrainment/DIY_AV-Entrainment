@@ -126,6 +126,7 @@ pub struct BinauralBeatVoice {
     base_freq: f32,
     beat_freq: f32,
     force_mono: bool,
+    left_high: bool,
     start_phase_l: f32,
     start_phase_r: f32,
     amp_osc_depth_l: f32,
@@ -164,6 +165,7 @@ pub struct BinauralBeatTransitionVoice {
     end_beat_freq: f32,
     start_force_mono: bool,
     end_force_mono: bool,
+    left_high: bool,
     start_start_phase_l: f32,
     end_start_phase_l: f32,
     start_start_phase_r: f32,
@@ -801,6 +803,7 @@ impl BinauralBeatVoice {
         let amp_r = get_f32(params, "ampR", 0.5);
         let base_freq = get_f32(params, "baseFreq", 200.0);
         let beat_freq = get_f32(params, "beatFreq", 4.0);
+        let left_high = get_bool(params, "leftHigh", false);
         let force_mono = get_bool(params, "forceMono", false);
         let start_phase_l = get_f32(params, "startPhaseL", 0.0);
         let start_phase_r = get_f32(params, "startPhaseR", 0.0);
@@ -829,6 +832,7 @@ impl BinauralBeatVoice {
             amp_r,
             base_freq,
             beat_freq,
+            left_high,
             force_mono,
             start_phase_l,
             start_phase_r,
@@ -869,6 +873,7 @@ impl BinauralBeatTransitionVoice {
         let end_base_freq = get_f32(params, "endBaseFreq", start_base_freq);
         let start_beat_freq = get_f32(params, "startBeatFreq", get_f32(params, "beatFreq", 4.0));
         let end_beat_freq = get_f32(params, "endBeatFreq", start_beat_freq);
+        let left_high = get_bool(params, "leftHigh", false);
         let start_force_mono = get_bool(
             params,
             "startForceMono",
@@ -1002,6 +1007,7 @@ impl BinauralBeatTransitionVoice {
             end_beat_freq,
             start_force_mono,
             end_force_mono,
+            left_high,
             start_start_phase_l,
             end_start_phase_l,
             start_start_phase_r,
@@ -1850,8 +1856,17 @@ impl Voice for BinauralBeatVoice {
                 * skewed_sine_phase(phase_l_vib.fract(), self.freq_osc_skew_l);
             let vib_r = (self.freq_osc_range_r * 0.5)
                 * skewed_sine_phase(phase_r_vib.fract(), self.freq_osc_skew_r);
-            let mut freq_l = self.base_freq - half_beat + vib_l;
-            let mut freq_r = self.base_freq + half_beat + vib_r;
+            let (mut freq_l, mut freq_r) = if self.left_high {
+                (
+                    self.base_freq + half_beat + vib_l,
+                    self.base_freq - half_beat + vib_r,
+                )
+            } else {
+                (
+                    self.base_freq - half_beat + vib_l,
+                    self.base_freq + half_beat + vib_r,
+                )
+            };
 
             if self.force_mono || self.beat_freq == 0.0 {
                 freq_l = self.base_freq.max(0.0);
@@ -2008,8 +2023,17 @@ impl Voice for BinauralBeatTransitionVoice {
                 * skewed_sine_phase(phase_l_vib.fract(), freq_osc_skew_l);
             let vib_r = (freq_osc_range_r * 0.5)
                 * skewed_sine_phase(phase_r_vib.fract(), freq_osc_skew_r);
-            let mut freq_l = base_freq - half_beat + vib_l;
-            let mut freq_r = base_freq + half_beat + vib_r;
+            let (mut freq_l, mut freq_r) = if self.left_high {
+                (
+                    base_freq + half_beat + vib_l,
+                    base_freq - half_beat + vib_r,
+                )
+            } else {
+                (
+                    base_freq - half_beat + vib_l,
+                    base_freq + half_beat + vib_r,
+                )
+            };
 
             if force_mono || beat_freq == 0.0 {
                 freq_l = base_freq.max(0.0);
