@@ -71,6 +71,22 @@ if numba is not None:
         else:
             local = (phase_fraction - frac) / (1.0 - frac)
             return math.sin(math.pi * (1.0 + local))
+
+    @numba.njit(fastmath=True, inline="always")
+    def skewed_triangle_phase(phase_fraction, skew):
+        """Triangle wave with adjustable up/down symmetry."""
+        frac = 0.5 + 0.5 * skew
+        if frac <= 0.0:
+            frac = 1e-9
+        if frac >= 1.0:
+            frac = 1.0 - 1e-9
+
+        if phase_fraction < frac:
+            local = phase_fraction / frac
+            return -1.0 + 2.0 * local
+        else:
+            local = (phase_fraction - frac) / (1.0 - frac)
+            return 1.0 - 2.0 * local
 else:
     def _frac(x):
         """Return the fractional part of x."""
@@ -96,6 +112,21 @@ else:
         else:
             local = (phase_fraction - frac) / (1.0 - frac)
             return math.sin(math.pi * (1.0 + local))
+
+    def skewed_triangle_phase(phase_fraction, skew):
+        """Triangle wave with adjustable up/down symmetry."""
+        frac = 0.5 + 0.5 * skew
+        if frac <= 0.0:
+            frac = 1e-9
+        if frac >= 1.0:
+            frac = 1.0 - 1e-9
+
+        if phase_fraction < frac:
+            local = phase_fraction / frac
+            return -1.0 + 2.0 * local
+        else:
+            local = (phase_fraction - frac) / (1.0 - frac)
+            return 1.0 - 2.0 * local
 
 def adsr_envelope(t, attack=0.01, decay=0.1, sustain_level=0.8, release=0.1):
     """

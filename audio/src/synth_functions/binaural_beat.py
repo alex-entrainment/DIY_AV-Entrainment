@@ -2,7 +2,7 @@
 
 import numpy as np
 import numba
-from .common import skewed_sine_phase, _frac
+from .common import skewed_sine_phase, skewed_triangle_phase, _frac
 from .spatial_ambi2d import spatialize_binaural_mid_only, generate_azimuth_trajectory
 
 
@@ -30,6 +30,8 @@ def binaural_beat(duration, sample_rate=44100, **params):
     ampOscPhaseOffsetR = float(params.get('ampOscPhaseOffsetR', 0.0))
     ampOscSkewL = float(params.get('ampOscSkewL', 0.0))
     ampOscSkewR = float(params.get('ampOscSkewR', 0.0))
+    freqOscShape = str(params.get('freqOscShape', 'sine')).lower()
+    shape_int = 1 if freqOscShape == 'triangle' else 0
     pOF = float(params.get('phaseOscFreq', 0.0))
     pOR = float(params.get('phaseOscRange', 0.0)) # in radians
 
@@ -111,6 +113,7 @@ def binaural_beat(duration, sample_rate=44100, **params):
         fORL, fOFL, fORR, fOFR,
         freqOscSkewL, freqOscSkewR,
         freqOscPhaseOffsetL, freqOscPhaseOffsetR,
+        shape_int,
         pos_arr, burst_arr
     )
 
@@ -164,6 +167,7 @@ def _binaural_beat_core(
     fORL, fOFL, fORR, fOFR,
     freqOscSkewL, freqOscSkewR,
     freqOscPhaseOffsetL, freqOscPhaseOffsetR,
+    freqOscShape,
     pos,   # int32[:] start indices
     burst  # float32[:] concatenated glitch samples
 ):
@@ -183,8 +187,12 @@ def _binaural_beat_core(
     for i in numba.prange(N): # Use prange
         phaseL = fOFL * t[i] + freqOscPhaseOffsetL/(2*np.pi)
         phaseR = fOFR * t[i] + freqOscPhaseOffsetR/(2*np.pi)
-        vibL = (fORL/2.0) * skewed_sine_phase(_frac(phaseL), freqOscSkewL)
-        vibR = (fORR/2.0) * skewed_sine_phase(_frac(phaseR), freqOscSkewR)
+        if freqOscShape == 1:
+            vibL = (fORL/2.0) * skewed_triangle_phase(_frac(phaseL), freqOscSkewL)
+            vibR = (fORR/2.0) * skewed_triangle_phase(_frac(phaseR), freqOscSkewR)
+        else:
+            vibL = (fORL/2.0) * skewed_sine_phase(_frac(phaseL), freqOscSkewL)
+            vibR = (fORR/2.0) * skewed_sine_phase(_frac(phaseR), freqOscSkewR)
         instL[i] = max(0.0, fL_base + vibL)
         instR[i] = max(0.0, fR_base + vibR)
     
@@ -308,6 +316,9 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
     startFreqOscPhaseOffsetR = float(params.get('startFreqOscPhaseOffsetR', params.get('freqOscPhaseOffsetR', 0.0)))
     endFreqOscPhaseOffsetR = float(params.get('endFreqOscPhaseOffsetR', startFreqOscPhaseOffsetR))
 
+    freqOscShape = str(params.get('freqOscShape', 'sine')).lower()
+    shape_int = 1 if freqOscShape == 'triangle' else 0
+
     # Glitch parameters (using average for pre-computation)
     s_glitchInterval = float(params.get('startGlitchInterval', params.get('glitchInterval', 0.0)))
     e_glitchInterval = float(params.get('endGlitchInterval', s_glitchInterval))
@@ -408,6 +419,7 @@ def binaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, po
         startFreqOscSkewR, endFreqOscSkewR,
         startFreqOscPhaseOffsetL, endFreqOscPhaseOffsetL,
         startFreqOscPhaseOffsetR, endFreqOscPhaseOffsetR,
+        shape_int,
         pos_arr, burst_arr, # Pass pre-calculated glitches
         alpha_arr
     )
@@ -470,6 +482,7 @@ def _binaural_beat_transition_core(
     startFreqOscSkewR, endFreqOscSkewR,
     startFreqOscPhaseOffsetL, endFreqOscPhaseOffsetL,
     startFreqOscPhaseOffsetR, endFreqOscPhaseOffsetR,
+    freqOscShape,
     pos, burst, # Glitch arrays (static for this core run)
     alpha_arr
 ):
@@ -547,8 +560,12 @@ def _binaural_beat_transition_core(
         phaseR_fo += fOFR_arr[i] * dt
         phL_frac = _frac(phaseL_fo + freqOscPhaseOffsetL_arr[i] / (2 * np.pi))
         phR_frac = _frac(phaseR_fo + freqOscPhaseOffsetR_arr[i] / (2 * np.pi))
-        vibL_i = (fORL_arr[i] / 2.0) * skewed_sine_phase(phL_frac, freqOscSkewL_arr[i])
-        vibR_i = (fORR_arr[i] / 2.0) * skewed_sine_phase(phR_frac, freqOscSkewR_arr[i])
+        if freqOscShape == 1:
+            vibL_i = (fORL_arr[i] / 2.0) * skewed_triangle_phase(phL_frac, freqOscSkewL_arr[i])
+            vibR_i = (fORR_arr[i] / 2.0) * skewed_triangle_phase(phR_frac, freqOscSkewR_arr[i])
+        else:
+            vibL_i = (fORL_arr[i] / 2.0) * skewed_sine_phase(phL_frac, freqOscSkewL_arr[i])
+            vibR_i = (fORR_arr[i] / 2.0) * skewed_sine_phase(phR_frac, freqOscSkewR_arr[i])
 
         instL_candidate = fL_base_i + vibL_i
         instR_candidate = fR_base_i + vibR_i
