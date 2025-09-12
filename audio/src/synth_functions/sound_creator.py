@@ -24,7 +24,7 @@ from synth_functions import *
 # Otherwise, the SAM functions will not work.
 try:
     # Attempt to import the real audio_engine if available
-    from audio_engine import Node, SAMVoice, VALID_SAM_PATHS
+    from .audio_engine import Node, SAMVoice, VALID_SAM_PATHS
     AUDIO_ENGINE_AVAILABLE = True
     print("INFO: audio_engine module loaded successfully.")
 except ImportError:
