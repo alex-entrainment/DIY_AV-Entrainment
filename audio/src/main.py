@@ -72,6 +72,44 @@ from utils.voice_file import (
     VOICES_FILE_EXTENSION,
 )
 
+# Disable Windows action sounds by overriding QMessageBox helpers
+def _silent_message_box(parent, title, text, buttons=QMessageBox.Ok, default_button=QMessageBox.NoButton):
+    box = QMessageBox(parent)
+    box.setWindowTitle(title)
+    box.setText(text)
+    box.setStandardButtons(buttons)
+    box.setDefaultButton(default_button)
+    box.setIcon(QMessageBox.NoIcon)
+    return box.exec_()
+
+
+def _patch_qmessagebox():
+    """Replace QMessageBox helpers to prevent system notification sounds."""
+
+    def _wrap(default_buttons):
+        def wrapper(parent, title, text, buttons=default_buttons, default_button=QMessageBox.NoButton):
+            return _silent_message_box(parent, title, text, buttons, default_button)
+
+        return wrapper
+
+    QMessageBox.information = _wrap(QMessageBox.Ok)
+    QMessageBox.warning = _wrap(QMessageBox.Ok)
+    QMessageBox.critical = _wrap(QMessageBox.Ok)
+
+    def question_wrapper(
+        parent,
+        title,
+        text,
+        buttons=QMessageBox.StandardButtons(QMessageBox.Yes | QMessageBox.No),
+        default_button=QMessageBox.NoButton,
+    ):
+        return _silent_message_box(parent, title, text, buttons, default_button)
+
+    QMessageBox.question = question_wrapper
+
+
+_patch_qmessagebox()
+
 # Attempt to import VoiceEditorDialog. Handle if ui/voice_editor_dialog.py is not found.
 try:
     from ui.voice_editor_dialog import VoiceEditorDialog
