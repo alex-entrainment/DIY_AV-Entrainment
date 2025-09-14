@@ -7,7 +7,7 @@ from joblib import Parallel, delayed
 import time
 import tempfile
 import argparse
-from .common import (
+from common import (
     calculate_transition_alpha,
     blue_noise,
     purple_noise,
