@@ -6,6 +6,7 @@ from scipy import signal
 from joblib import Parallel, delayed
 import time
 import tempfile
+import argparse
 from .common import (
     calculate_transition_alpha,
     blue_noise,
@@ -96,6 +97,79 @@ def triangle_wave_varying(freq_array, t, sample_rate=44100):
     dt = np.diff(t, prepend=t[0])
     phase = 2 * np.pi * np.cumsum(freq_array * dt)
     return signal.sawtooth(phase, width=0.5)
+
+
+def apply_flanger(
+    input_signal,
+    sample_rate,
+    lfo_freq=0.1,
+    max_delay_ms=5.0,
+    mix=0.5,
+    direction="up",
+    lfo_waveform="sine",
+    feedback=0.0,
+):
+    """Apply a flanging effect to ``input_signal``.
+
+    Fractional delay interpolation and a light smoothing filter are used to
+    reduce zipper noise as the modulation approaches its extremes.
+    """
+
+    n = len(input_signal)
+    t = np.arange(n) / sample_rate
+    if lfo_waveform.lower() == "triangle":
+        lfo = signal.sawtooth(2 * np.pi * lfo_freq * t, width=0.5)
+    else:
+        lfo = np.sin(2 * np.pi * lfo_freq * t)
+    if direction == "down":
+        lfo = -lfo
+
+    if n > 5:
+        lfo = signal.savgol_filter(lfo, 5, 2, mode="interp")
+
+    max_delay = max_delay_ms / 1000.0 * sample_rate
+    delay = (lfo + 1.0) * 0.5 * max_delay
+
+    pad = int(np.ceil(max_delay)) + 2
+    buffer = np.concatenate((np.zeros(pad, dtype=np.float32), input_signal.astype(np.float32)))
+    output = np.zeros(n, dtype=np.float32)
+
+    for i in range(n):
+        read_pos = pad + i - delay[i]
+        i0 = int(np.floor(read_pos))
+        frac = read_pos - i0
+        y0 = buffer[i0]
+        y1 = buffer[i0 + 1]
+        delayed = y0 + frac * (y1 - y0)
+        buffer[pad + i] += delayed * feedback
+        output[i] = input_signal[i] * (1 - mix) + delayed * mix
+
+    return output
+
+
+def generate_flanged_noise(
+    duration_seconds,
+    sample_rate=DEFAULT_SAMPLE_RATE,
+    noise_type="pink",
+    lfo_freq=0.1,
+    max_delay_ms=5.0,
+    mix=0.5,
+    direction="up",
+    lfo_waveform="sine",
+):
+    """Generate noise of a given color and apply a flanging effect."""
+
+    num_samples = int(duration_seconds * sample_rate)
+    noise = generate_noise_samples(num_samples, noise_type, sample_rate)
+    return apply_flanger(
+        noise,
+        sample_rate,
+        lfo_freq=lfo_freq,
+        max_delay_ms=max_delay_ms,
+        mix=mix,
+        direction=direction,
+        lfo_waveform=lfo_waveform,
+    )
 
 
 def _apply_deep_swept_notches_varying(
@@ -780,25 +854,57 @@ def generate_swept_notch_pink_sound_transition(
         print(f"Error saving audio file: {e}")
 
 
-# --- Main execution ---
-if __name__ == '__main__':
-    
-    # --- Configuration to match the spectrogram image ---
-    # Define the two separate sweeps as a list of tuples
-    dual_sweeps_config = [
-        (500, 1000),      # Lower sweep: 500 Hz to 1000 Hz
-        (1850, 3350)      # Upper sweep: 1850 Hz to 3350 Hz
-    ]
-
-    generate_swept_notch_pink_sound(
-        filename="dual_sweep_triangle_lfo.wav",
-        duration_seconds=60,
-        sample_rate=44100,
-        lfo_freq=1.0/12.0,
-        filter_sweeps=dual_sweeps_config, # Use the new multi-sweep config
-        notch_q=40,                       # A slightly higher Q might look closer to the image
-        cascade_count=15,
-        lfo_phase_offset_deg=90,
-        lfo_waveform='triangle'           # Use triangle wave for linear sweeps
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate noise with swept notch filters or a flanging effect."
     )
+    sub = parser.add_subparsers(dest="mode", required=True)
+
+    flange = sub.add_parser("flange", help="Apply a flanger to noise")
+    flange.add_argument("--output", type=str, default="flanged_noise.wav")
+    flange.add_argument("--duration", type=float, default=60.0)
+    flange.add_argument("--noise-type", type=str, default="pink")
+    flange.add_argument("--lfo-freq", type=float, default=0.1)
+    flange.add_argument("--max-delay-ms", type=float, default=5.0)
+    flange.add_argument("--mix", type=float, default=0.5)
+    flange.add_argument("--direction", choices=["up", "down"], default="up")
+    flange.add_argument("--lfo-waveform", choices=["sine", "triangle"], default="sine")
+
+    notch = sub.add_parser("notch", help="Generate swept-notch filtered noise")
+    notch.add_argument("--output", type=str, default="dual_sweep_triangle_lfo.wav")
+    notch.add_argument("--duration", type=float, default=60.0)
+    notch.add_argument("--lfo-freq", type=float, default=DEFAULT_LFO_FREQ)
+    notch.add_argument("--lfo-waveform", choices=["sine", "triangle"], default="triangle")
+
+    args = parser.parse_args()
+
+    if args.mode == "flange":
+        audio = generate_flanged_noise(
+            duration_seconds=args.duration,
+            sample_rate=DEFAULT_SAMPLE_RATE,
+            noise_type=args.noise_type,
+            lfo_freq=args.lfo_freq,
+            max_delay_ms=args.max_delay_ms,
+            mix=args.mix,
+            direction=args.direction,
+            lfo_waveform=args.lfo_waveform,
+        )
+        sf.write(args.output, audio, DEFAULT_SAMPLE_RATE)
+    else:
+        dual_sweeps_config = [(500, 1000), (1850, 3350)]
+        generate_swept_notch_pink_sound(
+            filename=args.output,
+            duration_seconds=args.duration,
+            sample_rate=DEFAULT_SAMPLE_RATE,
+            lfo_freq=args.lfo_freq,
+            filter_sweeps=dual_sweeps_config,
+            notch_q=40,
+            cascade_count=15,
+            lfo_phase_offset_deg=90,
+            lfo_waveform=args.lfo_waveform,
+        )
+
+
+if __name__ == "__main__":
+    main()
 
