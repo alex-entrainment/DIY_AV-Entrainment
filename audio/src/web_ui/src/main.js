@@ -26,17 +26,135 @@ const uploadedTracks = {};
 const uploadedNoises = {};
 const uploadedClips = {};
 
-async function populateSelect(id, url) {
+// Manifest metadata caches so we can display rich details in the explorer
+const trackManifest = {};
+const noiseManifest = {};
+const clipManifest = {};
+
+function normalizeManifestEntry(entry) {
+  if (typeof entry === 'string') {
+    return {
+      value: entry,
+      label: entry,
+      meta: { file: entry, title: '', notes: '', url: '' },
+    };
+  }
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+  const value = entry.file || entry.filename || entry.name || entry.path;
+  if (!value) {
+    return null;
+  }
+  const title = entry.title || entry.display || '';
+  const notes = entry.notes || entry.description || '';
+  const url = entry.url || entry.source_url || entry.link || '';
+  const label = title || entry.label || value;
+  return {
+    value,
+    label,
+    meta: { file: value, title, notes, url },
+  };
+}
+
+function renderMetadata(container, entries) {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  if (!entries.length) {
+    container.textContent = 'No metadata available.';
+    return;
+  }
+  entries.forEach((entry, idx) => {
+    const wrapper = document.createElement('div');
+    if (idx < entries.length - 1) {
+      wrapper.className = 'mb-2';
+    }
+    const heading = document.createElement('div');
+    heading.className = 'font-semibold';
+    heading.textContent = entry.title ? `${entry.title} (${entry.file})` : entry.file;
+    wrapper.appendChild(heading);
+    if (entry.notes) {
+      const notesEl = document.createElement('div');
+      notesEl.textContent = entry.notes;
+      wrapper.appendChild(notesEl);
+    }
+    if (entry.url) {
+      const linkEl = document.createElement('a');
+      linkEl.href = entry.url;
+      linkEl.target = '_blank';
+      linkEl.rel = 'noopener noreferrer';
+      linkEl.textContent = entry.url;
+      linkEl.className = 'text-blue-400 underline break-all';
+      wrapper.appendChild(linkEl);
+    }
+    container.appendChild(wrapper);
+  });
+}
+
+function updateMetadataDisplay(selectId, manifestStore, { multiple = false } = {}) {
+  const select = document.getElementById(selectId);
+  const container = document.getElementById(`${selectId}-metadata`);
+  if (!select || !container) {
+    return;
+  }
+  const selected = multiple
+    ? Array.from(select.selectedOptions || [])
+    : (select.selectedOptions && select.selectedOptions.length ? [select.selectedOptions[0]] : []);
+  const entries = selected.map(opt => {
+    const meta = manifestStore[opt.value] || {};
+    return {
+      file: opt.value,
+      title: meta.title || '',
+      notes: meta.notes || '',
+      url: meta.url || '',
+    };
+  });
+  renderMetadata(container, entries.filter(Boolean));
+}
+
+function attachMetadataListener(selectId, manifestStore, { multiple = false } = {}) {
+  const select = document.getElementById(selectId);
+  if (!select) {
+    return;
+  }
+  const handler = () => updateMetadataDisplay(selectId, manifestStore, { multiple });
+  if (!select.dataset.metadataListener) {
+    select.addEventListener('change', handler);
+    if (multiple) {
+      select.addEventListener('keyup', handler);
+      select.addEventListener('click', handler);
+    }
+    select.dataset.metadataListener = 'true';
+  }
+  handler();
+}
+
+async function populateSelect(id, url, manifestStore, { multiple = false } = {}) {
   try {
     const list = await fetch(url).then(r => r.json());
     const select = document.getElementById(id);
     if (select && Array.isArray(list)) {
-      for (const name of list) {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        select.appendChild(opt);
+      // Remove any previously injected manifest options to avoid duplicates
+      Array.from(select.querySelectorAll('option[data-manifest="true"]')).forEach(opt => opt.remove());
+      for (const entry of list) {
+        const normalized = normalizeManifestEntry(entry);
+        if (!normalized) {
+          continue;
+        }
+        const { value, label, meta } = normalized;
+        manifestStore[value] = meta;
+        const option = new Option(label, value);
+        option.dataset.manifest = 'true';
+        if (meta.title && meta.title !== label) {
+          option.textContent = `${meta.title} (${value})`;
+        } else if (label !== value) {
+          option.textContent = `${label} (${value})`;
+        }
+        select.appendChild(option);
       }
+      attachMetadataListener(id, manifestStore, { multiple });
     }
   } catch (err) {
     console.warn('Failed to populate', id, err);
@@ -44,9 +162,9 @@ async function populateSelect(id, url) {
 }
 
 function initSelects() {
-  populateSelect('track-select', '/tracks/index.json');
-  populateSelect('noise-select', '/noise/index.json');
-  populateSelect('clip-select', '/clips/index.json');
+  populateSelect('track-select', '/tracks/index.json', trackManifest);
+  populateSelect('noise-select', '/noise/index.json', noiseManifest);
+  populateSelect('clip-select', '/clips/index.json', clipManifest, { multiple: true });
 }
 
 async function streamOverlayClip(index, path) {
@@ -265,11 +383,14 @@ export function handleJsonUpload(event) {
     document.getElementById('track-json').value = e.target.result;
     uploadedTracks[file.name] = e.target.result;
     const select = document.getElementById('track-select');
-    if (select && !select.querySelector(`option[value="${file.name}"]`)) {
-      const opt = new Option(file.name, file.name);
-      opt.dataset.uploaded = 'true';
-      select.appendChild(opt);
+    if (select) {
+      if (!select.querySelector(`option[value="${file.name}"]`)) {
+        const opt = new Option(file.name, file.name);
+        opt.dataset.uploaded = 'true';
+        select.appendChild(opt);
+      }
       select.value = file.name;
+      updateMetadataDisplay('track-select', trackManifest);
     }
   };
   reader.readAsText(file);
@@ -300,11 +421,14 @@ export function handleNoiseUpload(event) {
       textarea.value = JSON.stringify(track, null, 2);
       uploadedNoises[file.name] = e.target.result;
       const select = document.getElementById('noise-select');
-      if (select && !select.querySelector(`option[value="${file.name}"]`)) {
-        const opt = new Option(file.name, file.name);
-        opt.dataset.uploaded = 'true';
-        select.appendChild(opt);
+      if (select) {
+        if (!select.querySelector(`option[value="${file.name}"]`)) {
+          const opt = new Option(file.name, file.name);
+          opt.dataset.uploaded = 'true';
+          select.appendChild(opt);
+        }
         select.value = file.name;
+        updateMetadataDisplay('noise-select', noiseManifest);
       }
     } catch (err) {
       console.error('Failed to parse .noise file', err);
@@ -348,6 +472,7 @@ export function handleClipUpload(event) {
   );
   Promise.all(readers).then(() => {
     textarea.value = JSON.stringify(track, null, 2);
+    updateMetadataDisplay('clip-select', clipManifest, { multiple: true });
   });
 }
 

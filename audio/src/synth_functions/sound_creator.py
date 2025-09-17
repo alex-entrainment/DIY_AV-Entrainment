@@ -1009,6 +1009,8 @@ def load_track_from_json(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             raw = json.load(f)
 
+        original_raw = raw
+
         print(f"Track data loaded successfully from {filepath}")
 
         if "progression" in raw or "global" in raw:
@@ -1018,6 +1020,9 @@ def load_track_from_json(filepath):
                 "background_noise": raw.get("background_noise", raw.get("noise", {})),
                 "clips": raw.get("overlay_clips", raw.get("clips", [])),
             }
+            metadata = original_raw.get("metadata") or original_raw.get("info") or {}
+            if isinstance(metadata, dict):
+                new_data["metadata"] = metadata
             raw = new_data
 
         if not isinstance(raw, dict) or "steps" not in raw or "global_settings" not in raw:
@@ -1030,6 +1035,7 @@ def load_track_from_json(filepath):
 
         raw.setdefault("background_noise", {})
         raw.setdefault("clips", [])
+        raw.setdefault("metadata", {})
 
         # Fill in missing start times so the GUI knows when each step begins
         crossfade = float(raw["global_settings"].get("crossfade_duration", 0.0))
@@ -1075,6 +1081,10 @@ def save_track_to_json(track_data, filepath):
             "background_noise": track_data.get("background_noise", {}),
             "overlay_clips": track_data.get("clips", []),
         }
+
+        metadata = track_data.get("metadata")
+        if isinstance(metadata, dict) and metadata:
+            v2_data["metadata"] = metadata
 
         crossfade = float(track_data.get("global_settings", {}).get("crossfade_duration", 0.0))
         current_time = 0.0

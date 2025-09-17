@@ -37,6 +37,7 @@ export default function App() {
           <select id="track-select" className="flex-1 bg-gray-800 p-2 rounded" />
           <Button id="load-track" onClick={loadTrackFromServer}>Load Track</Button>
         </div>
+        <div id="track-select-metadata" className="mt-1 text-sm text-gray-400 whitespace-pre-line" />
         <input
           type="file"
           id="noise-upload"
@@ -48,6 +49,7 @@ export default function App() {
           <select id="noise-select" className="flex-1 bg-gray-800 p-2 rounded" />
           <Button id="load-noise" onClick={loadNoiseFromServer}>Insert Noise</Button>
         </div>
+        <div id="noise-select-metadata" className="mt-1 text-sm text-gray-400 whitespace-pre-line" />
         <input
           type="file"
           id="clip-upload"
@@ -60,6 +62,7 @@ export default function App() {
           <select id="clip-select" multiple className="flex-1 bg-gray-800 p-2 rounded" />
           <Button id="add-clip" onClick={addClipFromServer}>Add Clip</Button>
         </div>
+        <div id="clip-select-metadata" className="mt-1 text-sm text-gray-400 whitespace-pre-line" />
         <textarea id="track-json" rows="10" cols="80" className="w-full bg-gray-800 p-2 rounded" defaultValue={`{\n  "global": {"sample_rate": 44100},\n  "progression": [],\n  "background_noise": {},\n  "overlay_clips": []\n}`} />
         <label className="block">Start time (s): <input id="start-time" type="number" step="0.1" defaultValue="0" className="ml-2 text-black" /></label>
         <label className="block">

@@ -55,6 +55,16 @@ pub struct GlobalSettings {
     pub output_filename: Option<String>,
 }
 
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct TrackMetadata {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default, alias = "source_url", alias = "link")]
+    pub url: Option<String>,
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct TrackData {
     #[serde(alias = "globalSettings", alias = "global")]
@@ -65,6 +75,8 @@ pub struct TrackData {
     pub clips: Vec<ClipData>,
     #[serde(default, alias = "noise")]
     pub background_noise: Option<BackgroundNoiseData>,
+    #[serde(default)]
+    pub metadata: TrackMetadata,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -75,6 +87,12 @@ pub struct ClipData {
     pub start: f64,
     #[serde(default = "default_amp", alias = "gain")]
     pub amp: f32,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default, alias = "description")]
+    pub notes: Option<String>,
+    #[serde(default, alias = "source_url", alias = "link")]
+    pub url: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -87,6 +105,12 @@ pub struct BackgroundNoiseData {
     pub amp: f32,
     #[serde(default)]
     pub params: Option<crate::noise_params::NoiseParams>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default, alias = "source_url", alias = "link")]
+    pub url: Option<String>,
 }
 
 impl TrackData {
