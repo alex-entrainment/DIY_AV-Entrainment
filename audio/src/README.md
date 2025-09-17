@@ -236,6 +236,9 @@ selected.  You can audition a single clip without exporting the entire track by
 highlighting it and pressing **Start Clip**; the button changes to **Stop Clip**
 while the preview is playing.
 
+> **Local-only sources:** Overlay clips must point to facilitator-provided
+> assets stored locally. Remote URLs and network shares are not permitted.
+
 ## Timeline Visualization
 
 The helper function `audio.visualize_track_timeline()` now renders a more
@@ -255,7 +258,8 @@ ending in `.html` is supplied, the timeline is saved as a standalone web page.
 
 A small browser-based demo is located in `audio/src/web_ui`. It uses the
 `realtime_backend` crate compiled to WebAssembly to play tracks directly in the
-browser.
+browser. The player only streams facilitator-provided content from the local
+asset folders bundled with the UI.
 
 1. Build the backend with `wasm-pack`:
    ```bash
@@ -267,5 +271,7 @@ browser.
    and open the page in your browser.
 
 Paste a track JSON object into the text area and press **Start** to hear it
-render in real time.
+render in real time. Uploaded files are embedded directly in the session and
+any references to remote URLs will be ignored to preserve the local-library
+workflow.
 

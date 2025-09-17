@@ -13,6 +13,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
+from ..utils.path_utils import is_remote_path
+
 
 class SubliminalDialog(QDialog):
     """Dialog to add a subliminal audio voice to a step."""
@@ -88,6 +90,14 @@ class SubliminalDialog(QDialog):
             QMessageBox.warning(self, "Input Required", "Please select an audio file.")
             return
         paths = [p.strip() for p in raw_paths.split(";") if p.strip()]
+        for candidate in paths:
+            if is_remote_path(candidate):
+                QMessageBox.warning(
+                    self,
+                    "Unsupported Source",
+                    "Remote URLs are not supported. Please choose local audio files.",
+                )
+                return
         try:
             step = self.app.track_data["steps"][self.step_index]
         except Exception as exc:
