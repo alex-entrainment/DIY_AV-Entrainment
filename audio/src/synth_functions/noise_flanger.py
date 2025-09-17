@@ -8,8 +8,8 @@ import time
 import tempfile
 import argparse
 
-# If these exist in your project; harmless if unused in this file.
-from common import (
+# If these exist in your project; harmless if unused here.
+from .common import (
     calculate_transition_alpha,
     blue_noise,
     purple_noise,
@@ -22,19 +22,19 @@ DEFAULT_SAMPLE_RATE = 44100  # Hz
 DEFAULT_LFO_FREQ = 1.0 / 12.0  # Hz, for 12-second period
 
 
-# =========================
-# Loudness / limiting helpers
-# =========================
-def _db_to_lin(db):
+# =========================================================
+# Loudness / limiting / dynamics helpers (POST PROCESSING)
+# =========================================================
+def _db_to_lin(db: float) -> float:
     return 10.0 ** (db / 20.0)
 
 
-def _rms(x):
+def _rms(x: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.float64(x) * np.float64(x))) + 1e-20)
 
 
-def _normalize_rms(x, target_dbfs=-18.0):
-    """Scale to a target RMS (dBFS)."""
+def _normalize_rms(x: np.ndarray, target_dbfs: float = -18.0) -> np.ndarray:
+    """Scale entire signal to a target RMS (dBFS)."""
     cur = _rms(x)
     tgt = _db_to_lin(target_dbfs)
     if cur <= 0.0:
@@ -42,7 +42,7 @@ def _normalize_rms(x, target_dbfs=-18.0):
     return (x * (tgt / cur)).astype(np.float32, copy=False)
 
 
-def _soft_clip_tanh(x, drive_db=0.0, ceiling_db=-1.0):
+def _soft_clip_tanh(x: np.ndarray, drive_db: float = 0.0, ceiling_db: float = -1.0) -> np.ndarray:
     """Gentle tanh soft clip. drive_db > 0 adds a bit of saturation; ceiling sets final peak."""
     if abs(drive_db) <= 1e-9 and ceiling_db >= 0.0:
         return x
@@ -55,18 +55,18 @@ def _soft_clip_tanh(x, drive_db=0.0, ceiling_db=-1.0):
 
 
 def true_peak_limiter(
-    x,
-    fs,
-    ceiling_db=-1.0,
-    lookahead_ms=2.0,
-    release_ms=60.0,
-    oversample=4,
-):
+    x: np.ndarray,
+    fs: int,
+    ceiling_db: float = -1.0,
+    lookahead_ms: float = 2.0,
+    release_ms: float = 60.0,
+    oversample: int = 4,
+) -> np.ndarray:
     """
     Look-ahead true-peak limiter:
       - oversamples to catch inter-sample peaks,
       - schedules minimum gain over lookahead,
-      - single-pole release toward unity,
+      - one-pole release toward unity,
       - decimates back and trims to ceiling.
     """
     from collections import deque
@@ -123,6 +123,145 @@ def true_peak_limiter(
         return y_os
 
 
+# ---------- NEW: crest-factor cap + loudness leveler ----------
+def _moving_rms(x: np.ndarray, win: int) -> np.ndarray:
+    """Centered moving RMS with window `win` samples."""
+    eps = 1e-12
+    if win <= 1:
+        return np.sqrt(np.float64(x) * np.float64(x) + eps).astype(np.float32)
+    k = np.ones(win, dtype=np.float64) / float(win)
+    p = np.convolve(np.float64(x) ** 2, k, mode="same")
+    return np.sqrt(p + eps).astype(np.float32)
+
+
+def _sliding_abs_max(x: np.ndarray, win: int) -> np.ndarray:
+    """Sliding window absolute-peak with O(N) deque; window length `win` samples."""
+    from collections import deque
+
+    N = x.size
+    win = max(1, int(win))
+    out = np.empty(N, dtype=np.float32)
+    q = deque()  # holds (index, value) with decreasing value
+    ax = np.abs(x).astype(np.float32, copy=False)
+
+    for i in range(N + win - 1):
+        if i < N:
+            v = float(ax[i])
+            while q and q[-1][1] <= v:
+                q.pop()
+            q.append((i, v))
+        # Drop elements out of window [i - win + 1, i]
+        left = i - win + 1
+        while q and q[0][0] < left:
+            q.popleft()
+        if left >= 0:
+            out[left] = q[0][1] if q else 0.0
+
+    # For the first win-1 samples (before the first valid center), repeat the first value.
+    if win > 1:
+        out[: win - 1] = out[win - 1]
+    return out
+
+
+def crest_factor_leveler(
+    x: np.ndarray,
+    fs: int,
+    cap_db: float = 12.0,
+    peak_window_ms: float = 10.0,
+    rms_window_ms: float = 200.0,
+    attack_ms: float = 3.0,
+    release_ms: float = 80.0,
+    hp_weight_hz: float = 60.0,
+) -> np.ndarray:
+    """
+    Reduce gain only when local crest factor (peak_dB - rms_dB) exceeds `cap_db`.
+    - peak envelope: sliding absolute max over `peak_window_ms`
+    - rms envelope: centered moving RMS over `rms_window_ms`
+    - optional HP weighting so sub-bass doesn't dominate RMS
+    """
+    x = x.astype(np.float32, copy=False)
+    eps = 1e-12
+
+    # Perceptual-ish RMS weighting (high-pass)
+    if hp_weight_hz and hp_weight_hz > 0:
+        b, a = signal.butter(2, hp_weight_hz, btype="high", fs=fs)
+        x_rms_src = signal.lfilter(b, a, x).astype(np.float32)
+    else:
+        x_rms_src = x
+
+    n_peak = max(1, int(peak_window_ms * 1e-3 * fs))
+    n_rms = max(1, int(rms_window_ms * 1e-3 * fs))
+
+    peak_env = _sliding_abs_max(x, n_peak) + eps
+    rms_env = _moving_rms(x_rms_src, n_rms) + eps
+
+    peak_db = 20.0 * np.log10(peak_env)
+    rms_db = 20.0 * np.log10(rms_env)
+
+    crest_db = peak_db - rms_db
+    excess_db = np.maximum(0.0, crest_db - float(cap_db)).astype(np.float32)
+
+    # Fast-attack / slow-release smoothing in dB domain
+    a_att = np.exp(-1.0 / max(1.0, (attack_ms * 1e-3) * fs))
+    a_rel = np.exp(-1.0 / max(1.0, (release_ms * 1e-3) * fs))
+    red_db = np.empty_like(excess_db)
+    s = float(excess_db[0])
+    for i in range(excess_db.size):
+        e = float(excess_db[i])
+        s = a_att * s + (1.0 - a_att) * e if e > s else a_rel * s + (1.0 - a_rel) * e
+        red_db[i] = s
+
+    g = 10.0 ** (-red_db / 20.0)
+    return (x * g).astype(np.float32, copy=False)
+
+
+def loudness_leveler(
+    x: np.ndarray,
+    fs: int,
+    target_db: float = -12.0,
+    window_ms: float = 300.0,
+    attack_ms: float = 40.0,
+    release_ms: float = 200.0,
+    max_up_db: float = 6.0,
+    max_down_db: float = 12.0,
+    hp_weight_hz: float = 60.0,
+) -> np.ndarray:
+    """
+    Time-varying gain to hold short-term loudness near `target_db`.
+    Uses moving RMS (HP-weighted) with attack/release smoothing.
+    """
+    x = x.astype(np.float32, copy=False)
+    eps = 1e-12
+
+    if hp_weight_hz and hp_weight_hz > 0:
+        b, a = signal.butter(2, hp_weight_hz, btype="high", fs=fs)
+        x_w = signal.lfilter(b, a, x).astype(np.float32)
+    else:
+        x_w = x
+
+    n = max(1, int(window_ms * 1e-3 * fs))
+    rms = _moving_rms(x_w, n) + eps
+    rms_db = 20.0 * np.log10(rms)
+
+    want_db = float(target_db)
+    delta_db = np.clip(want_db - rms_db, -abs(max_down_db), abs(max_up_db)).astype(np.float32)
+
+    a_att = np.exp(-1.0 / max(1.0, (attack_ms * 1e-3) * fs))
+    a_rel = np.exp(-1.0 / max(1.0, (release_ms * 1e-3) * fs))
+    gdb = np.empty_like(delta_db)
+    s = float(delta_db[0])
+    for i in range(delta_db.size):
+        d = float(delta_db[i])
+        s = a_att * s + (1.0 - a_att) * d if d < s else a_rel * s + (1.0 - a_rel) * d
+        gdb[i] = s
+
+    g = 10.0 ** (gdb / 20.0)
+    return (x * g).astype(np.float32, copy=False)
+
+
+# =======================================
+# Utility for memory-mapped RMS (notches)
+# =======================================
 def _compute_rms_memmap(arr, chunk_size=1_000_000):
     """Compute RMS of a potentially memory-mapped array in chunks."""
     n = len(arr)
@@ -135,40 +274,34 @@ def _compute_rms_memmap(arr, chunk_size=1_000_000):
     return np.sqrt(sq_sum / n)
 
 
+# =========================
+# Noise generators
+# =========================
 @numba.jit(nopython=True)
 def generate_pink_noise_samples(n_samples):
-    """
-    Generates pink noise samples with reduced high frequency content.
-    This function is optimized with Numba for high performance.
-    """
+    """Pink noise via Paul Kellett's filter (Numba)."""
     white = np.random.randn(n_samples).astype(np.float32)
     pink = np.empty_like(white)
 
-    # State variables for the pinking filter (Paul Kellett's method)
+    # State variables
     b0, b1, b2, b3, b4, b5 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
     for i in range(n_samples):
         w = white[i]
-
         b0 = 0.99886 * b0 + w * 0.0555179
         b1 = 0.99332 * b1 + w * 0.0750759
         b2 = 0.96900 * b2 + w * 0.1538520
         b3 = 0.86650 * b3 + w * 0.3104856
         b4 = 0.55000 * b4 + w * 0.5329522
         b5 = -0.7616 * b5 - w * 0.0168980
-
         pink_val = b0 + b1 + b2 + b3 + b4 + b5
         pink[i] = pink_val * 0.11
-
     return pink
 
 
 @numba.jit(nopython=True)
 def generate_brown_noise_samples(n_samples):
-    """
-    Generate brown (red) noise samples.
-    This function is optimized with Numba for high performance.
-    """
+    """Brown (red) noise via integrated white."""
     white = np.random.randn(n_samples).astype(np.float32)
     brown = np.cumsum(white)
     max_abs = np.max(np.abs(brown)) + 1e-8
@@ -192,6 +325,9 @@ def generate_noise_samples(n_samples, noise_type, sample_rate=DEFAULT_SAMPLE_RAT
     return np.random.randn(n_samples).astype(np.float32)
 
 
+# =========================
+# Simple flanger (legacy)
+# =========================
 def triangle_wave_varying(freq_array, t, sample_rate=44100):
     """Generate a triangle wave with a time-varying frequency."""
     freq_array = np.maximum(np.asarray(freq_array, dtype=float), 1e-9)
@@ -213,12 +349,7 @@ def apply_flanger(
     lfo_waveform="sine",
     feedback=0.0,
 ):
-    """Apply a flanging effect to ``input_signal``.
-
-    Fractional delay interpolation and a light smoothing filter are used to
-    reduce zipper noise as the modulation approaches its extremes.
-    """
-
+    """Apply a flanging effect to ``input_signal``."""
     n = len(input_signal)
     t = np.arange(n) / sample_rate
     if lfo_waveform.lower() == "triangle":
@@ -261,8 +392,7 @@ def generate_flanged_noise(
     direction="up",
     lfo_waveform="sine",
 ):
-    """Generate noise of a given color and apply a flanging effect."""
-
+    """Generate noise and apply a flanger."""
     num_samples = int(duration_seconds * sample_rate)
     noise = generate_noise_samples(num_samples, noise_type, sample_rate)
     return apply_flanger(
@@ -276,9 +406,9 @@ def generate_flanged_noise(
     )
 
 
-# ===========================
-# Swept-notch machinery (kept)
-# ===========================
+# ==========================================
+# Swept-notch machinery (with transition)
+# ==========================================
 def _apply_deep_swept_notches_varying(
     input_signal,
     sample_rate,
@@ -325,7 +455,6 @@ def _apply_deep_swept_notches_varying(
         start_idx = block_idx * hop_size
         end_idx = min(start_idx + block_size, n_samples)
         actual_block_size = end_idx - start_idx
-
         if actual_block_size < 100:
             continue
 
@@ -357,8 +486,8 @@ def _apply_deep_swept_notches_varying(
                 except ValueError:
                     continue
 
-        output_accumulator[start_idx:start_idx + block_size] += filtered_block
-        window_accumulator[start_idx:start_idx + block_size] += window
+        output_accumulator[start_idx : start_idx + block_size] += filtered_block
+        window_accumulator[start_idx : start_idx + block_size] += window
 
     valid_idx = window_accumulator > 1e-8
     output_accumulator[valid_idx] /= window_accumulator[valid_idx]
@@ -373,20 +502,17 @@ def _apply_deep_swept_notches_single_phase(
     notch_q=30,
     cascade_count=10,
     phase_offset=90,
-    lfo_waveform='sine',
+    lfo_waveform="sine",
     use_memmap=True,
 ):
-    """
-    Apply one or more deep swept notch filters for a single LFO phase.
-    This function is the core processing unit.
-    """
+    """Apply one or more deep swept notch filters for a single LFO phase."""
     n_samples = len(input_signal)
 
     if use_memmap:
         tmp_output = tempfile.NamedTemporaryFile(delete=False)
         tmp_output_name = tmp_output.name
         tmp_output.close()
-        output = np.memmap(tmp_output_name, dtype=np.float32, mode='w+', shape=n_samples)
+        output = np.memmap(tmp_output_name, dtype=np.float32, mode="w+", shape=n_samples)
         output[:] = input_signal[:]
     else:
         output = input_signal.copy()
@@ -394,9 +520,9 @@ def _apply_deep_swept_notches_single_phase(
     t = np.arange(n_samples) / sample_rate
 
     # --- LFO Generation ---
-    if lfo_waveform.lower() == 'triangle':
+    if lfo_waveform.lower() == "triangle":
         lfo = signal.sawtooth(2 * np.pi * lfo_freq * t + phase_offset, width=0.5)
-    elif lfo_waveform.lower() == 'sine':
+    elif lfo_waveform.lower() == "sine":
         lfo = np.cos(2 * np.pi * lfo_freq * t + phase_offset)
     else:
         raise ValueError(f"Unsupported LFO waveform: {lfo_waveform}. Choose 'sine' or 'triangle'.")
@@ -420,7 +546,7 @@ def _apply_deep_swept_notches_single_phase(
     if len(notch_qs) != len(filter_sweeps) or len(cascade_counts) != len(filter_sweeps):
         raise ValueError("Length of notch_q and cascade_count must match number of filter_sweeps")
 
-    # Process in overlapping blocks for smooth transitions (Overlap-Add method)
+    # Overlap-add processing
     block_size = 4096
     hop_size = block_size // 2
     window = np.hanning(block_size)
@@ -432,8 +558,8 @@ def _apply_deep_swept_notches_single_phase(
         win_acc_name = tmp_win_acc.name
         tmp_out_acc.close()
         tmp_win_acc.close()
-        output_accumulator = np.memmap(out_acc_name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
-        window_accumulator = np.memmap(win_acc_name, dtype=np.float32, mode='w+', shape=n_samples + block_size)
+        output_accumulator = np.memmap(out_acc_name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
+        window_accumulator = np.memmap(win_acc_name, dtype=np.float32, mode="w+", shape=n_samples + block_size)
     else:
         output_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
         window_accumulator = np.zeros(n_samples + block_size, dtype=np.float32)
@@ -444,7 +570,6 @@ def _apply_deep_swept_notches_single_phase(
         start_idx = block_idx * hop_size
         end_idx = min(start_idx + block_size, n_samples)
         actual_block_size = end_idx - start_idx
-
         if actual_block_size < 100:
             continue
 
@@ -456,13 +581,10 @@ def _apply_deep_swept_notches_single_phase(
 
         block_center_idx = start_idx + actual_block_size // 2
 
-        # --- Apply each independent notch filter sweep ---
         for sweep_idx, sweep in enumerate(base_freq_sweeps):
             notch_freq = sweep[block_center_idx]
-
             if notch_freq >= sample_rate * 0.49:
                 continue
-
             q_val = notch_qs[sweep_idx]
             cascades = cascade_counts[sweep_idx]
             for _ in range(cascades):
@@ -472,12 +594,11 @@ def _apply_deep_swept_notches_single_phase(
                 except ValueError:
                     continue
 
-        output_accumulator[start_idx:start_idx + block_size] += filtered_block
-        window_accumulator[start_idx:start_idx + block_size] += window
+        output_accumulator[start_idx : start_idx + block_size] += filtered_block
+        window_accumulator[start_idx : start_idx + block_size] += window
 
     valid_idx = window_accumulator > 1e-8
     output_accumulator[valid_idx] /= window_accumulator[valid_idx]
-
     return output_accumulator[:n_samples]
 
 
@@ -490,12 +611,10 @@ def apply_deep_swept_notches(
     cascade_count=10,
     phase_offset=0,
     extra_phase_offset=0.0,
-    lfo_waveform='sine',
+    lfo_waveform="sine",
     use_memmap=False,
 ):
-    """
-    Wrapper to apply deep swept notch filters.
-    """
+    """Wrapper for deep swept notch filters."""
     output = _apply_deep_swept_notches_single_phase(
         input_signal,
         sample_rate,
@@ -540,7 +659,6 @@ def _generate_swept_notch_arrays(
     n_jobs,
 ):
     """Internal helper to generate swept notch noise and return stereo array."""
-
     if filter_sweeps is None:
         filter_sweeps = [(1000, 10000)]
 
@@ -562,7 +680,7 @@ def _generate_swept_notch_arrays(
             tmp_input = tempfile.NamedTemporaryFile(delete=False)
             tmp_input_name = tmp_input.name
             tmp_input.close()
-            input_signal = np.memmap(tmp_input_name, dtype=np.float32, mode='w+', shape=num_samples)
+            input_signal = np.memmap(tmp_input_name, dtype=np.float32, mode="w+", shape=num_samples)
             input_signal[:] = generate_noise_samples(num_samples, noise_type, sample_rate)
         else:
             input_signal = generate_noise_samples(num_samples, noise_type, sample_rate)
@@ -570,13 +688,13 @@ def _generate_swept_notch_arrays(
         data, _ = sf.read(input_audio_path)
         input_signal = data[:, 0] if data.ndim > 1 else data
 
-    b_warmth, a_warmth = signal.butter(1, 10000, btype='low', fs=sample_rate)
+    b_warmth, a_warmth = signal.butter(1, 10000, btype="low", fs=sample_rate)
     input_signal = signal.filtfilt(b_warmth, a_warmth, input_signal)
-    b_hpf, a_hpf = signal.butter(2, 50, btype='high', fs=sample_rate)
+    b_hpf, a_hpf = signal.butter(2, 50, btype="high", fs=sample_rate)
     input_signal = signal.filtfilt(b_hpf, a_hpf, input_signal)
     input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
 
-    rms_in = np.sqrt(np.mean(input_signal**2))
+    rms_in = np.sqrt(np.mean(input_signal ** 2))
     if rms_in < 1e-8:
         rms_in = 1e-8
 
@@ -613,7 +731,7 @@ def _generate_swept_notch_arrays(
     if memory_efficient and n_jobs > 1:
         n_jobs = 1
 
-    with Parallel(n_jobs=n_jobs, backend='loky') as parallel:
+    with Parallel(n_jobs=n_jobs, backend="loky") as parallel:
         results = parallel(tasks)
 
     left_output, right_output = results
@@ -621,16 +739,217 @@ def _generate_swept_notch_arrays(
     if memory_efficient:
         rms_left = _compute_rms_memmap(left_output)
     else:
-        rms_left = np.sqrt(np.mean(left_output**2))
+        rms_left = np.sqrt(np.mean(left_output ** 2))
     if rms_left > 1e-8:
-        left_output *= (rms_in / rms_left)
+        left_output *= rms_in / rms_left
 
     if memory_efficient:
         rms_right = _compute_rms_memmap(right_output)
     else:
-        rms_right = np.sqrt(np.mean(right_output**2))
+        rms_right = np.sqrt(np.mean(right_output ** 2))
     if rms_right > 1e-8:
-        right_output *= (rms_in / rms_right)
+        right_output *= rms_in / rms_right
+
+    stereo_output = np.stack((left_output, right_output), axis=-1)
+
+    max_val = np.max(np.abs(stereo_output))
+    if max_val > 0.95:
+        stereo_output = np.clip(stereo_output, -0.95, 0.95)
+    elif max_val > 0:
+        stereo_output = stereo_output / max_val * 0.95
+
+    return stereo_output, time.time() - start_time
+
+
+# ------------------------ RESTORED: TRANSITION VERSION ------------------------
+def _generate_swept_notch_arrays_transition(
+    duration_seconds,
+    sample_rate,
+    start_lfo_freq,
+    end_lfo_freq,
+    start_filter_sweeps,
+    end_filter_sweeps,
+    start_notch_q,
+    end_notch_q,
+    start_cascade_count,
+    end_cascade_count,
+    start_lfo_phase_offset_deg,
+    end_lfo_phase_offset_deg,
+    start_intra_phase_offset_deg,
+    end_intra_phase_offset_deg,
+    input_audio_path,
+    noise_type,
+    lfo_waveform,
+    initial_offset,
+    post_offset,
+    transition_curve,
+    memory_efficient,
+    n_jobs,
+):
+    """Internal helper generating swept notch noise with parameter transitions."""
+    if start_filter_sweeps is None:
+        start_filter_sweeps = [(1000, 10000)]
+    if end_filter_sweeps is None:
+        end_filter_sweeps = start_filter_sweeps
+
+    num_sweeps = len(start_filter_sweeps)
+
+    if isinstance(start_notch_q, (int, float)):
+        start_notch_q = [float(start_notch_q)] * num_sweeps
+    else:
+        start_notch_q = list(start_notch_q)
+    if isinstance(end_notch_q, (int, float)):
+        end_notch_q = [float(end_notch_q)] * num_sweeps
+    else:
+        end_notch_q = list(end_notch_q)
+
+    if isinstance(start_cascade_count, int):
+        start_cascade_count = [int(start_cascade_count)] * num_sweeps
+    else:
+        start_cascade_count = list(start_cascade_count)
+    if isinstance(end_cascade_count, int):
+        end_cascade_count = [int(end_cascade_count)] * num_sweeps
+    else:
+        end_cascade_count = list(end_cascade_count)
+
+    if (
+        len(start_notch_q) != num_sweeps
+        or len(end_notch_q) != num_sweeps
+        or len(start_cascade_count) != num_sweeps
+        or len(end_cascade_count) != num_sweeps
+    ):
+        raise ValueError("Length mismatch between sweep parameters")
+
+    start_time = time.time()
+    if input_audio_path is None:
+        num_samples = int(duration_seconds * sample_rate)
+        if memory_efficient:
+            tmp_input = tempfile.NamedTemporaryFile(delete=False)
+            tmp_input_name = tmp_input.name
+            tmp_input.close()
+            input_signal = np.memmap(tmp_input_name, dtype=np.float32, mode="w+", shape=num_samples)
+            input_signal[:] = generate_noise_samples(num_samples, noise_type, sample_rate)
+        else:
+            input_signal = generate_noise_samples(num_samples, noise_type, sample_rate)
+    else:
+        data, _ = sf.read(input_audio_path)
+        input_signal = data[:, 0] if data.ndim > 1 else data
+
+    b_warmth, a_warmth = signal.butter(1, 10000, btype="low", fs=sample_rate)
+    input_signal = signal.filtfilt(b_warmth, a_warmth, input_signal)
+    b_hpf, a_hpf = signal.butter(2, 50, btype="high", fs=sample_rate)
+    input_signal = signal.filtfilt(b_hpf, a_hpf, input_signal)
+    input_signal = input_signal / (np.max(np.abs(input_signal)) + 1e-8) * 0.8
+
+    rms_in = np.sqrt(np.mean(input_signal ** 2))
+    if rms_in < 1e-8:
+        rms_in = 1e-8
+
+    num_samples = len(input_signal)
+    t = np.arange(num_samples) / sample_rate
+    alpha = calculate_transition_alpha(
+        duration_seconds, sample_rate, initial_offset, post_offset, transition_curve
+    )
+    if len(alpha) != num_samples:
+        alpha = np.interp(
+            np.linspace(0, 1, num_samples),
+            np.linspace(0, 1, len(alpha)),
+            alpha,
+        )
+
+    lfo_freq_array = start_lfo_freq + (end_lfo_freq - start_lfo_freq) * alpha
+    phase_base = np.cumsum(2 * np.pi * lfo_freq_array / sample_rate)
+
+    if lfo_waveform.lower() == "triangle":
+        base_wave_fn = lambda ph: signal.sawtooth(ph, width=0.5)
+    elif lfo_waveform.lower() == "sine":
+        base_wave_fn = np.cos
+    else:
+        raise ValueError(
+            f"Unsupported LFO waveform: {lfo_waveform}. Choose 'sine' or 'triangle'."
+        )
+
+    right_phase_rad = np.deg2rad(
+        start_lfo_phase_offset_deg
+        + (end_lfo_phase_offset_deg - start_lfo_phase_offset_deg) * alpha
+    )
+    intra_phase_rad = np.deg2rad(
+        start_intra_phase_offset_deg
+        + (end_intra_phase_offset_deg - start_intra_phase_offset_deg) * alpha
+    )
+
+    lfo_left = base_wave_fn(phase_base)
+    lfo_left_2 = base_wave_fn(phase_base + intra_phase_rad)
+    lfo_right = base_wave_fn(phase_base + right_phase_rad)
+    lfo_right_2 = base_wave_fn(phase_base + right_phase_rad + intra_phase_rad)
+
+    min_arrays = []
+    max_arrays = []
+    q_arrays = []
+    casc_arrays = []
+    for idx in range(num_sweeps):
+        s_min, s_max = start_filter_sweeps[idx]
+        e_min, e_max = end_filter_sweeps[idx]
+        min_arrays.append(s_min + (e_min - s_min) * alpha)
+        max_arrays.append(s_max + (e_max - s_max) * alpha)
+        q_arrays.append(start_notch_q[idx] + (end_notch_q[idx] - start_notch_q[idx]) * alpha)
+        casc_arrays.append(start_cascade_count[idx] + (end_cascade_count[idx] - start_cascade_count[idx]) * alpha)
+
+    left_output = _apply_deep_swept_notches_varying(
+        input_signal,
+        sample_rate,
+        lfo_left,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+    left_output = _apply_deep_swept_notches_varying(
+        left_output,
+        sample_rate,
+        lfo_left_2,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+
+    right_output = _apply_deep_swept_notches_varying(
+        input_signal,
+        sample_rate,
+        lfo_right,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+    right_output = _apply_deep_swept_notches_varying(
+        right_output,
+        sample_rate,
+        lfo_right_2,
+        min_arrays,
+        max_arrays,
+        q_arrays,
+        casc_arrays,
+        use_memmap=memory_efficient,
+    )
+
+    if memory_efficient:
+        rms_left = _compute_rms_memmap(left_output)
+    else:
+        rms_left = np.sqrt(np.mean(left_output ** 2))
+    if rms_left > 1e-8:
+        left_output *= rms_in / rms_left
+
+    if memory_efficient:
+        rms_right = _compute_rms_memmap(right_output)
+    else:
+        rms_right = np.sqrt(np.mean(right_output ** 2))
+    if rms_right > 1e-8:
+        right_output *= rms_in / rms_right
 
     stereo_output = np.stack((left_output, right_output), axis=-1)
 
@@ -660,7 +979,6 @@ def generate_swept_notch_pink_sound(
     n_jobs=2,
 ):
     """Generate swept notch noise and save to ``filename``."""
-
     stereo_output, total_time = _generate_swept_notch_arrays(
         duration_seconds,
         sample_rate,
@@ -676,12 +994,67 @@ def generate_swept_notch_pink_sound(
         memory_efficient,
         n_jobs,
     )
-
     try:
-        sf.write(filename, stereo_output, sample_rate, subtype='PCM_16')
-        print(
-            f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds."
-        )
+        sf.write(filename, stereo_output, sample_rate, subtype="PCM_16")
+        print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
+    except Exception as e:
+        print(f"Error saving audio file: {e}")
+
+
+# --------------- RESTORED PUBLIC WRAPPER (TRANSITION) ---------------
+def generate_swept_notch_pink_sound_transition(
+    filename="swept_notch_sound_transition.wav",
+    duration_seconds=60,
+    sample_rate=DEFAULT_SAMPLE_RATE,
+    start_lfo_freq=DEFAULT_LFO_FREQ,
+    end_lfo_freq=DEFAULT_LFO_FREQ,
+    start_filter_sweeps=None,
+    end_filter_sweeps=None,
+    start_notch_q=25,
+    end_notch_q=25,
+    start_cascade_count=10,
+    end_cascade_count=10,
+    start_lfo_phase_offset_deg=90,
+    end_lfo_phase_offset_deg=90,
+    start_intra_phase_offset_deg=0,
+    end_intra_phase_offset_deg=0,
+    input_audio_path=None,
+    noise_type="pink",
+    lfo_waveform="sine",
+    initial_offset=0.0,
+    post_offset=0.0,
+    transition_curve="linear",
+    memory_efficient=False,
+    n_jobs=2,
+):
+    """Generate swept notch noise with parameters smoothly transitioning from start→end."""
+    stereo_output, total_time = _generate_swept_notch_arrays_transition(
+        duration_seconds,
+        sample_rate,
+        start_lfo_freq,
+        end_lfo_freq,
+        start_filter_sweeps,
+        end_filter_sweeps if end_filter_sweeps is not None else start_filter_sweeps,
+        start_notch_q,
+        end_notch_q,
+        start_cascade_count,
+        end_cascade_count,
+        start_lfo_phase_offset_deg,
+        end_lfo_phase_offset_deg,
+        start_intra_phase_offset_deg,
+        end_intra_phase_offset_deg,
+        input_audio_path,
+        noise_type,
+        lfo_waveform,
+        initial_offset,
+        post_offset,
+        transition_curve,
+        memory_efficient,
+        n_jobs,
+    )
+    try:
+        sf.write(filename, stereo_output, sample_rate, subtype="PCM_16")
+        print(f"\nSuccessfully generated and saved to '{filename}' in {total_time:.2f} seconds.")
     except Exception as e:
         print(f"Error saving audio file: {e}")
 
@@ -731,8 +1104,22 @@ def generate_flanged_noise_progression(
     # linearization / shaping
     sweep_domain="delay",  # "delay" | "f0" | "spacing" | "logf0"
     progress_gamma=1.0,  # >1 straightens the late portion of the ramp
+    # --- NEW: Crest-cap / Leveler controls ---
+    crest_cap_db=12.0,
+    crest_attack_ms=3.0,
+    crest_release_ms=80.0,
+    crest_peak_window_ms=10.0,
+    crest_rms_window_ms=200.0,
+    crest_hp_weight_hz=60.0,
+    leveler_target_db=None,           # e.g., -12.0 to enable; None disables
+    leveler_window_ms=300.0,
+    leveler_attack_ms=40.0,
+    leveler_release_ms=200.0,
+    leveler_max_up_db=6.0,
+    leveler_max_down_db=12.0,
+    leveler_hp_weight_hz=60.0,
     # --- Post-processing ---
-    normalize_rms_db=None,  # e.g. -18.0; None disables RMS normalization
+    normalize_rms_db=None,  # e.g. -18.0; None disables global RMS normalization
     tp_ceiling_db=None,  # e.g. -1.0; None disables limiter
     limiter_lookahead_ms=2.0,
     limiter_release_ms=60.0,
@@ -747,6 +1134,7 @@ def generate_flanged_noise_progression(
       - stop-at-peak and stop-when-f0/Δf,
       - endpoint easing, control slews, and cubic interpolation option,
       - sweep_domain to linearize in 'f0'/'spacing'/'logf0', and progress_gamma shaping,
+      - crest-factor cap + optional short-term leveler,
       - optional RMS normalization + true-peak limiting (+ soft-clip).
     """
     fs = int(sample_rate)
@@ -836,7 +1224,7 @@ def generate_flanged_noise_progression(
     def _lerp_time(start, end):
         return np.interp(t, [0.0, duration_seconds], [start, end]).astype(np.float32)
 
-    rate_env = _lerp_time(start_rate_hz, end_rate_hz)
+    rate_env = _lerp_time(start_rate_hz, end_rate_hz)  # currently unused, kept for completeness
     mix_env = _lerp_time(start_mix, end_mix)
     fb_env = _lerp_time(start_feedback, end_feedback)
 
@@ -953,7 +1341,7 @@ def generate_flanged_noise_progression(
             hold_target_ms = float(tau_ramp_ms[idx_stop])
         else:
             # stop_at_peak simply means "freeze at the end of the ramp"
-            freeze_local = idx_peak_ramp
+            freeze_local = idx_peak_ramp if stop_at_peak else idx_peak_ramp
             hold_target_ms = float(tau_end_ms)
 
         # Apply endpoint easing inside the ramp (blend last E ms toward hold_target_ms)
@@ -1025,10 +1413,41 @@ def generate_flanged_noise_progression(
         y[i] = (1.0 - mix_state) * x[i] + mix_state * delayed
         w = (w + 1) % max_delay
 
-    # ---------------- POST: loudness + peak control ----------------
+    # ---------------- POST: crest cap + leveler + loudness/limiting ----------------
     y_post = y
+
+    # (A) Crest-factor cap: tame “peak jumps with same loudness”
+    if crest_cap_db is not None:
+        y_post = crest_factor_leveler(
+            y_post,
+            fs,
+            cap_db=crest_cap_db,
+            peak_window_ms=crest_peak_window_ms,
+            rms_window_ms=crest_rms_window_ms,
+            attack_ms=crest_attack_ms,
+            release_ms=crest_release_ms,
+            hp_weight_hz=crest_hp_weight_hz,
+        )
+
+    # (B) Short-term loudness leveler (optional)
+    if leveler_target_db is not None:
+        y_post = loudness_leveler(
+            y_post,
+            fs,
+            target_db=leveler_target_db,
+            window_ms=leveler_window_ms,
+            attack_ms=leveler_attack_ms,
+            release_ms=leveler_release_ms,
+            max_up_db=leveler_max_up_db,
+            max_down_db=leveler_max_down_db,
+            hp_weight_hz=leveler_hp_weight_hz,
+        )
+
+    # (C) Global RMS normalize (master reference)
     if normalize_rms_db is not None:
         y_post = _normalize_rms(y_post, normalize_rms_db)
+
+    # (D) True-peak limiter
     if tp_ceiling_db is not None:
         y_post = true_peak_limiter(
             y_post,
@@ -1038,18 +1457,23 @@ def generate_flanged_noise_progression(
             release_ms=limiter_release_ms,
             oversample=limiter_oversample,
         )
+
+    # (E) Optional soft saturation
     if softclip_drive_db and abs(softclip_drive_db) > 1e-9:
         ceiling_for_clip = tp_ceiling_db if tp_ceiling_db is not None else -0.1
         y_post = _soft_clip_tanh(y_post, drive_db=softclip_drive_db, ceiling_db=ceiling_for_clip)
 
-    # Write in a headroom-friendly format by default
+    # Write with headroom-friendly format by default
     sf.write(filename, y_post, fs, subtype=output_subtype)
     return filename
 
 
+# =========================
+# CLI
+# =========================
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate noise with swept notch filters or flanging (including one-way progression)."
+        description="Generate noise with swept notch filters (incl. transition) or flanging (including one-way progression)."
     )
     sub = parser.add_subparsers(dest="mode", required=True)
 
@@ -1064,7 +1488,7 @@ def main():
     flange.add_argument("--direction", choices=["up", "down"], default="up")
     flange.add_argument("--lfo-waveform", choices=["sine", "triangle"], default="sine")
 
-    # Notch path (kept)
+    # Notch path (static LFO params)
     notch = sub.add_parser("notch", help="Generate swept-notch filtered noise")
     notch.add_argument("--output", type=str, default="dual_sweep_triangle_lfo.wav")
     notch.add_argument("--duration", type=float, default=60.0)
@@ -1124,6 +1548,27 @@ def main():
 
     # Optional extra final freeze (parity)
     prog.add_argument("--final-freeze-seconds", type=float, default=0.0)
+
+    # ---- Crest-cap / leveler options ----
+    prog.add_argument("--crest-cap-db", type=float, default=12.0,
+                      help="Cap local crest factor (peak_dB - RMS_dB). Lower = stronger.")
+    prog.add_argument("--crest-attack-ms", type=float, default=3.0)
+    prog.add_argument("--crest-release-ms", type=float, default=80.0)
+    prog.add_argument("--crest-peak-window-ms", type=float, default=10.0,
+                      help="Window for sliding absolute peak.")
+    prog.add_argument("--crest-rms-window-ms", type=float, default=200.0,
+                      help="Window for RMS used in crest calculation.")
+    prog.add_argument("--crest-hp-weight-hz", type=float, default=60.0,
+                      help="High-pass for RMS weighting (0 to disable).")
+
+    prog.add_argument("--leveler-target-db", type=float, default=None,
+                      help="Short-term loudness target in dBFS (e.g., -12). None disables.")
+    prog.add_argument("--leveler-window-ms", type=float, default=300.0)
+    prog.add_argument("--leveler-attack-ms", type=float, default=40.0)
+    prog.add_argument("--leveler-release-ms", type=float, default=200.0)
+    prog.add_argument("--leveler-max-up-db", type=float, default=6.0)
+    prog.add_argument("--leveler-max-down-db", type=float, default=12.0)
+    prog.add_argument("--leveler-hp-weight-hz", type=float, default=60.0)
 
     # Post / loudness options
     prog.add_argument("--normalize-rms-db", type=float, default=None,
@@ -1210,6 +1655,20 @@ def main():
             interp=args.interp,
             sweep_domain=args.sweep_domain,
             progress_gamma=args.progress_gamma,
+            # crest-cap / leveler
+            crest_cap_db=args.crest_cap_db,
+            crest_attack_ms=args.crest_attack_ms,
+            crest_release_ms=args.crest_release_ms,
+            crest_peak_window_ms=args.crest_peak_window_ms,
+            crest_rms_window_ms=args.crest_rms_window_ms,
+            crest_hp_weight_hz=args.crest_hp_weight_hz,
+            leveler_target_db=args.leveler_target_db,
+            leveler_window_ms=args.leveler_window_ms,
+            leveler_attack_ms=args.leveler_attack_ms,
+            leveler_release_ms=args.leveler_release_ms,
+            leveler_max_up_db=args.leveler_max_up_db,
+            leveler_max_down_db=args.leveler_max_down_db,
+            leveler_hp_weight_hz=args.leveler_hp_weight_hz,
             # post
             normalize_rms_db=args.normalize_rms_db,
             tp_ceiling_db=args.tp_ceiling_db,
