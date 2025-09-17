@@ -12,6 +12,7 @@ import init, {
   push_clip_samples,
 } from '/src/pkg/realtime_backend.js?import';
 import SharedRingBuffer from './ringbuffer.js';
+import { sendFacilitatorManifest } from './facilitatorDataChannel.js';
 
 let audioCtx = null;
 let workletNode = null;
@@ -174,6 +175,7 @@ export async function start() {
   console.debug('Starting stream with sampleRate', sampleRate, 'startTime', startTime);
   start_stream(trackJson, sampleRate, startTime);
   console.debug('Stream started');
+  sendFacilitatorManifest(trackJson);
 
   if (trackObj && Array.isArray(trackObj.overlay_clips)) {
     trackObj.overlay_clips.forEach((clip, idx) => {
@@ -232,6 +234,7 @@ export function sendUpdate() {
   const trackJson = document.getElementById('track-json').value;
   console.debug('Sending track update');
   update_track(trackJson);
+  sendFacilitatorManifest(trackJson);
 }
 
 export function toggleGpu(event) {
