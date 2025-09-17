@@ -2,7 +2,7 @@
 
 This directory provides a minimal browser interface for the Rust audio engine
 when compiled to WebAssembly. It is meant for quick experimentation directly
-from a web page.
+from a web page using facilitator-curated, locally hosted assets.
 
 ## Building the WebAssembly Package
 
@@ -43,6 +43,10 @@ reads from three folders inside `web_ui`:
 - `tracks/` – JSON track definitions.
 - `noise/` – `.noise` generator presets.
 - `clips/` – audio clips for the overlay section.
+
+These folders must contain facilitator-provided files that are served from the
+same host as the UI. Remote URLs (including protocol-relative paths) are
+ignored so that playback cannot fetch arbitrary internet resources.
 
 If any files are present in these directories, they can be selected from
 dropdown menus and inserted into the current track without uploading new files.

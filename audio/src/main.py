@@ -65,6 +65,7 @@ from utils.timeline_visualizer import visualize_track_timeline
 from ui.overlay_clip_dialog import OverlayClipDialog
 from ui.collapsible_box import CollapsibleBox
 from models import StepModel, VoiceModel
+from utils.path_utils import is_remote_path
 from utils.voice_file import (
     VoicePreset,
     save_voice_preset_list,
@@ -975,6 +976,8 @@ class TrackEditorApp(QMainWindow):
             cf_str = self.cf_entry.text()
             outfile = self.outfile_entry.text().strip()
             noise_file = self.noise_file_entry.text().strip()
+            if noise_file and is_remote_path(noise_file):
+                raise ValueError("Background noise must use a local file path.")
             noise_amp_str = self.noise_amp_entry.text()
             if not sr_str: raise ValueError("Sample rate cannot be empty.")
             sr = int(sr_str)

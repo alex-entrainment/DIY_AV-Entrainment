@@ -49,6 +49,32 @@ function initSelects() {
   populateSelect('clip-select', '/clips/index.json');
 }
 
+function clipSourceIsLocal(path) {
+  if (!path) {
+    return false;
+  }
+  if (path.startsWith('data:')) {
+    return true;
+  }
+  const lowered = path.toLowerCase();
+  if (lowered.startsWith('http://') || lowered.startsWith('https://') || lowered.startsWith('ftp://')) {
+    return false;
+  }
+  if (path.startsWith('//')) {
+    return false;
+  }
+  try {
+    const resolved = new URL(path, window.location.origin);
+    if (resolved.origin !== window.location.origin) {
+      return false;
+    }
+    return resolved.pathname.startsWith('/clips/');
+  } catch (err) {
+    console.warn('Failed to parse clip path', path, err);
+    return false;
+  }
+}
+
 async function streamOverlayClip(index, path) {
   try {
     let arrayBuf;
@@ -56,6 +82,10 @@ async function streamOverlayClip(index, path) {
       const comma = path.indexOf(',');
       arrayBuf = Uint8Array.from(atob(path.slice(comma + 1)), c => c.charCodeAt(0)).buffer;
     } else {
+      if (!clipSourceIsLocal(path)) {
+        console.error('Remote clip sources are not supported. Skipping clip.', path);
+        return;
+      }
       const resp = await fetch(path);
       arrayBuf = await resp.arrayBuffer();
     }

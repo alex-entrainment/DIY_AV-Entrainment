@@ -138,6 +138,10 @@ and Overlay Clips – plus a test preview section and several helper tools.
 - **Remove Clip(s)** – delete selected overlay entries.
 - **Start Clip/Stop Clip** – preview a clip without rendering the full track.
 
+> **Local asset requirement:** Overlay clips must reference facilitator-provided
+> files stored on the local machine. Remote URLs or network shares are blocked
+> at load time to ensure playback only uses vetted material.
+
 ### Test Step Preview
 
 The bottom of the Steps panel features a preview player:
@@ -157,7 +161,7 @@ The Controls area exposes additional dialogs:
 - **Frequency Tester** – audition up to ten binaural beat pairs in real time.
 - **Audio Thresholder** – find your hearing threshold and set the track's output level.
 - **Add Subliminal Voice** – encode external audio as an ultrasonic subliminal
-  and insert it into the selected step.
+  and insert it into the selected step. Only local audio files are accepted.
 - **View Timeline** – render an interactive Plotly timeline showing all steps,
   voices and overlay clips.
 
@@ -175,7 +179,8 @@ ranges for the notches, filter **Q** and cascade count.  Phase offsets and start
 
 Noise settings can be saved or loaded via the **Save** and **Load** buttons.
 Press **Test** to preview a short 30&nbsp;s excerpt, or **Generate** to export a
-`.wav` file using the current parameters.
+`.wav` file using the current parameters. Any optional input audio must come
+from locally provided files – remote URLs are rejected.
 
 Preferences (available from the File menu) store font settings, sample rate,
 target output amplitude, amplitude display mode (absolute or dB) and more.

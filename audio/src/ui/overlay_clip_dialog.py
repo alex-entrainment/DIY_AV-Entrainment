@@ -1,3 +1,5 @@
+import os
+
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
     QLineEdit, QPushButton, QFileDialog, QLabel,
@@ -5,6 +7,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 import soundfile as sf
+
+from ..utils.path_utils import is_remote_path
 
 
 class OverlayClipDialog(QDialog):
@@ -115,6 +119,16 @@ class OverlayClipDialog(QDialog):
         path = self.file_edit.text().strip()
         if not path:
             QMessageBox.warning(self, "Input Required", "Please select an audio file.")
+            return
+        if is_remote_path(path):
+            QMessageBox.warning(
+                self,
+                "Unsupported Source",
+                "Remote URLs are not supported. Please choose a local audio file.",
+            )
+            return
+        if not os.path.isfile(path):
+            QMessageBox.warning(self, "File Not Found", "The selected audio file could not be located.")
             return
         duration = self._get_clip_duration(path)
         amp_val = float(self.amp_spin.value())

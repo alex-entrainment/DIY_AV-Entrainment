@@ -47,6 +47,7 @@ from utils.noise_file import (
     load_noise_params,
     NOISE_FILE_EXTENSION,
 )
+from utils.path_utils import is_remote_path
 from .colored_noise_dialog import ColoredNoiseDialog
 
 
@@ -276,6 +277,10 @@ class NoiseGeneratorDialog(QDialog):
 
     def get_noise_params(self) -> NoiseParams:
         """Collect the current UI values into a :class:`NoiseParams`."""
+        input_path = self.input_file_edit.text().strip()
+        if input_path and is_remote_path(input_path):
+            raise ValueError("Remote input audio sources are not supported. Select a local file instead.")
+
         params = NoiseParams(
             duration_seconds=float(self.duration_spin.value()),
             sample_rate=int(self.sample_rate_spin.value()),
@@ -291,7 +296,7 @@ class NoiseGeneratorDialog(QDialog):
             end_intra_phase_offset_deg=int(self.intra_phase_end_spin.value()),
             initial_offset=float(self.initial_offset_spin.value()),
             post_offset=float(self.post_offset_spin.value()),
-            input_audio_path=self.input_file_edit.text(),
+            input_audio_path=input_path,
         )
         sweeps = []
         for i in range(self.num_sweeps_spin.value()):
@@ -350,7 +355,11 @@ class NoiseGeneratorDialog(QDialog):
         self.input_file_edit.setText(params.input_audio_path or "")
 
     def save_settings(self):
-        params = self.get_noise_params()
+        try:
+            params = self.get_noise_params()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid Input", str(exc))
+            return
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Noise Settings",
@@ -381,7 +390,15 @@ class NoiseGeneratorDialog(QDialog):
 
     def on_generate(self):
         filename = self.file_edit.text() or "swept_notch_noise.wav"
-        input_path = self.input_file_edit.text() or None
+        input_path_raw = self.input_file_edit.text().strip()
+        if input_path_raw and is_remote_path(input_path_raw):
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                "Remote URLs are not supported for noise generation. Please choose a local audio file.",
+            )
+            return
+        input_path = input_path_raw or None
         try:
             start_sweeps = []
             end_sweeps = []
@@ -511,7 +528,11 @@ class NoiseGeneratorDialog(QDialog):
                 "could not be loaded."
             )
             return
-        params = self.get_noise_params()
+        try:
+            params = self.get_noise_params()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid Input", str(exc))
+            return
         params.duration_seconds = 30.0
         try:
             stereo = self._generate_noise_array(params)
