@@ -260,7 +260,7 @@ pub fn calculate_transition_alpha(
     total_duration: f32,
     sample_rate: f32,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
     curve: &str,
 ) -> Vec<f32> {
     let n = (total_duration * sample_rate) as usize;
@@ -269,14 +269,25 @@ pub fn calculate_transition_alpha(
     }
     let mut alpha = Vec::with_capacity(n);
     let dt = 1.0 / sample_rate;
+    let mut initial_offset = initial_offset.max(0.0);
+    if !initial_offset.is_finite() {
+        initial_offset = 0.0;
+    }
+    let max_transition = (total_duration - initial_offset).max(0.0);
+    let mut transition_duration = transition_duration.max(0.0).min(max_transition);
+    if !transition_duration.is_finite() {
+        transition_duration = max_transition;
+    }
+    let transition_end = (initial_offset + transition_duration).min(total_duration);
+
     for i in 0..n {
         let t = i as f32 * dt;
         let val = if t < initial_offset {
             0.0
-        } else if t > total_duration - post_offset {
+        } else if t >= transition_end {
             1.0
         } else {
-            let span = total_duration - initial_offset - post_offset;
+            let span = transition_end - initial_offset;
             if span > 0.0 {
                 (t - initial_offset) / span
             } else {

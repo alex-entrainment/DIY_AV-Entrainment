@@ -161,7 +161,9 @@ def _hybrid_qam_monaural_beat_core(
     return out
 
 
-def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def hybrid_qam_monaural_beat_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
     """
     Generates a hybrid QAM-Monaural beat with parameters linearly interpolated.
     """
@@ -217,7 +219,9 @@ def hybrid_qam_monaural_beat_transition(duration, sample_rate=44100, initial_off
         return np.zeros((0, 2), dtype=np.float32)
 
     curve = params.get('transition_curve', 'linear')
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    alpha_arr = calculate_transition_alpha(
+        duration, sample_rate, initial_offset, transition_duration, curve
+    )
 
     raw_signal = _hybrid_qam_monaural_beat_transition_core(
         N, float(duration), float(sample_rate),

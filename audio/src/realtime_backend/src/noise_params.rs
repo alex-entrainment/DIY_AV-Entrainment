@@ -51,7 +51,9 @@ pub struct NoiseParams {
     #[serde(default)]
     pub initial_offset: f32,
     #[serde(default)]
-    pub post_offset: f32,
+    pub transition_duration: Option<f32>,
+    #[serde(default)]
+    pub post_offset: Option<f32>,
     #[serde(default)]
     pub input_audio_path: String,
 }
@@ -64,4 +66,19 @@ pub fn load_noise_params(path: &str) -> Result<NoiseParams, Box<dyn std::error::
 
 pub fn load_noise_params_from_str(data: &str) -> Result<NoiseParams, serde_json::Error> {
     serde_json::from_str(data)
+}
+
+impl NoiseParams {
+    pub fn effective_transition_duration(&self) -> f32 {
+        let max_transition = (self.duration_seconds - self.initial_offset).max(0.0);
+        if let Some(td) = self.transition_duration {
+            td.max(0.0).min(max_transition)
+        } else if let Some(post) = self.post_offset {
+            (self.duration_seconds - self.initial_offset - post)
+                .max(0.0)
+                .min(max_transition)
+        } else {
+            max_transition
+        }
+    }
 }

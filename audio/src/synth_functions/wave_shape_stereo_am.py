@@ -55,7 +55,9 @@ def wave_shape_stereo_am(duration, sample_rate=44100, **params):
     return np.vstack([outputL, outputR]).T
 
 
-def wave_shape_stereo_am_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def wave_shape_stereo_am_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
     """Combined waveshaping and stereo AM with parameter transitions."""
     amp = float(params.get('amp', 0.15))
     startCarrierFreq = float(params.get('startCarrierFreq', 200))
@@ -84,7 +86,9 @@ def wave_shape_stereo_am_transition(duration, sample_rate=44100, initial_offset=
     t_abs = t_rel
 
     curve = params.get('transition_curve', 'linear')
-    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    alpha = calculate_transition_alpha(
+        duration, sample_rate, initial_offset, transition_duration, curve
+    )
 
     # Interpolate parameters using alpha
     currentCarrierFreq = startCarrierFreq + (endCarrierFreq - startCarrierFreq) * alpha

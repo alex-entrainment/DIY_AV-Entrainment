@@ -781,7 +781,7 @@ def _generate_swept_notch_arrays_transition(
     noise_type,
     lfo_waveform,
     initial_offset,
-    post_offset,
+    transition_duration,
     transition_curve,
     memory_efficient,
     n_jobs,
@@ -847,8 +847,15 @@ def _generate_swept_notch_arrays_transition(
 
     num_samples = len(input_signal)
     t = np.arange(num_samples) / sample_rate
+    max_transition = max(0.0, duration_seconds - initial_offset)
+    transition_duration = max(0.0, min(float(transition_duration), max_transition))
+
     alpha = calculate_transition_alpha(
-        duration_seconds, sample_rate, initial_offset, post_offset, transition_curve
+        duration_seconds,
+        sample_rate,
+        initial_offset,
+        transition_duration,
+        transition_curve,
     )
     if len(alpha) != num_samples:
         alpha = np.interp(
@@ -1022,12 +1029,19 @@ def generate_swept_notch_pink_sound_transition(
     noise_type="pink",
     lfo_waveform="sine",
     initial_offset=0.0,
-    post_offset=0.0,
+    transition_duration=None,
     transition_curve="linear",
     memory_efficient=False,
     n_jobs=2,
 ):
     """Generate swept notch noise with parameters smoothly transitioning from start→end."""
+    max_transition = max(0.0, duration_seconds - initial_offset)
+    effective_transition = (
+        max(0.0, min(transition_duration, max_transition))
+        if transition_duration is not None
+        else max_transition
+    )
+
     stereo_output, total_time = _generate_swept_notch_arrays_transition(
         duration_seconds,
         sample_rate,
@@ -1047,7 +1061,7 @@ def generate_swept_notch_pink_sound_transition(
         noise_type,
         lfo_waveform,
         initial_offset,
-        post_offset,
+        effective_transition,
         transition_curve,
         memory_efficient,
         n_jobs,

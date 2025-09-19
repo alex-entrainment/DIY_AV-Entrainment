@@ -44,6 +44,38 @@ fn get_f32(params: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
         .unwrap_or(default)
 }
 
+fn get_optional_f32(params: &HashMap<String, Value>, key: &str) -> Option<f32> {
+    params
+        .get(key)
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32)
+}
+
+fn compute_transition_timing(
+    params: &HashMap<String, Value>,
+    duration: f32,
+) -> (f32, f32, f32) {
+    let mut initial_offset = get_f32(params, "initial_offset", 0.0);
+    if !initial_offset.is_finite() {
+        initial_offset = 0.0;
+    }
+    if initial_offset < 0.0 {
+        initial_offset = 0.0;
+    }
+
+    let max_transition = (duration - initial_offset).max(0.0);
+
+    let raw_transition = get_optional_f32(params, "transition_duration").unwrap_or_else(|| {
+        let legacy_post_offset = get_f32(params, "post_offset", 0.0);
+        (duration - initial_offset - legacy_post_offset).max(0.0)
+    });
+
+    let transition_duration = raw_transition.max(0.0).min(max_transition);
+    let transition_end = (initial_offset + transition_duration).min(duration);
+
+    (initial_offset, transition_duration, transition_end)
+}
+
 fn get_bool(params: &HashMap<String, Value>, key: &str, default: bool) -> bool {
     params.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
 }
@@ -223,7 +255,8 @@ pub struct BinauralBeatTransitionVoice {
     freq_osc_shape: LfoShape,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     sample_rate: f32,
     remaining_samples: usize,
     phase_l: f32,
@@ -325,7 +358,8 @@ pub struct IsochronicToneTransitionVoice {
     pan: f32,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     sample_rate: f32,
     remaining_samples: usize,
     phase_l: f32,
@@ -444,7 +478,8 @@ pub struct QamBeatTransitionVoice {
     release_time: f32,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     sample_rate: f32,
     remaining_samples: usize,
     sample_idx: usize,
@@ -494,7 +529,8 @@ pub struct StereoAmIndependentTransitionVoice {
     mod_phase_r: f32,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     phase_carrier_l: f32,
     phase_carrier_r: f32,
     phase_mod_l: f32,
@@ -548,7 +584,8 @@ pub struct WaveShapeStereoAmTransitionVoice {
     stereo_mod_phase_r: f32,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     phase_carrier: f32,
     phase_shape: f32,
     phase_stereo_l: f32,
@@ -581,7 +618,8 @@ pub struct SpatialAngleModulationTransitionVoice {
     end_path_radius: f32,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     carrier_phase: f32,
     spatial_phase: f32,
     sample_rate: f32,
@@ -617,7 +655,8 @@ pub struct RhythmicWaveshapingTransitionVoice {
     pan: f32,
     curve: TransitionCurve,
     initial_offset: f32,
-    post_offset: f32,
+    transition_duration: f32,
+    transition_end: f32,
     carrier_phase: f32,
     lfo_phase: f32,
     sample_rate: f32,
@@ -1016,8 +1055,8 @@ impl BinauralBeatTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
 
         let total_samples = (duration * sample_rate) as usize;
 
@@ -1075,7 +1114,8 @@ impl BinauralBeatTransitionVoice {
             freq_osc_shape,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             sample_rate,
             remaining_samples: total_samples,
             phase_l: start_start_phase_l,
@@ -1221,8 +1261,8 @@ impl IsochronicToneTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
 
         let total_samples = (duration * sample_rate) as usize;
 
@@ -1282,7 +1322,8 @@ impl IsochronicToneTransitionVoice {
             pan,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             sample_rate,
             remaining_samples: total_samples,
             phase_l: start_start_phase_l,
@@ -1458,8 +1499,8 @@ impl QamBeatTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
         let total_samples = (duration * sample_rate) as usize;
 
         Self {
@@ -1525,7 +1566,8 @@ impl QamBeatTransitionVoice {
             release_time,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             sample_rate,
             remaining_samples: total_samples,
             sample_idx: 0,
@@ -1604,8 +1646,8 @@ impl StereoAmIndependentTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
         let total_samples = (duration * sample_rate) as usize;
         Self {
             amp,
@@ -1625,7 +1667,8 @@ impl StereoAmIndependentTransitionVoice {
             mod_phase_r,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             phase_carrier_l: 0.0,
             phase_carrier_r: 0.0,
             phase_mod_l: mod_phase_l,
@@ -1702,8 +1745,8 @@ impl WaveShapeStereoAmTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
         let total_samples = (duration * sample_rate) as usize;
         Self {
             amp,
@@ -1727,7 +1770,8 @@ impl WaveShapeStereoAmTransitionVoice {
             stereo_mod_phase_r,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             phase_carrier: 0.0,
             phase_shape: 0.0,
             phase_stereo_l: stereo_mod_phase_l,
@@ -1782,8 +1826,8 @@ impl SpatialAngleModulationTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
 
         let total_samples = (duration * sample_rate) as usize;
 
@@ -1797,7 +1841,8 @@ impl SpatialAngleModulationTransitionVoice {
             end_path_radius,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             carrier_phase: 0.0,
             spatial_phase: 0.0,
             sample_rate,
@@ -1856,8 +1901,8 @@ impl RhythmicWaveshapingTransitionVoice {
                 .and_then(|v| v.as_str())
                 .unwrap_or("linear"),
         );
-        let initial_offset = get_f32(params, "initial_offset", 0.0);
-        let post_offset = get_f32(params, "post_offset", 0.0);
+        let (initial_offset, transition_duration, transition_end) =
+            compute_transition_timing(params, duration);
 
         let total_samples = (duration * sample_rate) as usize;
 
@@ -1874,7 +1919,8 @@ impl RhythmicWaveshapingTransitionVoice {
             pan,
             curve,
             initial_offset,
-            post_offset,
+            transition_duration,
+            transition_end,
             carrier_phase: 0.0,
             lfo_phase: 0.0,
             sample_rate,
@@ -1991,10 +2037,10 @@ impl Voice for BinauralBeatTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {
@@ -2246,10 +2292,10 @@ impl Voice for IsochronicToneTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {
@@ -2517,10 +2563,10 @@ impl Voice for QamBeatTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {
@@ -2733,10 +2779,10 @@ impl Voice for StereoAmIndependentTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let mut alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {
@@ -2845,10 +2891,10 @@ impl Voice for WaveShapeStereoAmTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let mut alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {
@@ -2951,10 +2997,10 @@ impl Voice for SpatialAngleModulationTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {
@@ -3039,10 +3085,10 @@ impl Voice for RhythmicWaveshapingTransitionVoice {
             let t = self.sample_idx as f32 / self.sample_rate;
             let alpha = if t < self.initial_offset {
                 0.0
-            } else if t > self.duration - self.post_offset {
+            } else if t >= self.transition_end {
                 1.0
             } else {
-                let span = self.duration - self.initial_offset - self.post_offset;
+                let span = self.transition_end - self.initial_offset;
                 if span > 0.0 {
                     (t - self.initial_offset) / span
                 } else {

@@ -249,7 +249,9 @@ def _qam_beat_core(
 from .common import calculate_transition_alpha
 
 
-def qam_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def qam_beat_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
     """
     Enhanced QAM-based binaural beat with parameter transitions.
     Includes all enhanced features with smooth interpolation.
@@ -340,7 +342,9 @@ def qam_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_of
         return np.zeros((0, 2), dtype=np.float32)
     
     curve = params.get('transition_curve', 'linear')
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    alpha_arr = calculate_transition_alpha(
+        duration, sample_rate, initial_offset, transition_duration, curve
+    )
 
     raw_signal = _qam_beat_transition_core(
         N, float(duration), float(sample_rate),

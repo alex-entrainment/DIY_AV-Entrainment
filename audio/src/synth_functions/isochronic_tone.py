@@ -256,7 +256,9 @@ def isochronic_tone(duration, sample_rate=44100, **params):
     return audio
 
 
-def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def isochronic_tone_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
 
     """Transitioning version of :func:`isochronic_tone`."""
 
@@ -335,7 +337,9 @@ def isochronic_tone_transition(duration, sample_rate=44100, initial_offset=0.0, 
     t = np.linspace(0, duration, N, endpoint=False)
 
     curve = params.get('transition_curve', 'linear')
-    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    alpha = calculate_transition_alpha(
+        duration, sample_rate, initial_offset, transition_duration, curve
+    )
 
     # --- Interpolate Parameters ---
     base_freq_array = startBaseFreq + (endBaseFreq - startBaseFreq) * alpha
