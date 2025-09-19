@@ -117,7 +117,9 @@ def _monaural_beat_stereo_amps_core(
     return out
 
 
-def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def monaural_beat_stereo_amps_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
     s_ll = float(params.get('start_amp_lower_L', params.get('amp_lower_L', 0.5)))
     e_ll = float(params.get('end_amp_lower_L',   s_ll))
     s_ul = float(params.get('start_amp_upper_L', params.get('amp_upper_L', 0.5)))
@@ -151,7 +153,9 @@ def monaural_beat_stereo_amps_transition(duration, sample_rate=44100, initial_of
 
     N = int(duration * sample_rate)
     curve = params.get('transition_curve', 'linear')
-    alpha_arr = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    alpha_arr = calculate_transition_alpha(
+        duration, sample_rate, initial_offset, transition_duration, curve
+    )
     return _monaural_beat_stereo_amps_transition_core(
         N, float(duration), float(sample_rate),
         s_ll, e_ll, s_ul, e_ul, s_lr, e_lr, s_ur, e_ur,

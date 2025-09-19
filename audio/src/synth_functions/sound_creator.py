@@ -166,7 +166,7 @@ def _flanger_effect_stereo_continuous(
     sample_rate: float,
     duration: float,
     initial_offset: float,
-    post_offset: float,
+    transition_duration: float,
     curve: str,
     start_params: dict,
     end_params: dict,
@@ -184,9 +184,11 @@ def _flanger_effect_stereo_continuous(
         Sample rate of the audio.
     duration : float
         Duration of the voice in seconds.
-    initial_offset, post_offset : float
-        Silence durations before and after the active transition portion. These
-        mirror the semantics used by :func:`calculate_transition_alpha`.
+    initial_offset : float
+        Silence duration before the active transition portion.
+    transition_duration : float
+        Length of the transition itself. The effective post offset is derived
+        from the total duration minus ``initial_offset`` and this value.
     curve : str
         Name of the interpolation curve (e.g. ``"linear"``).
     start_params, end_params : dict
@@ -199,7 +201,9 @@ def _flanger_effect_stereo_continuous(
     from .common import calculate_transition_alpha
 
     N = audio.shape[0]
-    alpha = calculate_transition_alpha(duration, sample_rate, initial_offset, post_offset, curve)
+    alpha = calculate_transition_alpha(
+        duration, sample_rate, initial_offset, transition_duration, curve
+    )
     if len(alpha) != N:
         alpha = np.interp(np.linspace(0, 1, N), np.linspace(0, 1, len(alpha)), alpha)
 
@@ -569,10 +573,19 @@ def generate_voice_audio(voice_data, duration, sample_rate, global_start_time):
         enable_end = end_conf.pop('enable', False)
 
         if is_transition and (start_conf != end_conf or enable_start != enable_end):
+            initial_offset = float(core_params.get('initial_offset', 0.0))
+            raw_transition = core_params.get('transition_duration')
+            if raw_transition is None:
+                post_offset = float(core_params.get('post_offset', 0.0))
+                raw_transition = duration - initial_offset - post_offset
+            max_transition = max(0.0, duration - initial_offset)
+            transition_duration = max(
+                0.0, min(float(raw_transition), max_transition)
+            )
             audio = _flanger_effect_stereo_continuous(
                 audio, float(sample_rate), duration,
-                float(core_params.get('initial_offset', 0.0)),
-                float(core_params.get('post_offset', 0.0)),
+                initial_offset,
+                transition_duration,
                 str(core_params.get('transition_curve', 'linear')),
                 start_conf, end_conf, enable_start, enable_end,
             )
@@ -858,6 +871,16 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                 end_q = [sw.get("end_q", 30) for sw in params.sweeps]
                 start_casc = [sw.get("start_casc", 10) for sw in params.sweeps]
                 end_casc = [sw.get("end_casc", 10) for sw in params.sweeps]
+                max_transition = max(0.0, track_duration_sec - params.initial_offset)
+                effective_transition = (
+                    params.transition_duration
+                    if params.transition_duration is not None
+                    else max_transition
+                )
+                effective_transition = max(
+                    0.0, min(effective_transition, max_transition)
+                )
+
                 noise_audio, _ = _generate_swept_notch_arrays_transition(
                     track_duration_sec,
                     sample_rate,
@@ -877,7 +900,7 @@ def assemble_track_from_data(track_data, sample_rate, crossfade_duration, crossf
                     params.noise_type,
                     params.lfo_waveform,
                     params.initial_offset,
-                    params.post_offset,
+                    effective_transition,
                     "linear",
                     False,
                     2,

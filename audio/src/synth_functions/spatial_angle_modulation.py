@@ -236,7 +236,9 @@ def spatial_angle_modulation(duration, sample_rate=44100, **params):
         return np.zeros((N, 2))
 
 
-def spatial_angle_modulation_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def spatial_angle_modulation_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
     """Spatial Angle Modulation with parameter transitions."""
     if not AUDIO_ENGINE_AVAILABLE:
         print("Error: SAM transition function called, but audio_engine module is missing.")
@@ -371,7 +373,9 @@ def spatial_angle_modulation_monaural_beat(duration, sample_rate=44100, **params
     return stereo_out
 
 
-def spatial_angle_modulation_monaural_beat_transition(duration, sample_rate=44100, initial_offset=0.0, post_offset=0.0, **params):
+def spatial_angle_modulation_monaural_beat_transition(
+    duration, sample_rate=44100, initial_offset=0.0, transition_duration=None, **params
+):
     """Spatial Angle Modulation monaural beat with transitions."""
     N = int(duration * sample_rate)
     if N <= 0:

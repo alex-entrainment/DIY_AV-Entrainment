@@ -615,14 +615,22 @@ def apply_filters(signal_segment, fs):
     return signal_segment
 
 
-def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, post_offset=0.0, curve="linear"):
+def calculate_transition_alpha(
+    total_duration,
+    sample_rate,
+    initial_offset=0.0,
+    transition_duration=None,
+    curve="linear",
+):
     """Create an interpolation factor array taking start/end offsets into account.
 
     Args:
         total_duration (float): Length of the transition in seconds.
         sample_rate (float): Sampling rate of the generated audio.
         initial_offset (float): Time before the transition begins.
-        post_offset (float): Time after the transition ends.
+        transition_duration (float | None): Duration of the transition itself.
+            When ``None`` (default), the transition spans the remainder of the
+            clip after ``initial_offset``.
         curve (str): Name of the transition curve to apply. Supported values are
             ``"linear"`` (default), ``"logarithmic"``, and ``"exponential"``.
             Any other string is interpreted as a Python expression using
@@ -635,7 +643,9 @@ def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, 
     total_duration = float(total_duration)
     sample_rate = float(sample_rate)
     initial_offset = max(0.0, float(initial_offset))
-    post_offset = max(0.0, float(post_offset))
+    if transition_duration is None:
+        transition_duration = total_duration - initial_offset
+    transition_duration = max(0.0, float(transition_duration))
 
     N = int(total_duration * sample_rate)
     if N <= 0:
@@ -644,7 +654,9 @@ def calculate_transition_alpha(total_duration, sample_rate, initial_offset=0.0, 
     t = np.linspace(0.0, total_duration, N, endpoint=False)
 
     start_t = min(initial_offset, total_duration)
-    end_t = max(start_t, total_duration - post_offset)
+    max_span = max(0.0, total_duration - start_t)
+    effective_span = min(transition_duration, max_span)
+    end_t = start_t + effective_span
     trans_time = end_t - start_t
 
     if trans_time <= 0.0:

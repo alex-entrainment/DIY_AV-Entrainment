@@ -3,7 +3,7 @@
 import json
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Default file extension for noise parameter files
 NOISE_FILE_EXTENSION = ".noise"
@@ -27,7 +27,7 @@ class NoiseParams:
     start_intra_phase_offset_deg: int = 0
     end_intra_phase_offset_deg: int = 0
     initial_offset: float = 0.0
-    post_offset: float = 0.0
+    transition_duration: Optional[float] = None
     input_audio_path: str = ""
     start_time: float = 0.0
     fade_in: float = 0.0
@@ -56,6 +56,17 @@ def load_noise_params(filepath: str) -> NoiseParams:
     for k, v in data.items():
         if hasattr(params, k):
             setattr(params, k, v)
+        elif k == "post_offset" and not hasattr(params, k):
+            # Backwards compatibility: derive the new transition duration from
+            # the legacy post offset value if possible.
+            total = float(data.get("duration_seconds", params.duration_seconds))
+            initial = float(data.get("initial_offset", params.initial_offset))
+            params.transition_duration = max(0.0, total - initial - float(v))
+    max_transition = max(0.0, params.duration_seconds - params.initial_offset)
+    if params.transition_duration is None:
+        params.transition_duration = max_transition
+    else:
+        params.transition_duration = max(0.0, min(params.transition_duration, max_transition))
     return params
 
 __all__ = ["NoiseParams", "save_noise_params", "load_noise_params", "NOISE_FILE_EXTENSION"]
